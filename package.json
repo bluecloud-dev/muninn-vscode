@@ -2,12 +2,13 @@
   "name": "muninn-vscode",
   "displayName": "%extension.displayName%",
   "publisher": "blueclouddev",
-  "version": "2.0.0-alpha.1",
+  "version": "2.1.0",
   "preview": true,
   "description": "%extension.description%",
   "license": "AGPL-3.0-only",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.85.2",
+    "node": ">=24"
   },
   "categories": [
     "Formatters",
@@ -60,41 +61,26 @@
   "bugs": {
     "url": "https://github.com/bluecloud-dev/muninn-vscode/issues"
   },
-  "activationEvents": [
-    "onStartupFinished",
-    "onCustomEditor:muninn.markdownEditor",
-    "onCommand:muninn.inspectConfiguration",
-    "onCommand:muninn.openRawMarkdown",
-    "onCommand:muninn.toggleBold",
-    "onCommand:muninn.toggleItalic",
-    "onCommand:muninn.setHeading1",
-    "onCommand:muninn.setHeading2",
-    "onCommand:muninn.setHeading3",
-    "onCommand:muninn.setParagraph",
-    "onCommand:muninn.toggleBulletList",
-    "onCommand:muninn.toggleNumberedList",
-    "onCommand:muninn.insertLink",
-    "onCommand:muninn.insertMermaidBlock",
-    "onCommand:muninn.insertTable",
-    "onCommand:muninn.insertCodeBlock",
-    "onCommand:muninn.insertImage",
-    "onCommand:muninn.addTableRow",
-    "onCommand:muninn.addTableColumn",
-    "onCommand:muninn.tableActions"
-  ],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "The Muninn editor works in restricted mode, but Mermaid rendering stays disabled unless explicitly allowed."
+      "description": "%capabilities.untrustedWorkspaces.description%",
+      "restrictedConfigurations": [
+        "muninn.integrations.mermaid.allowInUntrustedWorkspaces"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "%capabilities.virtualWorkspaces.description%"
     }
   },
   "contributes": {
     "customEditors": [
       {
         "viewType": "muninn.markdownEditor",
-        "displayName": "Muninn Markdown Editor",
+        "displayName": "%customEditor.displayName%",
         "selector": [
           {
             "filenamePattern": "*.md"
@@ -240,49 +226,100 @@
         "enablement": "activeCustomEditorId == muninn.markdownEditor",
         "shortTitle": "%command.muninn.tableActions.shortTitle%",
         "icon": "$(table)"
+      },
+      {
+        "command": "muninn.newNote",
+        "title": "%command.muninn.newNote.title%",
+        "category": "%command.category%",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "muninn.goToHeading",
+        "title": "%command.muninn.goToHeading.title%",
+        "category": "%command.category%",
+        "icon": "$(list-tree)",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.insertFileLink",
+        "title": "%command.muninn.insertFileLink.title%",
+        "category": "%command.category%",
+        "icon": "$(link)",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.toggleTask",
+        "title": "%command.muninn.toggleTask.title%",
+        "category": "%command.category%",
+        "icon": "$(checklist)",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.toggleStrike",
+        "title": "%command.muninn.toggleStrike.title%",
+        "category": "%command.category%",
+        "icon": "$(strikethrough)",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.undo",
+        "title": "%command.muninn.undo.title%",
+        "category": "%command.category%",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.redo",
+        "title": "%command.muninn.redo.title%",
+        "category": "%command.category%",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
       }
     ],
     "menus": {
       "editor/title": [
         {
+          "command": "muninn.goToHeading",
+          "when": "activeCustomEditorId == muninn.markdownEditor",
+          "group": "1_muninn@0"
+        },
+        {
           "command": "muninn.toggleBold",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@0"
+          "group": "2_muninn@0"
         },
         {
           "command": "muninn.toggleItalic",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@1"
+          "group": "2_muninn@1"
         },
         {
           "command": "muninn.insertMermaidBlock",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@2"
+          "group": "2_muninn@2"
         },
         {
           "command": "muninn.insertTable",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@3"
+          "group": "2_muninn@3"
         },
         {
           "command": "muninn.insertImage",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@4"
+          "group": "2_muninn@4"
         },
         {
           "command": "muninn.tableActions",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@5"
+          "group": "2_muninn@5"
         },
         {
           "command": "muninn.openRawMarkdown",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@6"
+          "group": "navigation@1"
         },
         {
           "command": "muninn.inspectConfiguration",
           "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "navigation@7"
+          "group": "2_muninn@7"
         }
       ],
       "commandPalette": [
@@ -356,39 +393,72 @@
         {
           "command": "muninn.tableActions",
           "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.newNote"
+        },
+        {
+          "command": "muninn.goToHeading",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.insertFileLink",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.toggleTask",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.toggleStrike",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.undo",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.redo",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "muninn.toggleBold",
-        "key": "ctrl+b",
-        "mac": "cmd+b",
-        "when": "activeCustomEditorId == muninn.markdownEditor"
-      },
-      {
-        "command": "muninn.toggleItalic",
-        "key": "ctrl+i",
-        "mac": "cmd+i",
-        "when": "activeCustomEditorId == muninn.markdownEditor"
-      },
-      {
         "command": "muninn.insertMermaidBlock",
         "key": "ctrl+alt+m",
         "mac": "cmd+alt+m",
-        "when": "activeCustomEditorId == muninn.markdownEditor"
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
       },
       {
         "command": "muninn.insertTable",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
-        "when": "activeCustomEditorId == muninn.markdownEditor"
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
       },
       {
         "command": "muninn.tableActions",
         "key": "ctrl+alt+shift+t",
         "mac": "cmd+alt+shift+t",
-        "when": "activeCustomEditorId == muninn.markdownEditor"
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
+      },
+      {
+        "command": "muninn.undo",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
+      },
+      {
+        "command": "muninn.redo",
+        "key": "ctrl+shift+z",
+        "mac": "cmd+shift+z",
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
+      },
+      {
+        "command": "muninn.redo",
+        "key": "ctrl+y",
+        "mac": "cmd+y",
+        "when": "activeCustomEditorId == muninn.markdownEditor && !inputFocus"
       }
     ],
     "configuration": {
@@ -396,9 +466,10 @@
       "properties": {
         "muninn.editorAssociations": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "%configuration.editorAssociations.description%",
-          "scope": "window"
+          "scope": "window",
+          "deprecationMessage": "%configuration.editorAssociations.deprecationMessage%"
         },
         "muninn.integrations.mermaid.enabled": {
           "type": "boolean",
@@ -410,7 +481,7 @@
           "type": "boolean",
           "default": false,
           "description": "%configuration.integrations.mermaid.allowInUntrustedWorkspaces.description%",
-          "scope": "resource"
+          "scope": "application"
         },
         "muninn.toolbar.mode": {
           "type": "string",
@@ -452,24 +523,24 @@
   },
   "scripts": {
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.tests.json --noEmit",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"wdio.conf.cjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"wdio.conf.cjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
-    "compile": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . && tsc -p tsconfig.tests.json",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"tests/electron/*.mjs\" \"scripts/*.mjs\" \"esbuild.mjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"tests/electron/*.mjs\" \"scripts/*.mjs\" \"esbuild.mjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
+    "compile": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . && tsc -p tsconfig.tests.json && node scripts/build-test-editor.mjs",
     "bundle": "node esbuild.mjs",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "npm run test:integration",
     "test:integration": "npm run compile && npm run bundle && vscode-test",
     "test:web": "node ./scripts/test-web-not-supported.js",
-    "test:e2e": "node ./scripts/run-e2e.js",
-    "test:e2e:headed": "node ./scripts/run-e2e.js",
+    "test:e2e": "node --test --test-concurrency=1 tests/electron/*.test.mjs",
     "test:roundtrip": "npm run compile && node ./scripts/generate-roundtrip-report.js",
     "coverage": "npm run compile && node -r ./scripts/nyc-cpus-shim.js ./node_modules/nyc/bin/nyc.js node ./scripts/run-unit-tests.js",
-    "package": "npm run bundle && node scripts/vsce-wrapper.js package",
-    "prepublish": "npm run compile && npm run bundle",
-    "vscode:prepublish": "npm run compile && npm run bundle",
-    "check:no-telemetry": "node scripts/check-no-telemetry.js"
+    "package": "node scripts/vsce-wrapper.js package --pre-release && node scripts/check-package.mjs",
+    "vscode:prepublish": "npm run compile && npm run bundle:production",
+    "check:no-telemetry": "node scripts/check-no-telemetry.js",
+    "bundle:production": "node esbuild.mjs --production"
   },
   "dependencies": {
+    "diff": "^8.0.4",
     "markdown-it": "^14.3.0",
     "markdown-it-front-matter": "^0.2.4",
     "mermaid": "^11.16.1",
@@ -486,6 +557,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.6",
     "@types/chai": "^5.2.3",
+    "@types/jsdom": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^26.1.1",
     "@types/sinon": "^21.0.0",
@@ -495,25 +567,20 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.9.2",
-    "@wdio/cli": "^9.29.1",
-    "@wdio/globals": "^8.46.0",
-    "@wdio/junit-reporter": "^8.43.0",
-    "@wdio/local-runner": "^8.46.0",
-    "@wdio/mocha-framework": "^8.46.0",
-    "@wdio/spec-reporter": "^8.43.0",
     "chai": "^6.2.2",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.2",
     "eslint-plugin-unicorn": "^62.0.0",
-    "mocha": "^11.7.5",
+    "jsdom": "^27.4.0",
+    "mocha": "^12.0.2",
     "nyc": "^18.0.0",
+    "playwright-core": "^1.63.0",
     "prettier": "^3.9.1",
     "sinon": "^22.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "wdio-video-reporter": "^6.2.0",
-    "wdio-vscode-service": "^6.1.4",
-    "webdriverio": "^8.46.0"
+    "vscode-uri": "^3.2.0",
+    "yauzl": "^3.4.0"
   },
   "nyc": {
     "all": true,
@@ -530,8 +597,13 @@
       "**/*.d.ts",
       "tests/**",
       "out/src/types/config.js",
-      "out/src/custom-editor/muninn-custom-editor-provider.js",
-      "out/src/webview/**"
+      "out/src/webview/editor/index.js",
+      "out/src/webview/editor/bootstrap.js",
+      "out/src/webview/editor/nodes/**",
+      "out/src/webview/editor/document-navigation.js",
+      "out/src/webview/editor/remote-document.js",
+      "out/src/webview/editor/messages.js",
+      "out/src/webview/editor/renderers/**"
     ],
     "reporter": [
       "text",
@@ -542,5 +614,13 @@
     "lines": 80,
     "functions": 70,
     "statements": 80
+  },
+  "overrides": {
+    "@vscode/test-cli": {
+      "mocha": {
+        "diff": "^8.0.4",
+        "serialize-javascript": "^7.0.5"
+      }
+    }
   }
 }

@@ -39,3 +39,10 @@ CLAUDE.md
 image.png
 Evolmd
 assets/hero.png
+media/**
+!media/generated/**
+package-lock.json
+**/metafile.json
+.nvmrc
+.agents/**
+THIRD_PARTY_NOTICES.md.tmp

@@ -1,150 +1,36 @@
-# Testing Guide
+# Testing
 
-This guide documents the complete automated and manual QA strategy for Muninn for VS Code.
+| Layer              | Command                                                     | Evidence                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Types/lint/format  | `npm run typecheck`, `npm run lint`, `npm run format:check` | Static gates                                                                                                                                 |
+| Unit + bundled DOM | `npm run coverage`                                          | Exact source edits, 56 golden fixtures, sync races, host validation, focused table DOM, recovery and sanitized SVG                           |
+| Extension host     | `npm test`                                                  | Real VS Code activation, default editor, commands, WorkspaceEdit/newline behavior                                                            |
+| Packaged UI        | `npm run package && npm run test:e2e`                       | Installed production VSIX, real typing/save/undo, toolbar, table source/grid/delete, Mermaid chunks/CSP, tasks, navigation, Source and notes |
+| Packaging          | `npm run package`                                           | Production minification, notices, size budgets, required/excluded archive files and pre-release metadata                                     |
+| Policy             | `npm run check:no-telemetry`, `npm audit`                   | Source telemetry guard and dependency advisories                                                                                             |
 
-## Test Stack
+## Regressions
 
-| Layer       | Tooling                                      | Scope                                              |
-| ----------- | -------------------------------------------- | -------------------------------------------------- |
-| Unit        | Mocha + Chai + Sinon                         | Isolated logic and service behavior                |
-| Integration | `@vscode/test-cli` + `@vscode/test-electron` | Real extension host behavior in VS Code desktop    |
-| UI E2E      | WebdriverIO + `wdio-vscode-service`          | Click-through user journeys in the real VS Code UI |
+The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. `deviations.json` is empty after these fixes. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes.
 
-## Commands
+`host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, flush, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host; it is not a replacement for native UI checks.
 
-| Command                    | Purpose                                                          |
-| -------------------------- | ---------------------------------------------------------------- |
-| `npm run lint`             | Static checks for source and tests                               |
-| `npm run format:check`     | Formatting gate (Prettier)                                       |
-| `npm run typecheck`        | Type-only TypeScript validation (`--noEmit`)                     |
-| `npm run compile`          | Build extension + tests                                          |
-| `npm test`                 | Standard integration suite (`@vscode/test-cli`)                  |
-| `npm run test:integration` | Explicit integration run                                         |
-| `npm run test:e2e`         | Desktop UI E2E tests with WDIO                                   |
-| `npm run test:e2e:headed`  | Desktop UI E2E tests (same suite, explicit local run entrypoint) |
-| `npm run test:web`         | Web test status check (currently not supported)                  |
-| `npm run test:roundtrip`   | Round-trip corpus run + regenerate conformance report docs       |
-| `npm run coverage`         | Unit coverage run                                                |
+## Native tests
 
-## Round-Trip Golden Corpus (`tests/unit/round-trip/`)
+`tests/electron/editor.test.mjs` uses Playwright's Electron API and `@vscode/test-electron`. It installs the exact VSIX into temporary user/extension/shared-application directories, without an extension-development-path fallback. The harness waits for contribution registration and invokes the native Inspect Configuration command before opening fixtures; default-editor behavior is tested after activation. No injected application implementation or special production test command is used.
 
-Enforces the prime directive: `markdown → ProseMirror → markdown` must be byte-identical
-(`unwrapTablesForHost(serialize(parse(wrapTablesForEditor(input)))) === input`).
+The former quarantined WebDriver runner lost its VS Code renderer connection on the tested current build. Its core journeys now run through Electron: toolbar/focus, formatting, code languages, table operations, Mermaid, reading and source mode. Mock-only message injection is reserved for unit regressions.
 
-- Fixtures: `tests/unit/round-trip/fixtures/*.md`, named `<category>--<case>.md`. Byte-fragile
-  cases (CRLF, trailing spaces, missing final newline) are synthesized in `corpus.ts` instead of
-  stored, so editors and format-on-save hooks cannot silently normalize them.
-- The mocha suite (part of `npm run coverage`) asserts byte equality for strict fixtures and,
-  for entries listed in `deviations.json`, asserts the fixture fails in **exactly** the documented
-  way (`final-newline-only` vs `construct`). A deviation that drifts or quietly starts passing
-  fails the suite.
-- Never edit a fixture to make it pass. If a construct cannot round-trip, add a record to
-  `deviations.json` with a root cause and tracking issue, then run `npm run test:roundtrip` to
-  regenerate `tests/unit/round-trip/KNOWN_DEVIATIONS.md` and `docs/ROUNDTRIP_REPORT.md`
-  (CI fails if the committed docs are stale).
+Set `VSCODE_VERSION` to `1.85.2` or `stable`. CI runs extension-host tests on both, and packaged UI on Linux (both versions), Windows and macOS (stable). UI failures block CI. Traces/screenshots are saved to `artifacts/e2e/`; temporary profiles are retained in the OS temp directory for diagnosis.
 
-## Integration Tests (`@vscode/test-cli`)
+Playwright's Electron API is experimental. A runner failure must be reported as such; never quarantine it silently or replace it with a source-string assertion.
 
-- Configuration file: `.vscode-test.mjs`
-- Test files loaded:
-  - `out/tests/integration-cli/**/*.test.js`
-- Runner behavior:
-  - Uses VS Code stable by default
-  - Creates an isolated run directory per invocation under `/tmp/muninn-vscode-test/<run-id>/`
-  - Copies `tests/fixtures` into a run-scoped workspace to avoid cross-test contamination
-  - Uses isolated user-data and extensions directories via launch args
+## Manual acceptance before release
 
-## Debugging Integration Tests in VS Code
+- NVDA/VoiceOver reading, table labels, live-region verbosity and keyboard reachability.
+- Narrow split editors, 200% zoom, light/dark/high contrast and visible focus.
+- Long-document cold-open/typing latency and many retained tabs' memory.
+- Actual Remote SSH/Codespaces filesystem providers and multi-root capture preferences.
+- Abrupt process termination versus normal save/close recovery; backups remain VS Code's responsibility.
 
-Use the launch configuration in `.vscode/launch.json`:
-
-- **Extension Tests**
-- It references `testConfiguration: ${workspaceFolder}/.vscode-test.mjs`
-
-Typical flow:
-
-1. Run `npm run compile`
-2. Open Run and Debug
-3. Start **Extension Tests**
-
-## UI E2E Tests (WebdriverIO)
-
-- WDIO config: `wdio.conf.cjs`
-- Launcher script: `scripts/run-e2e.js`
-- Specs:
-  - `tests/e2e/reading-first.e2e.mjs`
-  - `tests/e2e/edit-mode.e2e.mjs`
-  - `tests/e2e/formatting-mermaid.e2e.mjs`
-  - `tests/e2e/mermaid.e2e.mjs`
-  - `tests/e2e/table.e2e.mjs`
-  - `tests/e2e/accessibility-toolbar.e2e.mjs`
-
-`table.e2e.mjs` includes source-panel apply verification (button + `Ctrl/Cmd+Enter`) and markdown persistence checks.
-`mermaid.e2e.mjs` includes a regression assertion that Mermaid preview renders visible SVG label text.
-
-### Stability Controls
-
-- `maxInstances: 1`
-- explicit waits with `browser.waitUntil`
-- run-scoped workspace copy under `.vscode-test/e2e-runs/<run-id>/workspace`
-- deterministic artifact tree per date and run-id (`WDIO_RUN_ID`)
-- `WDIO_RUN_ID` is auto-generated per invocation by `scripts/run-e2e.js` and shared across workers
-
-### Artifacts
-
-Artifacts are stored under:
-
-`artifacts/e2e/<YYYY-MM-DD>/<run-id>/`
-
-Includes:
-
-- `screenshots/` (captured on every failed test)
-- `videos/` (failure-focused via `saveAllVideos: false`, enabled in CI by default)
-- `junit/` (CI-friendly XML)
-- `logs/`
-
-By default, local runs disable video (`E2E_VIDEO=0`) and CI enables it (`E2E_VIDEO=1`).
-
-## VS Code Web Test Support
-
-This extension is currently **desktop-only** (no `browser` entry in `package.json`), so `@vscode/test-web` is not enabled.
-
-If web support is added later:
-
-1. Add a web entrypoint in `package.json`
-2. Add `test:web` runner using `@vscode/test-web`
-3. Add a dedicated CI job for web extension validation
-
-## CI
-
-CI runs:
-
-1. lint
-2. format check
-3. typecheck
-4. compile + bundle
-5. unit coverage
-6. integration tests (`npm test`)
-7. desktop E2E (`npm run test:e2e`)
-8. artifact upload (VSIX + E2E screenshots/videos/junit)
-
-### Notes on Local macOS
-
-If E2E startup fails before test execution with a session bootstrap error (e.g., Chromedriver unable to attach to VS Code pages), this is environment-specific and not assertion flakiness. In that case, use Linux CI (xvfb) as the source of truth while keeping local runs for quick smoke attempts.
-
-## Manual QA
-
-Manual verification checklist:
-
-- `MANUAL_QA.md`
-
-## Manual Visual QA
-
-1. Open Extension Development Host.
-2. Open `tests/fixtures/sample.md`.
-3. Capture editor overview in light and dark themes.
-4. Tab through toolbar, editor, table controls, and Source button.
-5. Confirm visible focus rings on every interactive control.
-6. Insert a table and confirm Delete is visually dangerous.
-7. Insert Mermaid and confirm disabled/enabled states are understandable.
-8. Compare screenshots against `docs/design/MUNINN_VISUAL_QA.md`.
+The CI matrix and local results are separate claims. See [implementation status](AUDIT_IMPLEMENTATION_2026-09.md) for what was executed locally.

@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-25
+
+### Added
+
+- Native New Markdown Note, file-link and heading pickers; standard GFM tasks and strikethrough.
+- Operation acknowledgments, independent-edit merging and unsaved recovery copies for conflicting or unapplied drafts.
+- Installed-VSIX Electron UI gates, production bundle/archive budgets and generated third-party notices.
+
+### Fixed
+
+- Save/source/close synchronization, focused table input persistence and duplicate undo processing.
+- Source churn in no-op round trips and rich edits, escaped/aligned table cells and intermediate whitespace typing.
+- Restricted-workspace Mermaid enforcement, resource scopes, remote image fetches and image-size checks.
+- Automatic editor preference mutation, duplicated diagram presentation, toolbar action state and cancellation.
+- Production minification, stale generated assets, obsolete development dependencies and release artifact drift.
+
+### Changed
+
+- Numeric 2.1.0 version on the explicit pre-release channel; Node 24 contributor/CI toolchain.
+- Minimum tested VS Code patch is 1.85.2. Existing desktop custom-editor architecture and AGPL policy remain.
+- WebDriver quarantine replaced by blocking tests of the packaged extension on current/minimum VS Code.
+- Current architecture, onboarding, test and agent guidance consolidated.
+
+## Historical unreleased notes
+
 ### Added
 
 - Preview flag in extension manifest for alpha distribution

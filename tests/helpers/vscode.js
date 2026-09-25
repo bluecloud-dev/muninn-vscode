@@ -1,26 +1,7 @@
 const fs = require('fs').promises;
 
-class Uri {
-  constructor(value, scheme, fsPath) {
-    this._value = value;
-    this.scheme = scheme;
-    this.fsPath = fsPath;
-  }
-
-  static file(filePath) {
-    return new Uri(`file://${filePath}`, 'file', filePath);
-  }
-
-  static parse(value) {
-    const [scheme, rest = ''] = value.split(':');
-    const fsPath = rest.startsWith('/') ? rest : `/${rest}`;
-    return new Uri(value, scheme, fsPath);
-  }
-
-  toString() {
-    return this._value;
-  }
-}
+const { URI: Uri, Utils } = require('vscode-uri');
+Uri.joinPath = (uri, ...segments) => Utils.joinPath(uri, ...segments);
 
 class Position {
   constructor(line, character) {
@@ -45,6 +26,8 @@ class WorkspaceEdit {
     this.replacements = [];
   }
 
+  createFile(uri, options) { this.creation = { uri, options }; }
+
   replace(uri, range, text) {
     this.replacements.push({ uri, range, text });
   }
@@ -68,11 +51,14 @@ const workspaceFs = {
     return { size: stats.size };
   },
   readFile: async (uri) => fs.readFile(uri.fsPath),
+  createDirectory: async (uri) => fs.mkdir(uri.fsPath, { recursive: true }),
+  writeFile: async (uri, bytes) => fs.writeFile(uri.fsPath, bytes),
 };
 
 const workspace = {
   fs: workspaceFs,
   applyEdit: async () => true,
+  openTextDocument: async () => undefined,
   getConfiguration: () => ({
     get: () => undefined,
     inspect: () => undefined,
@@ -87,6 +73,8 @@ const workspace = {
   onDidDeleteFiles: () => ({ dispose: () => {} }),
   onDidChangeConfiguration: () => ({ dispose: () => {} }),
   onDidChangeTextDocument: () => ({ dispose: () => {} }),
+  onDidGrantWorkspaceTrust: () => ({ dispose: () => {} }),
+  onWillSaveTextDocument: () => ({ dispose: () => {} }),
 };
 
 const window = {
@@ -95,6 +83,8 @@ const window = {
   showErrorMessage: async () => undefined,
   showInputBox: async () => undefined,
   showOpenDialog: async () => undefined,
+  showSaveDialog: async () => undefined,
+  showQuickPick: async () => undefined,
   showTextDocument: async () => undefined,
   setStatusBarMessage: () => undefined,
   createOutputChannel: () => ({
@@ -125,6 +115,7 @@ const window = {
 };
 
 const env = {
+  language: 'en',
   openExternal: async () => undefined,
 };
 

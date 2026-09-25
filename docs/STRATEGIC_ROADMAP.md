@@ -1,5 +1,8 @@
 # Muninn for VS Code — Strategic Roadmap (May 2026 → Q2 2027)
 
+> Historical planning snapshot. See [September implementation status](AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+
+
 > Converts the competitive brief (`docs/COMPETITIVE_BRIEF.md`) into a sequenced, scored, single‑maintainer roadmap. Supersedes the alpha‑only material in `docs/ROADMAP.md`.
 
 **Author:** Aymen Hammouda · **Goal:** make Muninn a top‑tier VS Code extension that acts as a catalyst for personal brand · **Owner:** solo maintainer (evenings + weekends) · **Cadence:** monthly roadmap review, quarterly strategic review.

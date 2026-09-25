@@ -1,16 +1,15 @@
-import type { Node as ProseMirrorNode, Schema } from 'prosemirror-model';
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { readTableDraft, writeTableDraft } from '../table-drafts';
+import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import type { EditorView, NodeView, NodeViewConstructor } from 'prosemirror-view';
-import { CODE_LANGUAGE_OPTIONS } from '../../../shared/code-languages';
-import type { CodeLanguageOption } from '../../../shared/code-languages';
 import { formatErrorAnnouncement, type Announce } from '../announcements';
-import { escapeHtml, formatString, getString } from '../localization';
-import { sanitizeMermaidSvg } from '../preview';
-import { renderMermaidDiagram } from '../renderers/mermaid-renderer';
+import { formatString, getString } from '../localization';
 import {
   normalizeTableSource,
   parseMarkdownTable,
   serializeMarkdownTable,
-  TABLE_FENCE_LANGUAGE,
 } from '../tables/markdown-table-utilities';
 import type { MarkdownTable } from '../tables/markdown-table-utilities';
 
@@ -23,29 +22,8 @@ export {
 } from '../tables/markdown-table-utilities';
 export type { MarkdownTable } from '../tables/markdown-table-utilities';
 
-export const isTableCodeBlockNode = (node: ProseMirrorNode): boolean => {
-  if (node.type.name !== 'code_block') {
-    return false;
-  }
-  const rawParameters = (node.attrs.params as string | undefined) ?? '';
-  return rawParameters.trim().toLowerCase() === TABLE_FENCE_LANGUAGE;
-};
-
-const createDefaultCodeBlockNodeView = (node: ProseMirrorNode): NodeView => {
-  const dom = document.createElement('pre');
-  const code = document.createElement('code');
-  dom.append(code);
-
-  const parameters = (node.attrs.params as string | undefined)?.trim();
-  if (parameters && parameters.length > 0) {
-    dom.dataset.params = parameters;
-  }
-
-  return {
-    dom,
-    contentDOM: code,
-  };
-};
+export const isTableNode = (node: ProseMirrorNode): boolean => node.type.name === 'table';
+export const getTableSource = (node: ProseMirrorNode): string => node.attrs.source as string;
 
 type TableNodeViewOptions = {
   announce: Announce;
@@ -90,27 +68,6 @@ const createSourceShortcutHintId = (): string => {
   return `muninn-table-source-hint-${Math.random().toString(36).slice(2)}`;
 };
 
-const getCodeBlockLanguage = (node: ProseMirrorNode): string =>
-  ((node.attrs.params as string | undefined) ?? '').trim().toLowerCase();
-
-const buildCodeLanguageOptions = (currentLanguage: string): ReadonlyArray<CodeLanguageOption> => {
-  const options = [...CODE_LANGUAGE_OPTIONS];
-  if (currentLanguage.length > 0 && !options.some((option) => option.value === currentLanguage)) {
-    options.push({
-      value: currentLanguage,
-      label: formatString(getString('codeBlockLanguageUnsupportedTemplate'), currentLanguage),
-    });
-  }
-  return options;
-};
-
-const buildReplacementNode = (
-  schema: Schema,
-  attributes: Record<string, unknown>,
-  source: string,
-): ProseMirrorNode =>
-  schema.nodes.code_block.create(attributes, source.length > 0 ? [schema.text(source)] : undefined);
-
 export const getTableGridAriaLabel = (tableIndex: number, table: MarkdownTable): string =>
   formatString(
     getString('tableGridAriaLabelTemplate'),
@@ -132,7 +89,7 @@ export const getTableNodeDocumentIndex = (
   let matchedIndex: number | undefined;
 
   documentNode.descendants((node, position) => {
-    if (!isTableCodeBlockNode(node)) {
+    if (!isTableNode(node)) {
       return true;
     }
 
@@ -148,205 +105,11 @@ export const getTableNodeDocumentIndex = (
   return matchedIndex ?? 1;
 };
 
-class GenericCodeBlockNodeView implements NodeView {
-  readonly dom: HTMLDivElement;
-  readonly contentDOM: HTMLElement;
-
-  private readonly header = document.createElement('div');
-  private readonly title = document.createElement('strong');
-  private readonly languageSelect = document.createElement('select');
-  private readonly body = document.createElement('pre');
-  private readonly code = document.createElement('code');
-  private readonly mermaidPreview = document.createElement('div');
-  private renderSerial = 0;
-  private renderTimer: ReturnType<typeof setTimeout> | undefined;
-
-  constructor(
-    private node: ProseMirrorNode,
-    private readonly view: EditorView,
-    private readonly getPos: () => number | undefined,
-    private readonly options: TableNodeViewOptions,
-  ) {
-    this.dom = document.createElement('div');
-    this.dom.className = 'muninn-code-node';
-    this.dom.dataset.testid = 'muninn-code-node';
-
-    this.header.className = 'muninn-code-node-header';
-    this.title.textContent = getString('codeBlockTitle');
-    this.languageSelect.className = 'muninn-code-node-language';
-    this.languageSelect.setAttribute('aria-label', getString('codeBlockLanguageAriaLabel'));
-    this.languageSelect.dataset.testid = 'muninn-code-language';
-    this.header.append(this.title, this.languageSelect);
-
-    this.body.className = 'muninn-code-node-body';
-    this.body.append(this.code);
-    this.contentDOM = this.code;
-    this.mermaidPreview.className = 'muninn-code-node-mermaid-preview muninn-mermaid-preview-body';
-    this.mermaidPreview.hidden = true;
-
-    this.dom.append(this.header, this.body, this.mermaidPreview);
-    this.languageSelect.addEventListener('input', () => {
-      this.applySelectedLanguage();
-    });
-    this.languageSelect.addEventListener('change', () => {
-      this.applySelectedLanguage();
-    });
-    this.syncLanguageSelect();
-    this.scheduleMermaidPreviewRender();
-  }
-
-  update(node: ProseMirrorNode): boolean {
-    if (node.type.name !== 'code_block' || isTableCodeBlockNode(node)) {
-      return false;
-    }
-    this.node = node;
-    this.syncLanguageSelect();
-    this.scheduleMermaidPreviewRender();
-    return true;
-  }
-
-  stopEvent(event: Event): boolean {
-    const target = event.target;
-    return target instanceof Node && this.header.contains(target);
-  }
-
-  ignoreMutation(): boolean {
-    return false;
-  }
-
-  destroy(): void {
-    if (!this.renderTimer) {
-      return;
-    }
-    clearTimeout(this.renderTimer);
-    this.renderTimer = undefined;
-  }
-
-  private syncLanguageSelect(): void {
-    const currentLanguage = getCodeBlockLanguage(this.node);
-    const options = buildCodeLanguageOptions(currentLanguage);
-
-    const fragment = document.createDocumentFragment();
-    for (const option of options) {
-      const element = document.createElement('option');
-      element.value = option.value;
-      element.textContent = option.label;
-      fragment.append(element);
-    }
-
-    this.languageSelect.replaceChildren(fragment);
-    this.languageSelect.value = currentLanguage;
-  }
-
-  private applySelectedLanguage(): void {
-    const selectedLanguage = this.languageSelect.value.trim().toLowerCase();
-    const currentLanguage = getCodeBlockLanguage(this.node);
-    if (selectedLanguage === currentLanguage) {
-      return;
-    }
-
-    const position = this.resolveNodePosition();
-    if (position === undefined) {
-      this.options.announce(getString('statusCodeLanguageUpdateFailed'), { kind: 'error' });
-      this.syncLanguageSelect();
-      return;
-    }
-
-    const nextAttributes = {
-      ...(this.node.attrs as Record<string, unknown>),
-    };
-    if (selectedLanguage.length === 0) {
-      delete nextAttributes.params;
-    } else {
-      nextAttributes.params = selectedLanguage;
-    }
-
-    const transaction = this.view.state.tr
-      .setNodeMarkup(position, undefined, nextAttributes)
-      .scrollIntoView();
-    this.view.dispatch(transaction);
-
-    if (selectedLanguage.length === 0) {
-      this.options.announce(getString('statusCodeLanguagePlainText'), { kind: 'status' });
-      return;
-    }
-
-    const option = buildCodeLanguageOptions(selectedLanguage).find(
-      (candidate) => candidate.value === selectedLanguage,
-    );
-    this.options.announce(
-      formatString(getString('statusCodeLanguageSetTemplate'), option?.label ?? selectedLanguage),
-      { kind: 'status' },
-    );
-  }
-
-  private scheduleMermaidPreviewRender(): void {
-    if (this.renderTimer) {
-      return;
-    }
-
-    this.renderTimer = setTimeout(() => {
-      this.renderTimer = undefined;
-      this.renderSerial += 1;
-      void this.renderMermaidPreview(this.renderSerial);
-    }, 120);
-  }
-
-  private async renderMermaidPreview(serialAtStart: number): Promise<void> {
-    if (getCodeBlockLanguage(this.node) !== 'mermaid') {
-      this.mermaidPreview.hidden = true;
-      this.mermaidPreview.innerHTML = '';
-      return;
-    }
-
-    const source = this.node.textContent.trim();
-    if (source.length === 0) {
-      this.mermaidPreview.hidden = true;
-      this.mermaidPreview.innerHTML = '';
-      return;
-    }
-
-    const renderId = `muninn-inline-mermaid-${Date.now()}`;
-    const result = await renderMermaidDiagram(source, renderId);
-    if (serialAtStart !== this.renderSerial) {
-      return;
-    }
-
-    this.mermaidPreview.hidden = false;
-    if (!result.ok) {
-      this.mermaidPreview.innerHTML = `<div class="muninn-mermaid-error">${escapeHtml(result.error)}</div>`;
-      return;
-    }
-
-    this.mermaidPreview.innerHTML = sanitizeMermaidSvg(result.svg, source);
-  }
-
-  private resolveNodePosition(): number | undefined {
-    try {
-      const position = this.getPos();
-      if (typeof position === 'number') {
-        return position;
-      }
-    } catch {
-      // Fallback below handles transient node-view position races.
-    }
-
-    let matchedPosition: number | undefined;
-    this.view.state.doc.descendants((node, position) => {
-      if (node.type.name !== 'code_block' || isTableCodeBlockNode(node)) {
-        return true;
-      }
-      if (!node.eq(this.node)) {
-        return true;
-      }
-      matchedPosition = position;
-      return false;
-    });
-    return matchedPosition;
-  }
-}
-
-class TableCodeBlockNodeView implements NodeView {
+class TableNodeView implements NodeView {
+  private updatingCell = false;
+  private readonly flushDraft = (): void => {
+    if (this.sourceDirty) this.applySourceFromTextarea();
+  };
   readonly dom: HTMLDivElement;
 
   private readonly header = document.createElement('div');
@@ -366,6 +129,7 @@ class TableCodeBlockNodeView implements NodeView {
   private sourceVisible = false;
   private sourceDraft = '';
   private sourceDirty = false;
+  private readonly draftKey: string;
   private normalizedCurrentSource = '';
   private pendingFocus: TableCellCoordinates | undefined;
 
@@ -435,8 +199,10 @@ class TableCodeBlockNodeView implements NodeView {
       this.sourceFeedback,
     );
     this.sourceContainer.hidden = true;
-    this.normalizedCurrentSource = normalizeTableSource(this.node.textContent);
-    this.sourceDraft = this.normalizedCurrentSource;
+    this.normalizedCurrentSource = normalizeTableSource(getTableSource(this.node));
+    this.draftKey = JSON.stringify([getPos(), getTableSource(node)]);
+    this.sourceDraft = readTableDraft(this.draftKey) ?? this.normalizedCurrentSource;
+    this.sourceDirty = this.sourceDraft !== this.normalizedCurrentSource;
     this.sourceTextarea.value = this.sourceDraft;
 
     this.dom.append(this.header, this.gridContainer, this.sourceContainer);
@@ -458,7 +224,8 @@ class TableCodeBlockNodeView implements NodeView {
     });
     this.sourceTextarea.addEventListener('input', () => {
       this.sourceDraft = this.sourceTextarea.value;
-      this.sourceDirty = true;
+      this.sourceDirty = this.sourceDraft !== this.normalizedCurrentSource;
+      writeTableDraft(this.draftKey, this.sourceDirty ? this.sourceDraft : undefined);
       this.clearSourceFeedback();
       this.updateApplySourceButtonState();
     });
@@ -473,19 +240,28 @@ class TableCodeBlockNodeView implements NodeView {
       this.applySourceFromTextarea();
     });
 
+    document.addEventListener('muninn-flush', this.flushDraft);
     this.updateApplySourceButtonState();
     this.render();
+    if (this.sourceDirty) this.setSourceVisibility(true);
   }
 
   update(node: ProseMirrorNode): boolean {
-    if (!isTableCodeBlockNode(node)) {
+    if (!isTableNode(node)) {
       return false;
     }
-    this.pendingFocus ??= this.getFocusedCellCoordinates();
+    if (node.eq(this.node)) return true;
     this.node = node;
-    this.normalizedCurrentSource = normalizeTableSource(this.node.textContent);
-    this.render();
+    this.normalizedCurrentSource = normalizeTableSource(getTableSource(this.node));
+    if (!this.updatingCell) {
+      this.pendingFocus ??= this.getFocusedCellCoordinates();
+      this.render();
+    }
     return true;
+  }
+
+  destroy(): void {
+    document.removeEventListener('muninn-flush', this.flushDraft);
   }
 
   ignoreMutation(): boolean {
@@ -506,10 +282,10 @@ class TableCodeBlockNodeView implements NodeView {
   }
 
   private render(): void {
-    const table = parseMarkdownTable(this.node.textContent);
+    const table = parseMarkdownTable(getTableSource(this.node));
     this.renderGrid(table);
 
-    if (!this.sourceVisible || !this.sourceDirty) {
+    if (!this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
       this.sourceDirty = false;
@@ -530,6 +306,7 @@ class TableCodeBlockNodeView implements NodeView {
     for (const [columnIndex, value] of table.headers.entries()) {
       const th = document.createElement('th');
       th.setAttribute('scope', 'col');
+      if (table.alignments?.[columnIndex]) th.style.textAlign = table.alignments[columnIndex]!;
       th.append(this.createCellInput(value, -1, columnIndex));
       headRow.append(th);
     }
@@ -541,6 +318,7 @@ class TableCodeBlockNodeView implements NodeView {
       const tr = document.createElement('tr');
       for (const [columnIndex, value] of row.entries()) {
         const td = document.createElement('td');
+        if (table.alignments?.[columnIndex]) td.style.textAlign = table.alignments[columnIndex]!;
         td.append(this.createCellInput(value, rowIndex, columnIndex));
         tr.append(td);
       }
@@ -571,10 +349,24 @@ class TableCodeBlockNodeView implements NodeView {
         this.pendingFocus = undefined;
       }
     });
-    input.addEventListener('change', () => {
-      this.pendingFocus ??= this.getFocusedCellCoordinates();
-      this.updateCell(rowIndex, columnIndex, input.value);
+    const commitInput = (): void => {
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      this.updatingCell = true;
+      try {
+        this.updateCell(rowIndex, columnIndex, input.value);
+      } finally {
+        this.updatingCell = false;
+      }
+      if (input.isConnected) {
+        input.focus();
+        input.setSelectionRange(start, end);
+      }
+    };
+    input.addEventListener('input', (event) => {
+      if (!(event instanceof InputEvent) || !event.isComposing) commitInput();
     });
+    input.addEventListener('compositionend', commitInput);
     input.addEventListener('keydown', (event) => {
       if (shouldDeferTableCellKeyboardNavigation(event)) {
         return;
@@ -582,7 +374,7 @@ class TableCodeBlockNodeView implements NodeView {
 
       if (event.key === 'Enter') {
         event.preventDefault();
-        const table = parseMarkdownTable(this.node.textContent);
+        const table = parseMarkdownTable(getTableSource(this.node));
         const target = this.getVerticalTargetCell(table, logicalRowIndex, columnIndex, {
           direction: event.shiftKey ? -1 : 1,
         });
@@ -592,14 +384,13 @@ class TableCodeBlockNodeView implements NodeView {
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        input.value = value;
         input.focus();
         return;
       }
 
       if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
         event.preventDefault();
-        const table = parseMarkdownTable(this.node.textContent);
+        const table = parseMarkdownTable(getTableSource(this.node));
         const target = this.getVerticalTargetCell(table, logicalRowIndex, columnIndex, {
           direction: event.key === 'ArrowUp' ? -1 : 1,
         });
@@ -612,7 +403,7 @@ class TableCodeBlockNodeView implements NodeView {
         shouldNavigateTableCellHorizontally(input, event.key)
       ) {
         event.preventDefault();
-        const table = parseMarkdownTable(this.node.textContent);
+        const table = parseMarkdownTable(getTableSource(this.node));
         const target = this.getHorizontalTargetCell(table, logicalRowIndex, columnIndex, {
           direction: event.key === 'ArrowLeft' ? -1 : 1,
         });
@@ -622,7 +413,7 @@ class TableCodeBlockNodeView implements NodeView {
 
       if (event.key === 'Tab') {
         this.pendingFocus = this.getTabTargetCell(
-          parseMarkdownTable(this.node.textContent),
+          parseMarkdownTable(getTableSource(this.node)),
           logicalRowIndex,
           columnIndex,
           event.shiftKey,
@@ -633,7 +424,7 @@ class TableCodeBlockNodeView implements NodeView {
   }
 
   private updateCell(rowIndex: number, columnIndex: number, value: string): boolean {
-    const table = parseMarkdownTable(this.node.textContent);
+    const table = parseMarkdownTable(getTableSource(this.node));
     if (rowIndex < 0) {
       if (table.headers[columnIndex] === value) {
         return false;
@@ -654,15 +445,15 @@ class TableCodeBlockNodeView implements NodeView {
 
   private addRow(): void {
     this.pendingFocus ??= this.getFocusedCellCoordinates();
-    const table = parseMarkdownTable(this.node.textContent);
-    const columnCount = Math.max(2, table.headers.length);
+    const table = parseMarkdownTable(getTableSource(this.node));
+    const columnCount = table.headers.length;
     table.rows.push(Array.from({ length: columnCount }, () => ''));
     this.applyTable(table, getString('statusTableRowAdded'));
   }
 
   private addColumn(): void {
     this.pendingFocus ??= this.getFocusedCellCoordinates();
-    const table = parseMarkdownTable(this.node.textContent);
+    const table = parseMarkdownTable(getTableSource(this.node));
     const nextColumn = table.headers.length + 1;
     table.headers.push(formatString(getString('tableNewColumnHeaderTemplate'), nextColumn));
     for (const row of table.rows) {
@@ -695,7 +486,7 @@ class TableCodeBlockNodeView implements NodeView {
     this.sourceToggleButton.textContent = visible
       ? getString('tableBackToPreviewButton')
       : getString('tableViewSourceButton');
-    if (visible) {
+    if (visible && !this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
       this.sourceDirty = false;
@@ -709,7 +500,13 @@ class TableCodeBlockNodeView implements NodeView {
   }
 
   private applySourceFromTextarea(): void {
-    const normalized = normalizeTableSource(this.sourceDraft);
+    let normalized: string;
+    try {
+      normalized = normalizeTableSource(this.sourceDraft);
+    } catch {
+      this.setSourceFeedback('error', getString('statusTableSourceApplyFailed'));
+      return;
+    }
     if (normalized !== this.normalizedCurrentSource) {
       this.pendingFocus = { row: 0, col: 0 };
       const applied = this.applySource(normalized, getString('statusTableSourceApplied'));
@@ -723,6 +520,7 @@ class TableCodeBlockNodeView implements NodeView {
 
     this.sourceDraft = normalized;
     this.sourceDirty = false;
+    writeTableDraft(this.draftKey);
     this.sourceTextarea.value = normalized;
     this.setSourceVisibility(false);
   }
@@ -870,15 +668,10 @@ class TableCodeBlockNodeView implements NodeView {
       return false;
     }
 
-    const attributes = {
-      ...(this.node.attrs as Record<string, unknown>),
-      params: TABLE_FENCE_LANGUAGE,
-    };
-    const replacement = buildReplacementNode(this.node.type.schema, attributes, nextSource);
-    const transaction = this.view.state.tr
-      .replaceWith(position, position + this.node.nodeSize, replacement)
-      .scrollIntoView();
+    const replacement = this.node.type.create({ source: nextSource });
+    const transaction = this.view.state.tr.setNodeMarkup(position, undefined, replacement.attrs);
     this.view.dispatch(transaction);
+    if (!this.view.state.doc.nodeAt(position)?.eq(replacement)) return false;
     this.options.announce(statusMessage, { kind: 'status' });
     return true;
   }
@@ -899,48 +692,18 @@ class TableCodeBlockNodeView implements NodeView {
         return position;
       }
     } catch {
-      // Fallback below handles transient node-view position races.
+      // A detached node must never redirect an edit to an identical table.
     }
 
-    let matchedPosition: number | undefined;
-    this.view.state.doc.descendants((node, position) => {
-      if (!isTableCodeBlockNode(node) || !node.eq(this.node)) {
-        return true;
-      }
-
-      matchedPosition = position;
-      return false;
-    });
-    return matchedPosition;
+    return undefined;
   }
 
   private resolveNodePosition(): number | undefined {
-    const currentPosition = this.resolveCurrentNodePosition();
-    if (currentPosition !== undefined) {
-      return currentPosition;
-    }
-
-    let matchedPosition: number | undefined;
-    let firstTablePosition: number | undefined;
-    this.view.state.doc.descendants((node, position) => {
-      if (!isTableCodeBlockNode(node)) {
-        return true;
-      }
-      if (firstTablePosition === undefined) {
-        firstTablePosition = position;
-      }
-      if (!node.eq(this.node)) {
-        return true;
-      }
-
-      matchedPosition = position;
-      return false;
-    });
-    return matchedPosition ?? firstTablePosition;
+    return this.resolveCurrentNodePosition();
   }
 
   private updateApplySourceButtonState(): void {
-    const normalizedDraft = normalizeTableSource(this.sourceDraft);
+    const normalizedDraft = this.sourceDraft;
     this.applySourceButton.disabled =
       !this.sourceVisible || normalizedDraft === this.normalizedCurrentSource;
   }
@@ -959,18 +722,7 @@ class TableCodeBlockNodeView implements NodeView {
   }
 }
 
-export const createCodeBlockNodeViewConstructor = (
-  options: TableNodeViewOptions,
-): NodeViewConstructor => {
-  return (node, view, getPos) => {
-    if (node.type.name !== 'code_block' || typeof getPos !== 'function') {
-      return createDefaultCodeBlockNodeView(node);
-    }
-
-    if (isTableCodeBlockNode(node)) {
-      return new TableCodeBlockNodeView(node, view, getPos, options);
-    }
-
-    return new GenericCodeBlockNodeView(node, view, getPos, options);
-  };
-};
+export const createTableNodeViewConstructor =
+  (options: TableNodeViewOptions): NodeViewConstructor =>
+  (node, view, getPos) =>
+    new TableNodeView(node, view, getPos, options);

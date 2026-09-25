@@ -1,5 +1,8 @@
 # Muninn for VS Code — Competitive Brief (May 2026)
 
+> Historical planning snapshot. See [September implementation status](AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+
+
 > Strategic positioning, feature matrix, and roadmap to take Muninn from `2.0.0-alpha` to a top‑tier VS Code extension that catalyzes Aymen Hammouda's personal brand.
 >
 > **May 2026 snapshot.** Superseded where it conflicts with `MARKET_POSITION_2026-06.md` and `decisions/`: license is now AGPL-3.0-only (D-006); versioning is `1.99.x` pre-release / `2.0.0` GA (see issue #243).

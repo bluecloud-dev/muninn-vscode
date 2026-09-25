@@ -7,7 +7,6 @@ import {
   formatTableSourceFeedback,
   shouldDeferTableCellKeyboardNavigation,
   shouldNavigateTableCellHorizontally,
-  TABLE_FENCE_LANGUAGE,
   type MarkdownTable,
 } from '../../src/webview/editor/nodes/table-node-view';
 
@@ -17,11 +16,7 @@ before(async () => {
   ({ expect } = await import('chai'));
 });
 
-const createTableNode = () =>
-  schema.nodes.code_block.create(
-    { params: TABLE_FENCE_LANGUAGE },
-    schema.text(DEFAULT_TABLE_SOURCE),
-  );
+const createTableNode = () => schema.nodes.table.create({ source: DEFAULT_TABLE_SOURCE });
 
 const createInputState = (
   value: string,
@@ -62,7 +57,7 @@ describe('table node view accessibility helpers', () => {
 
     const tablePositions: number[] = [];
     documentNode.descendants((node, position) => {
-      if (node.type.name === 'code_block' && node.attrs.params === TABLE_FENCE_LANGUAGE) {
+      if (node.type.name === 'table') {
         tablePositions.push(position);
       }
       return true;

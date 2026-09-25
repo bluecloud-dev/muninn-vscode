@@ -1,5 +1,8 @@
 # Muninn — Market Position Review (June 9, 2026)
 
+> Historical planning snapshot. See [September implementation status](AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+
+
 > Refreshes `docs/COMPETITIVE_BRIEF.md` (May 2026) with live marketplace data, records the AGPL-3.0 license decision as final, and folds in the accessibility audit (`docs/design/ACCESSIBILITY_AUDIT_2026-06.md`) and design critique (`docs/design/DESIGN_CRITIQUE_2026-06.md`) executed today. Where this document and the May brief disagree, this document wins.
 
 ---

@@ -118,7 +118,7 @@ describe('custom editor protocol guards', () => {
     expect(
       isViewToHostMessage({
         type: 'view.applyDocument',
-        payload: { markdown: '# title', revision: 3 },
+        payload: { markdown: '# title', revision: 3, operationId: 1 },
       }),
     ).to.equal(true);
     expect(
