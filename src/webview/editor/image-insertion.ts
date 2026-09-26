@@ -18,7 +18,9 @@ export const createImageInsertionTransaction = (
   const insertAt = state.selection.from;
   const imageNode = imageNodeType.create({
     src: source,
-    alt: getImageAltTextFromSelection(state),
+    // The Markdown parser represents an empty alt attribute as null. Match that
+    // shape so source-backed edits pass the exact-AST fidelity check.
+    alt: getImageAltTextFromSelection(state) || undefined,
   });
   const transaction = state.tr.replaceSelectionWith(imageNode, false);
   const nextPosition = Math.min(transaction.doc.content.size, insertAt + imageNode.nodeSize);

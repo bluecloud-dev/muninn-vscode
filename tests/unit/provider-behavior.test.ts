@@ -324,7 +324,91 @@ describe('custom editor host lifecycle', () => {
     });
     assert.equal(mkdir.calledOnce, true);
     assert.equal(write.firstCall.args[0].scheme, 'vscode-remote');
-    assert.equal(f.messages.at(-1)!.type, 'host.imageInserted');
+    const imageMessage = f.messages.at(-1)!;
+    assert.equal(imageMessage.type, 'host.imageInserted');
+    if (imageMessage.type !== 'host.imageInserted') return;
+    const remove = sinon.stub(vscode.workspace.fs, 'delete').resolves();
+    await f.send({
+      type: 'view.imageInsertResult',
+      payload: { requestId: imageMessage.payload.requestId, ok: true },
+    });
+    assert.equal(remove.called, false);
+  });
+
+  it('removes a copied image when the editor rejects insertion', async () => {
+    const f = await fixture();
+    const bytes = Buffer.from([137, 80, 78, 71]);
+    sinon
+      .stub(vscode.workspace.fs, 'stat')
+      .rejects(Object.assign(new Error('Missing'), { code: 'FileNotFound' }));
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const read = sinon.stub(vscode.workspace.fs, 'readFile').resolves(bytes);
+    const remove = sinon.stub(vscode.workspace.fs, 'delete').resolves();
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: {
+        kind: 'drop',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytesBase64: bytes.toString('base64'),
+      },
+    });
+    const imageMessage = f.messages.at(-1)!;
+    assert.equal(imageMessage.type, 'host.imageInserted');
+    if (imageMessage.type !== 'host.imageInserted') return;
+    await f.send({
+      type: 'view.imageInsertResult',
+      payload: { requestId: imageMessage.payload.requestId, ok: false },
+    });
+    assert.equal(remove.calledOnceWithExactly(write.firstCall.args[0]), true);
+    await f.send({
+      type: 'view.imageInsertResult',
+      payload: { requestId: imageMessage.payload.requestId, ok: false },
+    });
+    assert.equal(remove.calledOnce, true);
+
+    read.resolves(Buffer.from('changed after copy'));
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: {
+        kind: 'drop',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytesBase64: bytes.toString('base64'),
+      },
+    });
+    const nextMessage = f.messages.at(-1)!;
+    assert.equal(nextMessage.type, 'host.imageInserted');
+    if (nextMessage.type !== 'host.imageInserted') return;
+    await f.send({
+      type: 'view.imageInsertResult',
+      payload: { requestId: nextMessage.payload.requestId, ok: false },
+    });
+    assert.equal(remove.calledOnce, true);
+  });
+
+  it('removes a copied image when its message cannot reach the editor', async () => {
+    const f = await fixture();
+    const bytes = Buffer.from([137, 80, 78, 71]);
+    sinon
+      .stub(vscode.workspace.fs, 'stat')
+      .rejects(Object.assign(new Error('Missing'), { code: 'FileNotFound' }));
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    sinon.stub(vscode.workspace.fs, 'readFile').resolves(bytes);
+    const remove = sinon.stub(vscode.workspace.fs, 'delete').resolves();
+    sinon.stub(f.panel.webview, 'postMessage').resolves(false);
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: {
+        kind: 'drop',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytesBase64: bytes.toString('base64'),
+      },
+    });
+    assert.equal(remove.calledOnce, true);
   });
 
   it('does not treat a permission error as a safe unused image filename', async () => {

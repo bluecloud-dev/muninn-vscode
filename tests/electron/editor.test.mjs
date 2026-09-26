@@ -314,6 +314,41 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await save(editor, file, '* [ ] AlXpha\n');
   });
 
+  it('inserts an image through the native command and saves exact surrounding Markdown', async () => {
+    const { editor, file } = await open('image.md', 'Alpha\n\n+ _untouched_\n');
+    await editor.locator('.ProseMirror p').first().click();
+    await page.keyboard.press(lineEnd);
+    const selectedImage = path.join(root, 'assets', 'icon.png');
+    await app.evaluate(({ dialog }, selected) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+    }, selectedImage);
+    await command('Muninn for VS Code: Insert Image');
+
+    let currentEditor;
+    await eventually(async () => {
+      for (const frame of page.frames()) {
+        try {
+          const prose = frame.locator('.ProseMirror[aria-label*="image.md"]');
+          if (
+            (await prose.isVisible()) &&
+            (await prose.locator('img:not(.ProseMirror-separator)').count()) === 1
+          ) {
+            currentEditor = frame;
+            return true;
+          }
+        } catch {
+          /* The webview may be replaced while VS Code updates the document. */
+        }
+      }
+      return false;
+    }, 'Inserted image did not appear in the editor');
+    await save(currentEditor, file, 'Alpha![](images/icon.png)\n\n+ _untouched_\n');
+    assert.deepEqual(
+      fs.readFileSync(path.join(workspace, 'images', 'icon.png')),
+      fs.readFileSync(selectedImage),
+    );
+  });
+
   it('opens Source after saving edits and creates a native note', async () => {
     const { editor, file } = await open('source.md', 'Before\n');
     await editor.locator('.ProseMirror p').click();

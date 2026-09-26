@@ -26,7 +26,9 @@ class WorkspaceEdit {
     this.replacements = [];
   }
 
-  createFile(uri, options) { this.creation = { uri, options }; }
+  createFile(uri, options) {
+    this.creation = { uri, options };
+  }
 
   replace(uri, range, text) {
     this.replacements.push({ uri, range, text });
@@ -53,6 +55,7 @@ const workspaceFs = {
   readFile: async (uri) => fs.readFile(uri.fsPath),
   createDirectory: async (uri) => fs.mkdir(uri.fsPath, { recursive: true }),
   writeFile: async (uri, bytes) => fs.writeFile(uri.fsPath, bytes),
+  delete: async (uri) => fs.rm(uri.fsPath),
 };
 
 const workspace = {

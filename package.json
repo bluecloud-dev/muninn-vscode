@@ -524,7 +524,7 @@
   "scripts": {
     "typecheck": "tsc -p . --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"tests/electron/*.mjs\" \"scripts/*.mjs\" \"esbuild.mjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"tests/electron/*.mjs\" \"scripts/*.mjs\" \"esbuild.mjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
+    "format:check": "prettier --check --end-of-line auto \"src/**/*.ts\" \"tests/integration-cli/**/*.ts\" \"tests/unit/**/*.ts\" \"package.json\" \"package-lock.json\" \"package.nls.json\" \"l10n/bundle.l10n.json\" \".vscode-test.mjs\" \"tests/electron/*.mjs\" \"scripts/*.mjs\" \"esbuild.mjs\" \"scripts/*.js\" \".github/workflows/*.yml\" \"README.md\" \"docs/ARCHITECTURE.md\" \"docs/DEVELOPMENT.md\" \"docs/GETTING_STARTED.md\" \"docs/TESTING.md\"",
     "compile": "node -e \"require('fs').rmSync('out', { recursive: true, force: true })\" && tsc -p . && tsc -p tsconfig.tests.json && node scripts/build-test-editor.mjs",
     "bundle": "node esbuild.mjs",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
