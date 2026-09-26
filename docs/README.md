@@ -28,6 +28,7 @@ Welcome to the **Muninn for VS Code** extension engineering documentation. This 
 
 ## Quick Links
 
+- **Current Audit:** [September 2026 audit and improvement plan](MUNINN_AUDIT_2026-09.md), a dated baseline with external benchmarks; [implementation status](AUDIT_IMPLEMENTATION_2026-09.md) tracks the fixes
 - **Getting Started:** Begin with [GETTING_STARTED.md](GETTING_STARTED.md) for a guided first run
 - **Environment Setup:** Use [DEVELOPMENT.md](DEVELOPMENT.md) for day-to-day workflow
 - **Understanding the Code:** Read [ARCHITECTURE.md](ARCHITECTURE.md) for the big picture
@@ -51,7 +52,7 @@ muninn-vscode/
 ├── tests/                  # Test suites
 │   ├── unit/               # Unit tests (mocked VS Code APIs)
 │   ├── integration-cli/    # Integration tests via @vscode/test-cli
-│   ├── e2e/                # WDIO end-to-end tests
+│   ├── electron/           # Installed-VSIX Electron UI tests
 │   └── fixtures/           # Test data files
 ├── docs/                   # This documentation folder
 ├── assets/                 # Images and icons

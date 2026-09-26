@@ -1,195 +1,137 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import assert from 'node:assert/strict';
 import * as vscode from 'vscode';
-import {
-  DocumentSync,
-  reconcileTrailingNewlineForApply,
-} from '../../src/custom-editor/document-sync';
+import { DocumentSync } from '../../src/custom-editor/document-sync';
 
-let expect: Chai.ExpectStatic;
-
-before(async () => {
-  ({ expect } = await import('chai'));
-});
-
-type ReplaceOperation = {
-  uri: vscode.Uri;
-  range: vscode.Range;
-  text: string;
-};
-
-type InspectableWorkspaceEdit = vscode.WorkspaceEdit & {
-  replacements: ReplaceOperation[];
+type RecordedEdit = vscode.WorkspaceEdit & {
+  replacements: Array<{ uri: vscode.Uri; range: vscode.Range; text: string }>;
 };
 
 describe('DocumentSync', () => {
-  const workspaceWithApplyEdit = vscode.workspace as unknown as {
-    applyEdit?: (edit: vscode.WorkspaceEdit) => Promise<boolean>;
+  const workspace = vscode.workspace as unknown as {
+    applyEdit: (edit: vscode.WorkspaceEdit) => Promise<boolean>;
   };
-  const originalApplyEdit = workspaceWithApplyEdit.applyEdit;
-
+  const original = workspace.applyEdit;
   afterEach(() => {
-    workspaceWithApplyEdit.applyEdit = originalApplyEdit;
+    workspace.applyEdit = original;
   });
 
-  it('reconciles serializer-dropped final newlines without inventing new ones', () => {
-    expect(reconcileTrailingNewlineForApply('# before\n', '# after')).to.equal('# after\n');
-    expect(reconcileTrailingNewlineForApply('# before\n', '# after\n')).to.equal('# after\n');
-    expect(reconcileTrailingNewlineForApply('# before', '# after')).to.equal('# after');
-    expect(reconcileTrailingNewlineForApply('', '# after')).to.equal('# after');
-    expect(reconcileTrailingNewlineForApply('\n', '')).to.equal('\n');
-  });
-
-  it('returns snapshots and increments revision for matching document changes', () => {
-    const uri = vscode.Uri.file('/workspace/snapshot.md');
+  const fixture = (initial: string) => {
+    let text = initial;
     const document = {
-      uri,
-      getText: () => '# hello',
-      lineCount: 1,
-      lineAt: () => ({
-        range: { end: new vscode.Position(0, 7) },
-      }),
+      uri: vscode.Uri.file('/workspace/doc.md'),
+      getText: () => text,
+      positionAt: (offset: number) => {
+        const lines = text.slice(0, offset).split('\n');
+        return new vscode.Position(lines.length - 1, lines.at(-1)!.length);
+      },
     } as unknown as vscode.TextDocument;
-
-    const sync = new DocumentSync(document);
-
-    expect(sync.getSnapshot()).to.deep.equal({
-      markdown: '# hello',
-      revision: 0,
-    });
-
-    const changed = sync.handleDocumentChanged({
+    const offsetAt = (p: vscode.Position) =>
+      text
+        .split('\n')
+        .slice(0, p.line)
+        .reduce((sum, line) => sum + line.length + 1, 0) + p.character;
+    const edits: RecordedEdit[] = [];
+    workspace.applyEdit = async (edit) => {
+      const recorded = edit as RecordedEdit;
+      edits.push(recorded);
+      for (const change of recorded.replacements.toReversed()) {
+        text =
+          text.slice(0, offsetAt(change.range.start)) +
+          change.text +
+          text.slice(offsetAt(change.range.end));
+      }
+      return true;
+    };
+    return {
       document,
-    } as vscode.TextDocumentChangeEvent);
-    expect(changed).to.deep.equal({
-      markdown: '# hello',
-      revision: 1,
-    });
-
-    const otherDocument = {
-      uri: vscode.Uri.file('/workspace/other.md'),
-    } as vscode.TextDocument;
-    const unchanged = sync.handleDocumentChanged({
-      document: otherDocument,
-    } as vscode.TextDocumentChangeEvent);
-    expect(unchanged).to.equal(undefined);
-  });
-
-  it('returns revision mismatch when expected revision is stale', async () => {
-    const uri = vscode.Uri.file('/workspace/revision.md');
-    const document = {
-      uri,
-      getText: () => '# latest',
-      lineCount: 1,
-      lineAt: () => ({
-        range: { end: new vscode.Position(0, 8) },
-      }),
-    } as unknown as vscode.TextDocument;
-
-    const sync = new DocumentSync(document);
-    sync.handleDocumentChanged({ document } as vscode.TextDocumentChangeEvent);
-
-    const result = await sync.applyDocument('# latest', 0);
-    expect(result).to.deep.equal({
-      ok: false,
-      code: 'revision_mismatch',
-      message: 'Revision mismatch. expected=0 current=1',
-    });
-  });
-
-  it('skips workspace edits when markdown is unchanged', async () => {
-    const uri = vscode.Uri.file('/workspace/unchanged.md');
-    const document = {
-      uri,
-      getText: () => '# unchanged',
-      lineCount: 1,
-      lineAt: () => ({
-        range: { end: new vscode.Position(0, 11) },
-      }),
-    } as unknown as vscode.TextDocument;
-
-    const sync = new DocumentSync(document);
-    const result = await sync.applyDocument('# unchanged', 0);
-    expect(result).to.deep.equal({ ok: true });
-  });
-
-  it('applies markdown edits and reports host failures', async () => {
-    const appliedEdits: InspectableWorkspaceEdit[] = [];
-    workspaceWithApplyEdit.applyEdit = async (edit: vscode.WorkspaceEdit) => {
-      appliedEdits.push(edit as InspectableWorkspaceEdit);
-      return true;
-    };
-
-    const uri = vscode.Uri.file('/workspace/apply.md');
-    const document = {
-      uri,
-      getText: () => '# before',
-      lineCount: 1,
-      lineAt: () => ({
-        range: { end: new vscode.Position(0, 8) },
-      }),
-    } as unknown as vscode.TextDocument;
-
-    const sync = new DocumentSync(document);
-    const success = await sync.applyDocument('# after', 0);
-    expect(success).to.deep.equal({ ok: true });
-    expect(appliedEdits.length).to.equal(1);
-    expect(appliedEdits[0]?.replacements.length).to.equal(1);
-    expect(appliedEdits[0]?.replacements[0]?.uri.toString()).to.equal(uri.toString());
-    expect(appliedEdits[0]?.replacements[0]?.text).to.equal('# after');
-    expect(appliedEdits[0]?.replacements[0]?.range.start.line).to.equal(0);
-    expect(appliedEdits[0]?.replacements[0]?.range.end.character).to.equal(8);
-
-    workspaceWithApplyEdit.applyEdit = async () => false;
-    const failed = await sync.applyDocument('# failed', 0);
-    expect(failed).to.deep.equal({
-      ok: false,
-      code: 'apply_failed',
-      message: 'VS Code failed to apply the markdown update.',
-    });
-  });
-
-  it('preserves the current document final-newline state when applying serialized markdown', async () => {
-    const appliedEdits: InspectableWorkspaceEdit[] = [];
-    workspaceWithApplyEdit.applyEdit = async (edit: vscode.WorkspaceEdit) => {
-      appliedEdits.push(edit as InspectableWorkspaceEdit);
-      return true;
-    };
-
-    const cases = [
-      {
-        name: 'had final newline',
-        current: '# before\n',
-        serialized: '# after',
-        applied: '# after\n',
+      sync: new DocumentSync(document),
+      edits,
+      replaceExternally: (value: string) => {
+        text = value;
       },
-      {
-        name: 'had no final newline',
-        current: '# before',
-        serialized: '# after',
-        applied: '# after',
+    };
+  };
+
+  it('revisions track actual text changes exactly once, including changes observed before their event', () => {
+    const f = fixture('Alpha');
+    assert.deepEqual(f.sync.getSnapshot(), { markdown: 'Alpha', revision: 0 });
+    assert.equal(
+      f.sync.handleDocumentChanged({ document: f.document } as vscode.TextDocumentChangeEvent),
+      undefined,
+    );
+    f.replaceExternally('Beta');
+    assert.deepEqual(f.sync.getSnapshot(), { markdown: 'Beta', revision: 1 });
+    assert.equal(
+      f.sync.handleDocumentChanged({ document: f.document } as vscode.TextDocumentChangeEvent),
+      undefined,
+    );
+    f.replaceExternally('Gamma');
+    assert.deepEqual(
+      f.sync.handleDocumentChanged({ document: f.document } as vscode.TextDocumentChangeEvent),
+      { markdown: 'Gamma', revision: 2 },
+    );
+    assert.equal(
+      f.sync.handleDocumentChanged({
+        document: { uri: vscode.Uri.file('/other.md') },
+      } as vscode.TextDocumentChangeEvent),
+      undefined,
+    );
+  });
+
+  it('rejects a stale revision without writing', async () => {
+    const f = fixture('Alpha');
+    f.replaceExternally('Remote');
+    const result = await f.sync.applyDocument('Local', 0);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, 'revision_mismatch');
+    assert.equal(f.edits.length, 0);
+  });
+
+  it('acknowledges a no-op without applying an edit', async () => {
+    const f = fixture('Alpha\n');
+    assert.deepEqual(await f.sync.applyDocument('Alpha\n', 0), { ok: true });
+    assert.equal(f.edits.length, 0);
+  });
+
+  it('changes only the intended ranges and preserves CRLF, trailing blanks and emoji', async () => {
+    const original = '# Title\r\n\r\nAlpha 😀 keeps  \r\n\r\nTail\r\n';
+    const desired = original.replace('Alpha', 'Bravo').replace('Tail', 'End');
+    const f = fixture(original);
+    assert.deepEqual(await f.sync.applyDocument(desired, 0), { ok: true });
+    assert.equal(f.sync.getSnapshot().markdown, desired);
+    for (const change of f.edits[0].replacements) assert.ok(change.range.start.line >= 2);
+  });
+
+  for (const [source, target] of [
+    ['', 'Alpha'],
+    ['Alpha\n', 'Alpha'],
+    ['Alpha', 'Alpha\n'],
+    ['\n', ''],
+  ]) {
+    it(
+      'applies explicitly requested source including EOF changes: ' +
+        JSON.stringify([source, target]),
+      async () => {
+        const f = fixture(source);
+        assert.deepEqual(await f.sync.applyDocument(target, 0), { ok: true });
+        assert.equal(f.sync.getSnapshot().markdown, target);
       },
-      { name: 'empty document', current: '', serialized: '# after', applied: '# after' },
-      { name: 'single newline document', current: '\n', serialized: '', applied: '\n' },
-    ];
+    );
+  }
 
-    for (const testCase of cases) {
-      const uri = vscode.Uri.file(`/workspace/${testCase.name.replaceAll(' ', '-')}.md`);
-      const lines = testCase.current.split('\n');
-      const document = {
-        uri,
-        getText: () => testCase.current,
-        lineCount: lines.length,
-        lineAt: (line: number) => ({
-          range: { end: new vscode.Position(line, lines[line]?.length ?? 0) },
-        }),
-      } as unknown as vscode.TextDocument;
-
-      const sync = new DocumentSync(document);
-      const beforeCount = appliedEdits.length;
-      const result = await sync.applyDocument(testCase.serialized, 0);
-
-      expect(result, testCase.name).to.deep.equal({ ok: true });
-      expect(appliedEdits.length, testCase.name).to.equal(beforeCount + 1);
-      expect(appliedEdits.at(-1)?.replacements[0]?.text, testCase.name).to.equal(testCase.applied);
-    }
+  it('reports both a rejected workspace edit and an exception', async () => {
+    const f = fixture('Alpha');
+    workspace.applyEdit = async () => false;
+    const rejected = await f.sync.applyDocument('Beta', 0);
+    assert.equal(rejected.ok, false);
+    workspace.applyEdit = async () => {
+      throw new Error('Disconnected');
+    };
+    const failed = await f.sync.applyDocument('Beta', 0);
+    assert.equal(failed.ok, false);
+    assert.equal(f.sync.getSnapshot().markdown, 'Alpha');
   });
 });

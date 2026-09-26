@@ -1,113 +1,24 @@
-# Release Guide
+# Release guide
 
-This guide covers packaging and publishing for `muninn-vscode`.
+The current development package is **2.1.0 pre-release**. Marketplace versions must be numeric; pre-release channel metadata is separate from the `preview` badge. The older 1.99.x proposal and already-recorded 2.0.0 changelog are historical. Future stable promotion needs a deliberate version/channel change.
 
-## Versioning
+## Build and review
 
-We follow SemVer:
-
-- `X.Y.Z` for stable releases (even minor)
-- Pre-release: plain `X.Y.Z` with an ODD minor (current stream `1.99.x`), published with `vsce publish --pre-release` — the Marketplace rejects semver pre-release suffixes (`-alpha.N`) in the manifest version
-
-Current track is pre-release (`1.99.x`); GA ships as exactly `2.0.0`. Decision record: issue #243 (2026-06-11).
-
-## Pre-Release Checklist
-
-### 1) Quality gates
+Use Node 24 and `npm ci`. Run the type, lint, format, coverage, round-trip, telemetry and dependency gates documented in [TESTING.md](TESTING.md). Run extension-host tests against minimum/current VS Code.
 
 ```bash
-npm run lint
-npm run format:check
-npm run typecheck
-npm run coverage
-npm test
-npm run test:e2e
-npm run check:no-telemetry
-```
-
-### 2) Docs alignment
-
-- `README.md` matches shipped commands/settings.
-- `CHANGELOG.md` has accurate version notes.
-- `docs/` reflects current custom-editor architecture.
-- v2 custom-editor behavior supersedes the legacy v1 preview-first spec (`specs/markdown-preview/spec.md`) until that spec is rewritten.
-
-#### Visual QA
-
-- [ ] `assets/hero.png` uses Muninn branding.
-- [ ] `assets/icon.png` is 128x128 and readable at small sizes.
-- [ ] Light theme screenshot reviewed.
-- [ ] Dark theme screenshot reviewed.
-- [ ] High contrast focus screenshot reviewed.
-- [ ] Table source mode screenshot reviewed.
-- [ ] Mermaid preview screenshot reviewed.
-
-### 3) Manifest sanity
-
-Verify `package.json` values:
-
-- `name`: `muninn-vscode`
-- `publisher`: `blueclouddev`
-- `version`: target release version
-- `main`: `dist/extension.js`
-- `icon`: `assets/icon.png`
-- `preview`: true for pre-release, false for stable
-
-### 4) Build and package
-
-```bash
-npm run compile
-npm run bundle
 npm run package
+npm run test:e2e
 ```
 
-Expected artifact:
+Packaging runs the production build, removes only owned generated output directories, generates `THIRD_PARTY_NOTICES.md` from the actual bundled packages and inspects the resulting VSIX. Budgets: initial editor JavaScript <=600 KiB, total generated bundle outputs <=8 MiB, compressed VSIX <=3 MiB. Lazy Mermaid chunks account for the many JavaScript files; do not collapse them simply to silence vsce's file-count warning.
 
-- `muninn-vscode-<version>.vsix`
+Inspect `artifacts/build/package-report.json` for the SHA-256 and bytes. The archive must contain its host/webview entrypoints, local chunks, LICENSE.txt and notices, and exclude source maps, tests, source trees, agent metadata and stale media. Keep source available under the repository's existing AGPL policy and preserve SPDX headers.
 
-## Local Package Validation
+## Publish an authorized release
 
-1. Install from VSIX in VS Code.
-2. Open `.md` file and verify custom editor loads.
-3. Verify:
-   - toolbar formatting actions
-   - table insert + source apply
-   - Mermaid insert/render
-   - raw markdown fallback command
+A matching `vX.Y.Z` tag triggers the release workflow. It verifies tag/version, performs checks, packages, tests that exact archive in real VS Code, then publishes with `--packagePath` and `--pre-release`. It must never rebuild between the packaged UI gate and publication. GitHub Release receives the same VSIX and is marked pre-release.
 
-## Git Tag and Release
+Maintainers own release credentials, accounts and approval of public release notes. Creating a PR does not authorize a Marketplace upload or tag. Keep `VSCE_PAT` in the configured secret, never repository files.
 
-```bash
-git add package.json CHANGELOG.md README.md docs
-git commit -m "chore(release): vX.Y.Z"
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
-git push origin main
-git push origin vX.Y.Z
-```
-
-## CI/CD Release Workflow
-
-The repo includes `.github/workflows/release.yml` for tag-driven releases.
-
-It runs:
-
-1. install
-2. lint + format + typecheck
-3. compile + bundle
-4. coverage + integration + no-telemetry guard
-5. package VSIX
-6. publish to Marketplace (with `VSCE_PAT`)
-7. create GitHub release notes from `CHANGELOG.md`
-
-## Rollback Strategy
-
-If a release is broken:
-
-1. publish patched version (`+1` patch)
-2. update changelog with explicit regression note
-3. if necessary, unpublish the specific bad version via `vsce`
-
-## Notes
-
-- Keep release docs truthful to current implementation.
-- Avoid documenting commands/settings that are not present in `package.json`.
+Before tagging, complete the manual accessibility/platform/performance checks in [TESTING.md](TESTING.md), review the versioned changelog section and verify CI for the commit to be released.

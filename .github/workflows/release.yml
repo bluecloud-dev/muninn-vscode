@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -54,12 +54,12 @@ jobs:
         run: npm run check:no-telemetry
 
       - name: Package VSIX
-        run: npm run package
+        run: |
+          node -e "if ('v' + require('./package.json').version !== process.env.GITHUB_REF_NAME) process.exit(1)"
+          npm run package
 
-      - name: Publish to VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: node scripts/vsce-wrapper.js publish --pat "$VSCE_PAT"
+      - name: Test exact packaged extension
+        run: xvfb-run -a npm run test:e2e
 
       - name: Extract release notes from CHANGELOG
         env:
@@ -93,9 +93,15 @@ jobs:
           fs.writeFileSync('release-notes.md', `${body}\n`);
           NODE
 
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: node scripts/vsce-wrapper.js publish --pre-release --packagePath muninn-vscode-*.vsix
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          prerelease: true
           name: Muninn for VS Code ${{ github.ref_name }}
           body_path: release-notes.md
           files: |

@@ -1,4 +1,15 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 export type WebviewStrings = {
+  taskCheckboxLabel: string;
+  commandLabelTask: string;
+  commandLabelStrike: string;
+  commandLabelHeadings: string;
+  commandLabelFileLink: string;
+  statusSyncConflict: string;
+  statusSyncPending: string;
+  statusSourceRequired: string;
   headerBrandName: string;
   headerBrandRole: string;
   headerHelp: string;
@@ -102,6 +113,16 @@ export type WebviewStrings = {
 };
 
 export const DEFAULT_WEBVIEW_STRINGS: WebviewStrings = {
+  taskCheckboxLabel: 'Toggle task',
+  commandLabelTask: 'Task',
+  commandLabelStrike: 'Strikethrough',
+  commandLabelHeadings: 'Headings',
+  commandLabelFileLink: 'File link',
+  statusSyncConflict:
+    'The document changed elsewhere. Preserving your edits in a recovery document.',
+  statusSyncPending: 'Edits are still synchronizing. Retry once synchronization finishes.',
+  statusSourceRequired:
+    'This edit cannot preserve the original Markdown. Use Source to make this change safely.',
   headerBrandName: 'Muninn',
   headerBrandRole: 'Markdown editor',
   headerHelp: 'Use Source to open raw Markdown in VS Code.',

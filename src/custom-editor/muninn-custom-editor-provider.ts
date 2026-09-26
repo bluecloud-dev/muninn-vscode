@@ -1,6 +1,11 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import MarkdownIt from 'markdown-it';
+import frontMatterPlugin from 'markdown-it-front-matter';
 import { ConfigService } from '../services/config-service';
 import { Logger } from '../services/logger';
 import type { ContentWidthSetting } from '../types/config';
@@ -8,6 +13,7 @@ import { isMermaidIntegrationActive } from '../integrations/mermaid-adapter';
 import { t } from '../utils/l10n';
 import { DEFAULT_WEBVIEW_STRINGS, type WebviewStrings } from '../shared/webview-strings';
 import {
+  MAX_IMAGE_BYTES,
   appendDeduplicationSuffix,
   formatPasteImageFileName,
   getImageDestinationDirectory,
@@ -19,6 +25,7 @@ import {
   type ImageValidationFailure,
 } from './image-assets';
 import { DocumentSync } from './document-sync';
+import { mergeIndependentChanges } from '../shared/text-edits';
 import {
   HostToViewMessage,
   ImageUriMap,
@@ -48,13 +55,21 @@ const serializeForInlineScript = (value: unknown): string =>
 const markdownItParser = MarkdownIt('commonmark', {
   html: false,
   linkify: true,
-});
+}).use(frontMatterPlugin, () => {});
 
 type EditorSession = {
   document: vscode.TextDocument;
   panel: vscode.WebviewPanel;
   sync: DocumentSync;
   ready: boolean;
+  pendingCommands: ViewEditorCommand[];
+  applyingText?: string;
+  lastAppliedText?: string;
+  draft?: { markdown: string; baseMarkdown: string };
+  applyQueue: Promise<void>;
+  recovering: boolean;
+  tableDrafts: Map<string, string>;
+  imageCache?: { sources: string[]; map: ImageUriMap };
   disposables: vscode.Disposable[];
 };
 
@@ -82,6 +97,12 @@ export class MuninnCustomEditorProvider
   private readonly sessions = new Map<string, EditorSession>();
   private readonly disposables: vscode.Disposable[] = [];
   private nextSessionId = 1;
+  private nextFlushId = 1;
+  private readonly pendingAnchors = new Map<string, string>();
+  private readonly pendingFlushes = new Map<
+    number,
+    { session: EditorSession; finish: (ok: boolean) => void }
+  >();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -91,6 +112,13 @@ export class MuninnCustomEditorProvider
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
         this.handleDocumentChanged(event);
+      }),
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        void this.notifyConfigurationChanged();
+      }),
+      vscode.workspace.onWillSaveTextDocument((event) => {
+        const session = this.getFirstSessionForUri(event.document.uri);
+        if (session?.ready) event.waitUntil(this.flushSession(session).then(() => []));
       }),
     );
   }
@@ -104,6 +132,8 @@ export class MuninnCustomEditorProvider
         disposable.dispose();
       }
     }
+    for (const pending of this.pendingFlushes.values()) pending.finish(false);
+    this.pendingAnchors.clear();
     this.sessions.clear();
     this.sessionsByUri.clear();
   }
@@ -126,6 +156,10 @@ export class MuninnCustomEditorProvider
       panel: webviewPanel,
       sync,
       ready: false,
+      pendingCommands: [],
+      applyQueue: Promise.resolve(),
+      recovering: false,
+      tableDrafts: new Map(),
       disposables: [],
     };
     this.sessions.set(sessionId, session);
@@ -141,7 +175,11 @@ export class MuninnCustomEditorProvider
           return;
         }
         const message: ViewToHostMessage = rawMessage;
-        await this.handleViewMessage(sessionId, message);
+        try {
+          await this.handleViewMessage(sessionId, message);
+        } catch (error: unknown) {
+          this.logger.error(t('Could not synchronize the document.'), error);
+        }
       }),
       webviewPanel.onDidDispose(() => {
         this.disposeSession(sessionId);
@@ -152,6 +190,8 @@ export class MuninnCustomEditorProvider
   async openRawMarkdownForActiveEditor(): Promise<void> {
     const uri = this.getActiveCustomEditorUri();
     if (uri) {
+      const session = this.getFirstSessionForUri(uri);
+      if (session && !(await this.flushSession(session))) return;
       await this.openRawMarkdown(uri);
       return;
     }
@@ -164,7 +204,9 @@ export class MuninnCustomEditorProvider
 
   async executeCommandInActiveEditor(command: ViewEditorCommand): Promise<void> {
     const session = this.getActiveSession();
-    if (!session || !session.ready) {
+    if (!session) return;
+    if (!session.ready) {
+      session.pendingCommands.push(command);
       return;
     }
 
@@ -196,10 +238,15 @@ export class MuninnCustomEditorProvider
     }
 
     try {
+      const sourceStat = await vscode.workspace.fs.stat(sourceUri);
+      if (sourceStat.size > MAX_IMAGE_BYTES) {
+        await this.rejectImageForSession(session, this.formatImageRejection('tooLarge'));
+        return;
+      }
       const bytes = await vscode.workspace.fs.readFile(sourceUri);
       await this.insertImageForSession(session, {
         kind: 'command',
-        name: path.basename(sourceUri.fsPath),
+        name: path.posix.basename(sourceUri.path),
         bytes,
       });
     } catch (error) {
@@ -228,6 +275,29 @@ export class MuninnCustomEditorProvider
     }
 
     switch (message.type) {
+      case 'view.tableDraft': {
+        const { key, markdown } = message.payload;
+        if (markdown === undefined) session.tableDrafts.delete(key);
+        else session.tableDrafts.set(key, markdown);
+        return;
+      }
+      case 'view.flushComplete': {
+        const pending = this.pendingFlushes.get(message.payload.requestId);
+        if (pending?.session === session) pending.finish(message.payload.ok);
+        return;
+      }
+      case 'view.draft': {
+        session.draft = message.payload;
+        return;
+      }
+      case 'view.recoverDraft': {
+        await this.recoverDraft(session, message.payload.markdown);
+        return;
+      }
+      case 'view.openLink': {
+        await this.openDocumentLink(session, message.payload.href);
+        return;
+      }
       case 'view.ready': {
         session.ready = true;
         const settings = this.getSessionSettings(session.document.uri);
@@ -239,12 +309,30 @@ export class MuninnCustomEditorProvider
             ...settings,
           },
         });
+        for (const command of session.pendingCommands.splice(0)) {
+          await this.postMessage(session.panel.webview, {
+            type: 'host.executeCommand',
+            payload: { command },
+          });
+        }
+        const anchor = this.pendingAnchors.get(session.document.uri.toString());
+        if (anchor) {
+          this.pendingAnchors.delete(session.document.uri.toString());
+          await this.postMessage(session.panel.webview, {
+            type: 'host.revealAnchor',
+            payload: { anchor },
+          });
+        }
         return;
       }
       case 'view.executeCommand': {
-        if (message.payload.command === 'openRawMarkdown') {
+        if (message.payload.command === 'openRawMarkdown' && (await this.flushSession(session)))
           await this.openRawMarkdown(session.document.uri);
-        }
+        if (message.payload.command === 'save' && (await this.flushSession(session)))
+          await session.document.save();
+        if (message.payload.command === 'insertImage') await this.insertImageInActiveEditor();
+        if (message.payload.command === 'insertFileLink') await this.insertFileLinkInActiveEditor();
+        if (message.payload.command === 'goToHeading') await this.goToHeadingInActiveEditor();
         return;
       }
       case 'view.requestLinkInput': {
@@ -256,23 +344,35 @@ export class MuninnCustomEditorProvider
         return;
       }
       case 'view.applyDocument': {
-        const applyResult = await session.sync.applyDocument(
-          message.payload.markdown,
-          message.payload.revision,
-        );
-        if (!applyResult.ok) {
-          await this.postMessage(session.panel.webview, {
-            type: 'host.error',
-            payload: {
-              code: applyResult.code,
-              message: applyResult.message,
-            },
+        session.applyQueue = session.applyQueue
+          .then(async () => {
+            session.applyingText = message.payload.markdown;
+            let ok = false;
+            try {
+              const result = await session.sync.applyDocument(
+                message.payload.markdown,
+                message.payload.revision,
+              );
+              ok = result.ok;
+              if (ok) session.lastAppliedText = message.payload.markdown;
+            } catch (error: unknown) {
+              this.logger.error(t('Could not synchronize the document.'), error);
+            } finally {
+              session.applyingText = undefined;
+            }
+            await this.postMessage(session.panel.webview, {
+              type: 'host.applyResult',
+              payload: {
+                ...this.getHostMarkdownPayload(session),
+                operationId: message.payload.operationId,
+                ok,
+              },
+            });
+          })
+          .catch((error: unknown) => {
+            this.logger.error(t('Could not synchronize the document.'), error);
           });
-          await this.postMessage(session.panel.webview, {
-            type: 'host.documentChanged',
-            payload: this.getHostMarkdownPayload(session),
-          });
-        }
+        await session.applyQueue;
         return;
       }
       default: {
@@ -307,6 +407,7 @@ export class MuninnCustomEditorProvider
     });
 
     if (!href) {
+      await this.postMessage(session.panel.webview, { type: 'host.linkInputCanceled' });
       return;
     }
 
@@ -343,6 +444,7 @@ export class MuninnCustomEditorProvider
       if (!snapshot || !session.ready) {
         continue;
       }
+      if (snapshot.markdown === session.applyingText) continue;
       void this.postMessage(session.panel.webview, {
         type: 'host.documentChanged',
         payload: this.withImageSources(snapshot, session),
@@ -355,6 +457,38 @@ export class MuninnCustomEditorProvider
     if (!session) {
       return;
     }
+    session.ready = false;
+    void session.applyQueue
+      .then(async () => {
+        for (const markdown of session.tableDrafts.values()) {
+          const copy = await vscode.workspace.openTextDocument({
+            language: 'markdown',
+            content: markdown,
+          });
+          await vscode.window.showTextDocument(copy, { preview: false });
+          await vscode.window.showWarningMessage(
+            t('Unapplied table source was preserved in a separate unsaved Markdown document.'),
+          );
+        }
+        session.tableDrafts.clear();
+        const draft = session.draft;
+        const snapshot = session.sync.getSnapshot();
+        if (!draft || draft.markdown === snapshot.markdown) return;
+        const merged =
+          snapshot.markdown === session.lastAppliedText
+            ? draft.markdown
+            : mergeIndependentChanges(draft.baseMarkdown, draft.markdown, snapshot.markdown);
+        const result =
+          merged === undefined
+            ? undefined
+            : await session.sync.applyDocument(merged, snapshot.revision);
+        if (!result?.ok) {
+          await this.recoverDraft(session, draft.markdown);
+        }
+      })
+      .catch((error: unknown) =>
+        this.logger.error(t('Could not preserve the closing editor draft.'), error),
+      );
     for (const disposable of session.disposables) {
       disposable.dispose();
     }
@@ -384,6 +518,129 @@ export class MuninnCustomEditorProvider
         preserveFocus: false,
       });
     }
+  }
+
+  private flushSession(session: EditorSession): Promise<boolean> {
+    if (!session.ready) return Promise.resolve(true);
+    const requestId = this.nextFlushId++;
+    return new Promise((resolve) => {
+      const finish = (ok: boolean): void => {
+        clearTimeout(timer);
+        this.pendingFlushes.delete(requestId);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), 1200);
+      this.pendingFlushes.set(requestId, { session, finish });
+      void this.postMessage(session.panel.webview, {
+        type: 'host.requestFlush',
+        payload: { requestId },
+      });
+    });
+  }
+
+  private async recoverDraft(session: EditorSession, markdown: string): Promise<void> {
+    if (session.recovering) return;
+    session.recovering = true;
+    try {
+      const copy = await vscode.workspace.openTextDocument({
+        language: 'markdown',
+        content: markdown,
+      });
+      await vscode.window.showTextDocument(copy, { preview: false });
+      session.draft = undefined;
+      await vscode.window.showWarningMessage(
+        t(
+          'The document changed elsewhere. Your edits are preserved in a separate unsaved Markdown document.',
+        ),
+      );
+      if (session.ready)
+        await this.postMessage(session.panel.webview, {
+          type: 'host.draftRecovered',
+          payload: session.sync.getSnapshot(),
+        });
+    } finally {
+      session.recovering = false;
+    }
+  }
+
+  private async openDocumentLink(session: EditorSession, href: string): Promise<void> {
+    try {
+      if (/^(?:https?:|mailto:)/i.test(href)) {
+        await vscode.env.openExternal(vscode.Uri.parse(href));
+        return;
+      }
+      if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)) return;
+      const [relativePath, fragment] = href.split('#');
+      if (!relativePath) return;
+      const target = vscode.Uri.joinPath(
+        session.document.uri,
+        '..',
+        decodeURIComponent(relativePath),
+      );
+      await vscode.workspace.fs.stat(target);
+      if (!(await this.flushSession(session))) return;
+      const anchor = fragment ? decodeURIComponent(fragment) : undefined;
+      if (anchor) this.pendingAnchors.set(target.toString(), anchor);
+      await vscode.commands.executeCommand('vscode.open', target);
+      const targetSession = this.getFirstSessionForUri(target);
+      if (anchor && targetSession?.ready) {
+        this.pendingAnchors.delete(target.toString());
+        await this.postMessage(targetSession.panel.webview, {
+          type: 'host.revealAnchor',
+          payload: { anchor },
+        });
+      }
+    } catch {
+      this.logger.warn(t('Could not open the link.'));
+      await vscode.window.showWarningMessage(t('Could not open the link.'));
+    }
+  }
+
+  async insertFileLinkInActiveEditor(): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session?.ready) return;
+    const selected = await vscode.window.showOpenDialog({
+      title: t('Link to a File'),
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      defaultUri: vscode.Uri.joinPath(session.document.uri, '..'),
+    });
+    if (!selected?.[0]) {
+      await this.postMessage(session.panel.webview, { type: 'host.linkInputCanceled' });
+      return;
+    }
+    const target = selected[0];
+    await this.postMessage(session.panel.webview, {
+      type: 'host.insertLink',
+      payload: {
+        href: getMarkdownImagePath(session.document.uri, target),
+        text: path.posix.basename(target.path),
+      },
+    });
+  }
+
+  async goToHeadingInActiveEditor(): Promise<void> {
+    const session = this.getActiveSession();
+    if (!session?.ready || !(await this.flushSession(session))) return;
+    const tokens = markdownItParser.parse(session.document.getText(), {});
+    const headings: Array<vscode.QuickPickItem & { index: number }> = [];
+    for (let index = 0; index < tokens.length; index++) {
+      if (tokens[index].type !== 'heading_open') continue;
+      headings.push({
+        label: tokens[index + 1]?.content ?? '',
+        description: tokens[index].tag.toUpperCase(),
+        index: headings.length,
+      });
+    }
+    const selected = await vscode.window.showQuickPick(headings, {
+      placeHolder: t('Go to a heading in this document'),
+    });
+    if (selected)
+      await this.postMessage(session.panel.webview, {
+        type: 'host.revealHeading',
+        payload: { index: selected.index },
+      });
   }
 
   private getActiveCustomEditorUri(): vscode.Uri | undefined {
@@ -436,6 +693,16 @@ export class MuninnCustomEditorProvider
     payload: Extract<ViewToHostMessage, { type: 'view.requestImageInsert' }>['payload'],
   ): Promise<void> {
     let bytes: Uint8Array;
+    if (payload.bytesBase64.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) {
+      await this.rejectImageForSession(session, this.formatImageRejection('tooLarge'));
+      return;
+    }
+    if (
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload.bytesBase64)
+    ) {
+      await this.rejectImageForSession(session, t('Could not read image data.'));
+      return;
+    }
     try {
       bytes = Buffer.from(payload.bytesBase64, 'base64');
     } catch {
@@ -485,7 +752,7 @@ export class MuninnCustomEditorProvider
         payload: {
           path: markdownPath,
           webviewUri: session.panel.webview.asWebviewUri(imageUri).toString(),
-          filename: path.basename(imageUri.fsPath),
+          filename: path.posix.basename(imageUri.path),
         },
       });
     } catch (error) {
@@ -506,8 +773,10 @@ export class MuninnCustomEditorProvider
       try {
         await vscode.workspace.fs.stat(candidate);
         suffix += 1;
-      } catch {
-        return candidate;
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'FileNotFound')
+          return candidate;
+        throw error;
       }
     }
   }
@@ -530,11 +799,9 @@ export class MuninnCustomEditorProvider
   }
 
   private getLocalResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-    const workspaceRoots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ?? [];
     return [
       vscode.Uri.joinPath(this.extensionUri, 'media'),
-      vscode.Uri.file(path.dirname(documentUri.fsPath)),
-      ...workspaceRoots,
+      vscode.Uri.joinPath(documentUri, '..'),
     ];
   }
 
@@ -546,23 +813,35 @@ export class MuninnCustomEditorProvider
     payload: SerializedMarkdownPayload,
     session: EditorSession,
   ): HostMarkdownPayload {
-    return {
-      ...payload,
-      imageSources: this.createImageUriMap(
-        payload.markdown,
-        session.document.uri,
-        session.panel.webview,
-      ),
-    };
+    const sources = collectMarkdownImageSources(payload.markdown);
+    if (
+      !session.imageCache ||
+      JSON.stringify(sources) !== JSON.stringify(session.imageCache.sources)
+    ) {
+      session.imageCache = {
+        sources,
+        map: this.createImageUriMap(sources, session.document.uri, session.panel.webview),
+      };
+      const resourceRoots = this.getLocalResourceRoots(session.document.uri);
+      for (const source of sources) {
+        const uri = resolveMarkdownImageUri(session.document.uri, source);
+        if (uri) resourceRoots.push(vscode.Uri.joinPath(uri, '..'));
+      }
+      session.panel.webview.options = {
+        ...session.panel.webview.options,
+        localResourceRoots: resourceRoots,
+      };
+    }
+    return { ...payload, imageSources: session.imageCache.map };
   }
 
   private createImageUriMap(
-    markdown: string,
+    sources: string[],
     documentUri: vscode.Uri,
     webview: vscode.Webview,
   ): ImageUriMap {
     const imageSources: ImageUriMap = {};
-    for (const source of collectMarkdownImageSources(markdown)) {
+    for (const source of sources) {
       const imageUri = resolveMarkdownImageUri(documentUri, source);
       if (!imageUri) {
         continue;
@@ -574,22 +853,22 @@ export class MuninnCustomEditorProvider
 
   private getHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'editor-webview.js'),
+      vscode.Uri.joinPath(this.extensionUri, 'media', 'generated', 'editor-webview.js'),
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'editor-webview.css'),
+      vscode.Uri.joinPath(this.extensionUri, 'media', 'generated', 'editor-webview.css'),
     );
     const nonce = createNonce();
     const localizedWebviewStrings = serializeForInlineScript(getLocalizedWebviewStrings());
 
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${vscode.env.language.replaceAll(/[^a-zA-Z0-9-]/g, '')}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; img-src ${webview.cspSource} data: https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';"
+    content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'strict-dynamic';"
   />
   <link rel="stylesheet" href="${styleUri}" />
   <title>Muninn</title>
@@ -599,19 +878,19 @@ export class MuninnCustomEditorProvider
   <script nonce="${nonce}">
     window.__MUNINN_WEBVIEW_STRINGS__ = ${localizedWebviewStrings};
   </script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
   }
 }
 
-const createNonce = (): string =>
-  Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+const createNonce = (): string => randomBytes(16).toString('hex');
 
 const getDocumentFileName = (document: vscode.TextDocument): string =>
-  path.basename(document.uri.fsPath).trim();
+  path.posix.basename(document.uri.path).trim();
 
 const collectMarkdownImageSources = (markdown: string): string[] => {
+  if (!markdown.includes('![')) return [];
   const sources = new Set<string>();
   for (const token of markdownItParser.parse(markdown, {})) {
     const children = token.children ?? [];

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as vscode from 'vscode';
 import { ContentWidthSetting, ExtensionConfiguration } from '../types/config';
 
@@ -9,7 +12,7 @@ export type ConfigInspection<T> = {
 };
 
 const DEFAULT_CONFIG: ExtensionConfiguration = {
-  editorAssociations: true,
+  editorAssociations: false,
   mermaidEnabled: true,
   mermaidAllowInUntrustedWorkspaces: false,
   toolbarMode: 'basic',
@@ -104,10 +107,10 @@ export class ConfigService {
     return {
       editorAssociations: config.get('editorAssociations', DEFAULT_CONFIG.editorAssociations),
       mermaidEnabled: config.get('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled),
-      mermaidAllowInUntrustedWorkspaces: config.get(
-        'integrations.mermaid.allowInUntrustedWorkspaces',
-        DEFAULT_CONFIG.mermaidAllowInUntrustedWorkspaces,
-      ),
+      // Permission must come from the user, never a repository's settings.
+      mermaidAllowInUntrustedWorkspaces:
+        config.inspect<boolean>('integrations.mermaid.allowInUntrustedWorkspaces')?.globalValue ===
+        true,
       toolbarMode: config.get('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
       contentWidth: normalizeContentWidthSetting(
         config.get<unknown>('appearance.contentWidth', DEFAULT_CONFIG.contentWidth),

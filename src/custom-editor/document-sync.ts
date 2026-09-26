@@ -1,71 +1,65 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as vscode from 'vscode';
-import { SerializedMarkdownPayload } from './protocol';
+import { textChanges } from '../shared/text-edits';
+import type { SerializedMarkdownPayload } from './protocol';
 
 type ApplyResult =
   { ok: true } | { ok: false; code: 'revision_mismatch' | 'apply_failed'; message: string };
 
-export const reconcileTrailingNewlineForApply = (
-  currentMarkdown: string,
-  serializedMarkdown: string,
-): string =>
-  currentMarkdown.endsWith('\n') && !serializedMarkdown.endsWith('\n')
-    ? `${serializedMarkdown}\n`
-    : serializedMarkdown;
-
 export class DocumentSync {
   private revision = 0;
+  private lastText: string;
 
-  constructor(private readonly document: vscode.TextDocument) {}
+  constructor(private readonly document: vscode.TextDocument) {
+    this.lastText = document.getText();
+  }
 
   getSnapshot(): SerializedMarkdownPayload {
-    return {
-      markdown: this.document.getText(),
-      revision: this.revision,
-    };
+    const markdown = this.document.getText();
+    if (markdown !== this.lastText) {
+      this.lastText = markdown;
+      this.revision++;
+    }
+    return { markdown, revision: this.revision };
   }
 
   handleDocumentChanged(
     event: vscode.TextDocumentChangeEvent,
   ): SerializedMarkdownPayload | undefined {
-    if (event.document.uri.toString() !== this.document.uri.toString()) {
-      return undefined;
-    }
-    this.revision += 1;
-    return this.getSnapshot();
+    if (event.document.uri.toString() !== this.document.uri.toString()) return;
+    const previous = this.revision;
+    const snapshot = this.getSnapshot();
+    return previous === this.revision ? undefined : snapshot;
   }
 
   async applyDocument(markdown: string, expectedRevision: number): Promise<ApplyResult> {
-    if (expectedRevision !== this.revision) {
+    const snapshot = this.getSnapshot();
+    if (expectedRevision !== snapshot.revision)
       return {
         ok: false,
         code: 'revision_mismatch',
-        message: `Revision mismatch. expected=${expectedRevision} current=${this.revision}`,
+        message: 'The document changed before the edit could be applied.',
       };
+    const changes = textChanges(snapshot.markdown, markdown);
+    if (changes.length === 0) return { ok: true };
+    const edit = new vscode.WorkspaceEdit();
+    for (const change of changes) {
+      edit.replace(
+        this.document.uri,
+        new vscode.Range(
+          this.document.positionAt(change.from),
+          this.document.positionAt(change.to),
+        ),
+        change.insert,
+      );
     }
-
-    if (markdown === this.document.getText()) {
-      return { ok: true };
+    try {
+      if (await vscode.workspace.applyEdit(edit)) return { ok: true };
+    } catch {
+      // The provider reports failure and retains the draft for recovery.
     }
-
-    const markdownToApply = reconcileTrailingNewlineForApply(this.document.getText(), markdown);
-    const workspaceEdit = new vscode.WorkspaceEdit();
-    workspaceEdit.replace(this.document.uri, this.getFullRange(), markdownToApply);
-    const applied = await vscode.workspace.applyEdit(workspaceEdit);
-    if (!applied) {
-      return {
-        ok: false,
-        code: 'apply_failed',
-        message: 'VS Code failed to apply the markdown update.',
-      };
-    }
-
-    return { ok: true };
-  }
-
-  private getFullRange(): vscode.Range {
-    const start = new vscode.Position(0, 0);
-    const lastLine = this.document.lineCount - 1;
-    const end = this.document.lineAt(lastLine).range.end;
-    return new vscode.Range(start, end);
+    return { ok: false, code: 'apply_failed', message: 'VS Code could not apply the edit.' };
   }
 }

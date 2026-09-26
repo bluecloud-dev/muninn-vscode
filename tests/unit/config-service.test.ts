@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import sinon from 'sinon';
 import * as vscode from 'vscode';
 import { ConfigService } from '../../src/services/config-service';
@@ -45,13 +46,20 @@ describe('ConfigService', () => {
     sinon.restore();
   });
 
+  it('accepts untrusted diagram permission only from explicit user settings', () => {
+    const configuration = createConfiguration({ mermaidAllowInUntrustedWorkspaces: true });
+    sinon.stub(configuration, 'inspect').returns({ key: 'permission', workspaceValue: true });
+    sinon.stub(vscode.workspace, 'getConfiguration').returns(configuration);
+    assert.equal(new ConfigService().getMermaidAllowInUntrustedWorkspaces(), false);
+  });
+
   it('returns defaults when configuration is empty', () => {
     sinon.stub(vscode.workspace, 'getConfiguration').returns(createConfiguration());
 
     const service = new ConfigService();
     const config = service.getConfig();
 
-    expect(config.editorAssociations).to.equal(true);
+    expect(config.editorAssociations).to.equal(false);
     expect(config.mermaidEnabled).to.equal(true);
     expect(config.mermaidAllowInUntrustedWorkspaces).to.equal(false);
     expect(config.toolbarMode).to.equal('basic');

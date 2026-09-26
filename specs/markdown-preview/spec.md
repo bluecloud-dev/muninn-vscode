@@ -1,5 +1,8 @@
 # Feature Specification: Markdown Preview Default
 
+> Historical planning snapshot. See [September implementation status](../../docs/AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+
+
 **Feature Branch**: `feature/markdown-preview`
 **Created**: 2025-12-23
 **Status**: Draft
