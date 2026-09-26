@@ -69,8 +69,10 @@ async function activateMuninn() {
   );
   await page.keyboard.press('Escape');
   await command('Muninn for VS Code: Inspect Configuration');
-  await page.locator('[id="workbench.parts.panel"]').waitFor();
-  await page.keyboard.press(`${modifier}+j`);
+  // A log channel may leave the panel hidden, especially in Restricted Mode.
+  if (await page.locator('[id="workbench.parts.panel"]').isVisible()) {
+    await page.keyboard.press(`${modifier}+j`);
+  }
 }
 async function eventually(check, message, timeout = 15000) {
   const start = Date.now();
