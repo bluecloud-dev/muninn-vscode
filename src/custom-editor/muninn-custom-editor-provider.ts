@@ -90,6 +90,13 @@ type ImageSourceInput = {
   bytes: Uint8Array;
 };
 
+type PendingImageInsert = {
+  session: EditorSession;
+  uri: vscode.Uri;
+  markdownPath: string;
+  bytes: Uint8Array;
+};
+
 export class MuninnCustomEditorProvider
   implements vscode.CustomTextEditorProvider, vscode.Disposable
 {
@@ -98,11 +105,13 @@ export class MuninnCustomEditorProvider
   private readonly disposables: vscode.Disposable[] = [];
   private nextSessionId = 1;
   private nextFlushId = 1;
+  private nextImageInsertId = 1;
   private readonly pendingAnchors = new Map<string, string>();
   private readonly pendingFlushes = new Map<
     number,
     { session: EditorSession; finish: (ok: boolean) => void }
   >();
+  private readonly pendingImageInsertions = new Map<number, PendingImageInsert>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -133,6 +142,7 @@ export class MuninnCustomEditorProvider
       }
     }
     for (const pending of this.pendingFlushes.values()) pending.finish(false);
+    this.pendingImageInsertions.clear();
     this.pendingAnchors.clear();
     this.sessions.clear();
     this.sessionsByUri.clear();
@@ -284,6 +294,13 @@ export class MuninnCustomEditorProvider
       case 'view.flushComplete': {
         const pending = this.pendingFlushes.get(message.payload.requestId);
         if (pending?.session === session) pending.finish(message.payload.ok);
+        return;
+      }
+      case 'view.imageInsertResult': {
+        const pending = this.pendingImageInsertions.get(message.payload.requestId);
+        if (pending?.session !== session) return;
+        this.pendingImageInsertions.delete(message.payload.requestId);
+        if (!message.payload.ok) await this.removeRejectedImage(pending);
         return;
       }
       case 'view.draft': {
@@ -493,6 +510,9 @@ export class MuninnCustomEditorProvider
       disposable.dispose();
     }
     this.sessions.delete(sessionId);
+    for (const [requestId, pending] of this.pendingImageInsertions) {
+      if (pending.session === session) this.pendingImageInsertions.delete(requestId);
+    }
 
     const uriKey = session.document.uri.toString();
     const sessionIds = this.sessionsByUri.get(uriKey);
@@ -681,11 +701,12 @@ export class MuninnCustomEditorProvider
     return undefined;
   }
 
-  private async postMessage(webview: vscode.Webview, message: HostToViewMessage): Promise<void> {
+  private async postMessage(webview: vscode.Webview, message: HostToViewMessage): Promise<boolean> {
     const sent = await webview.postMessage(message);
     if (!sent) {
       this.logger.warn('Failed to post message to Muninn webview editor.');
     }
+    return sent;
   }
 
   private async handleRequestedImageInsert(
@@ -741,23 +762,60 @@ export class MuninnCustomEditorProvider
         ? formatPasteImageFileName(new Date(), validation.extension)
         : sanitizeImageFileName(input.name ?? 'image', validation.extension);
 
+    let imageUri: vscode.Uri | undefined;
+    let markdownPath: string | undefined;
+    let requestId: number | undefined;
     try {
       await vscode.workspace.fs.createDirectory(destinationDirectory);
-      const imageUri = await this.getAvailableImageUri(destinationDirectory, requestedFileName);
+      imageUri = await this.getAvailableImageUri(destinationDirectory, requestedFileName);
+      markdownPath = getMarkdownImagePath(session.document.uri, imageUri);
       await vscode.workspace.fs.writeFile(imageUri, input.bytes);
-
-      const markdownPath = getMarkdownImagePath(session.document.uri, imageUri);
-      await this.postMessage(session.panel.webview, {
+      requestId = this.nextImageInsertId++;
+      this.pendingImageInsertions.set(requestId, {
+        session,
+        uri: imageUri,
+        markdownPath,
+        bytes: input.bytes,
+      });
+      const sent = await this.postMessage(session.panel.webview, {
         type: 'host.imageInserted',
         payload: {
+          requestId,
           path: markdownPath,
           webviewUri: session.panel.webview.asWebviewUri(imageUri).toString(),
           filename: path.posix.basename(imageUri.path),
         },
       });
+      if (!sent) throw new Error('Image insertion message was not delivered to the webview.');
     } catch (error) {
+      if (requestId !== undefined) {
+        const pending = this.pendingImageInsertions.get(requestId);
+        if (pending) {
+          this.pendingImageInsertions.delete(requestId);
+          await this.removeRejectedImage(pending);
+        }
+      } else if (imageUri && markdownPath) {
+        await this.removeRejectedImage({
+          session,
+          uri: imageUri,
+          markdownPath,
+          bytes: input.bytes,
+        });
+      }
       this.logger.error(t('Image insertion failed.'), error);
       await this.rejectImageForSession(session, t('Could not add image. Please retry.'));
+    }
+  }
+
+  private async removeRejectedImage(pending: PendingImageInsert): Promise<void> {
+    if (pending.session.document.getText().includes(pending.markdownPath)) return;
+    try {
+      const stored = await vscode.workspace.fs.readFile(pending.uri);
+      if (Buffer.from(stored).equals(Buffer.from(pending.bytes))) {
+        await vscode.workspace.fs.delete(pending.uri);
+      }
+    } catch (error: unknown) {
+      this.logger.warn(`Could not remove rejected image: ${String(error)}`);
     }
   }
 

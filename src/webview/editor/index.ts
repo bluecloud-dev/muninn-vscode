@@ -699,7 +699,12 @@ const insertImageFromHost = (source: string, webviewUri: string, filename: strin
 
   imageSources.set(source, webviewUri);
   const state = view.state;
-  view.dispatch(createImageInsertionTransaction(state, schema.nodes.image, source));
+  const transaction = createImageInsertionTransaction(state, schema.nodes.image, source);
+  view.dispatch(transaction);
+  if (!view.state.doc.eq(transaction.doc)) {
+    imageSources.delete(source);
+    return false;
+  }
   announce(formatString(getString('statusImageAddedTemplate'), filename), { kind: 'status' });
   return true;
 };
@@ -1057,9 +1062,11 @@ const detachHostMessageListener = attachHostMessageListener({
   },
   onImageInserted: (payload) => {
     const inserted = insertImageFromHost(payload.path, payload.webviewUri, payload.filename);
-    if (!inserted) {
-      announce(getString('statusInsertImageFailed'), { kind: 'error' });
-    }
+    if (!inserted && !view) announce(getString('statusInsertImageFailed'), { kind: 'error' });
+    vscode.postMessage({
+      type: 'view.imageInsertResult',
+      payload: { requestId: payload.requestId, ok: inserted },
+    });
   },
   onImageRejected: (payload) => {
     announce(payload.reason, { kind: 'error' });

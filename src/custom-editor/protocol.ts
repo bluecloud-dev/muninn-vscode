@@ -82,6 +82,7 @@ export type HostToViewMessage =
   | {
       type: 'host.imageInserted';
       payload: {
+        requestId: number;
         path: string;
         webviewUri: string;
         filename: string;
@@ -131,6 +132,7 @@ export type ViewToHostMessage =
         bytesBase64: string;
       };
     }
+  | { type: 'view.imageInsertResult'; payload: { requestId: number; ok: boolean } }
   | { type: 'view.flushComplete'; payload: { requestId: number; ok: boolean } }
   | { type: 'view.draft'; payload: { markdown: string; baseMarkdown: string } }
   | { type: 'view.recoverDraft'; payload: { markdown: string } }
@@ -258,6 +260,13 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
     );
   }
 
+  if (value.type === 'view.imageInsertResult')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
+      typeof value.payload.ok === 'boolean'
+    );
+
   return false;
 };
 
@@ -329,6 +338,7 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (value.type === 'host.imageInserted') {
     return (
       isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
       isString(value.payload.path) &&
       isString(value.payload.webviewUri) &&
       isString(value.payload.filename)

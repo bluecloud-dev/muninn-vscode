@@ -141,6 +141,12 @@ describe('custom editor protocol guards', () => {
     ).to.equal(true);
     expect(
       isViewToHostMessage({
+        type: 'view.imageInsertResult',
+        payload: { requestId: 1, ok: false },
+      }),
+    ).to.equal(true);
+    expect(
+      isViewToHostMessage({
         type: 'view.applyDocument',
         payload: { markdown: 123, revision: 0 },
       }),
@@ -160,6 +166,12 @@ describe('custom editor protocol guards', () => {
       isViewToHostMessage({
         type: 'view.requestImageInsert',
         payload: { kind: 'command', bytesBase64: 'aGVsbG8=' },
+      }),
+    ).to.equal(false);
+    expect(
+      isViewToHostMessage({
+        type: 'view.imageInsertResult',
+        payload: { requestId: -1, ok: 'false' },
       }),
     ).to.equal(false);
   });
@@ -201,6 +213,7 @@ describe('custom editor protocol guards', () => {
       isHostToViewMessage({
         type: 'host.imageInserted',
         payload: {
+          requestId: 1,
           path: 'images/screenshot.png',
           webviewUri: 'vscode-webview://view/images/screenshot.png',
           filename: 'screenshot.png',
