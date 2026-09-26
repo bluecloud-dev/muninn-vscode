@@ -7,9 +7,12 @@ import yauzl from 'yauzl';
 
 const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const file = process.env.MUNINN_VSIX || `muninn-vscode-${manifest.version}.vsix`;
+// Validate and hash the same immutable snapshot, even if another build replaces the file.
+const archiveBytes = fs.readFileSync(file);
+assert.ok(archiveBytes.length <= 3 * 1024 * 1024, 'VSIX exceeds 3 MiB');
 const entries = new Map();
 const zip = await new Promise((resolve, reject) =>
-  yauzl.open(file, { lazyEntries: true }, (error, value) =>
+  yauzl.fromBuffer(archiveBytes, { lazyEntries: true }, (error, value) =>
     error ? reject(error) : resolve(value),
   ),
 );
@@ -55,12 +58,11 @@ for (const name of entries.keys()) {
 }
 const entry = entries.get('extension/media/generated/editor-webview.js');
 assert.ok(entry.length <= 600 * 1024, 'Initial editor exceeds 600 KiB');
-assert.ok(fs.statSync(file).size <= 3 * 1024 * 1024, 'VSIX exceeds 3 MiB');
 fs.mkdirSync('artifacts/build', { recursive: true });
 const report = {
   file,
-  sha256: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'),
-  bytes: fs.statSync(file).size,
+  sha256: crypto.createHash('sha256').update(archiveBytes).digest('hex'),
+  bytes: archiveBytes.length,
   initialEditorBytes: entry.length,
   files: entries.size,
 };

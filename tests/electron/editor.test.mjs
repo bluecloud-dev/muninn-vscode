@@ -5,6 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { download, runVSCodeCommand } from '@vscode/test-electron';
 import { _electron as electron } from 'playwright-core';
 
@@ -41,6 +42,46 @@ fs.writeFileSync(
   }),
 );
 let app, page;
+async function vscodeExecutable() {
+  const downloaded = await download({ version });
+  if (process.platform !== 'darwin') return downloaded;
+  // test-electron assumes "Electron"; use the executable declared by the actual bundle.
+  const contents = path.dirname(path.dirname(downloaded));
+  const executable = execFileSync(
+    '/usr/bin/plutil',
+    ['-extract', 'CFBundleExecutable', 'raw', '-o', '-', path.join(contents, 'Info.plist')],
+    { encoding: 'utf8' },
+  ).trim();
+  assert.ok(executable && path.basename(executable) === executable, 'Invalid bundle executable');
+  return path.join(contents, 'MacOS', executable);
+}
+async function activateMuninn() {
+  // The palette snapshots available commands. Reopen it while extensions are registering.
+  await eventually(
+    async () => {
+      await page.keyboard.press(`${modifier}+Shift+P`);
+      await page
+        .locator('.quick-input-widget input[type="text"]')
+        .fill('>Muninn for VS Code: New Markdown Note');
+      try {
+        await page
+          .getByText('Muninn for VS Code: New Markdown Note', { exact: true })
+          .first()
+          .waitFor({ timeout: 1000 });
+        return true;
+      } catch {
+        await page.keyboard.press('Escape');
+        return false;
+      }
+    },
+    'Muninn command contribution unavailable after installation',
+    30000,
+  );
+  await page.keyboard.press('Escape');
+  await command('Muninn for VS Code: Inspect Configuration');
+  await page.locator('[id="workbench.parts.panel"]').waitFor();
+  await page.keyboard.press(`${modifier}+j`);
+}
 async function eventually(check, message, timeout = 15000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -96,8 +137,8 @@ async function save(editor, file, expected) {
 describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 240000 }, () => {
   before(async () => {
     assert.ok(fs.existsSync(vsix), 'Run npm run package before this suite');
-    const executablePath = await download({ version });
-    await runVSCodeCommand(
+    const executablePath = await vscodeExecutable();
+    const installation = await runVSCodeCommand(
       [
         '--install-extension',
         vsix,
@@ -108,6 +149,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         ...sharedArgs(user),
       ],
       { version },
+    );
+    fs.writeFileSync(
+      path.join(artifactDirectory, 'installation.log'),
+      installation.stdout + installation.stderr,
     );
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
@@ -131,19 +176,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     await page.locator('.monaco-workbench').waitFor();
-    // Contributions arrive after the workbench shell; wait before the first file open.
-    await page.keyboard.press(`${modifier}+Shift+P`);
-    await page
-      .locator('.quick-input-widget input[type="text"]')
-      .fill('>Muninn for VS Code: New Markdown Note');
-    await page
-      .getByText('Muninn for VS Code: New Markdown Note', { exact: true })
-      .first()
-      .waitFor();
-    await page.keyboard.press('Escape');
-    await command('Muninn for VS Code: Inspect Configuration');
-    await page.locator('[id="workbench.parts.panel"]').waitFor();
-    await page.keyboard.press(`${modifier}+j`);
+    await activateMuninn();
     await app.context().tracing.start({ screenshots: true, snapshots: true });
   });
   after(async () => {
@@ -313,7 +346,7 @@ it(
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.NODE_OPTIONS;
-    await runVSCodeCommand(
+    const installation = await runVSCodeCommand(
       [
         '--install-extension',
         vsix,
@@ -325,8 +358,12 @@ it(
       ],
       { version },
     );
+    fs.writeFileSync(
+      path.join(artifactDirectory, 'restricted-installation.log'),
+      installation.stdout + installation.stderr,
+    );
     app = await electron.launch({
-      executablePath: await download({ version }),
+      executablePath: await vscodeExecutable(),
       env,
       timeout: 30000,
       args: [
@@ -344,19 +381,7 @@ it(
       page = await app.firstWindow();
       page.setDefaultTimeout(15000);
       await page.locator('.monaco-workbench').waitFor();
-      // Contributions arrive after the workbench shell; wait before the first file open.
-      await page.keyboard.press(`${modifier}+Shift+P`);
-      await page
-        .locator('.quick-input-widget input[type="text"]')
-        .fill('>Muninn for VS Code: New Markdown Note');
-      await page
-        .getByText('Muninn for VS Code: New Markdown Note', { exact: true })
-        .first()
-        .waitFor();
-      await page.keyboard.press('Escape');
-      await command('Muninn for VS Code: Inspect Configuration');
-      await page.locator('[id="workbench.parts.panel"]').waitFor();
-      await page.keyboard.press(`${modifier}+j`);
+      await activateMuninn();
       const { editor } = await open(
         'restricted.md',
         '```mermaid\ngraph TD\nA --> B\n```\n\n![Remote](https://example.invalid/image.png)\n',
