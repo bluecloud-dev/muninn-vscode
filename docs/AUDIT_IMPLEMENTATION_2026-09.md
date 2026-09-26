@@ -2,6 +2,8 @@
 
 This implements the concrete fixes requested after the [full audit](MUNINN_AUDIT_2026-09.md). The audit remains a dated baseline. Its section 9 describes the earlier audit-only edits; this file describes the implementation branch.
 
+This record captures the validation performed for that branch. The current contributor guidance is in [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Source fidelity](ROUNDTRIP_CONTRACT.md), and [Testing](TESTING.md).
+
 The existing ProseMirror custom text editor, ordinary Markdown files, AGPL license, native surrounding UI and no-telemetry policy remain. This is a substantial coupled correction to the editor's source/sync boundary, with regression coverage rather than a rewrite.
 
 ## Completed fixes
@@ -63,3 +65,11 @@ The full audit contains the external comparison and benchmark ranking. These pri
 - [Playwright Electron](https://playwright.dev/docs/api/class-electron): real Electron application automation; this API is experimental.
 - [ProseMirror guide](https://prosemirror.net/docs/guide/): transactions, node views and history.
 - [Spec Kit](https://github.com/github/spec-kit) and [OpenSpec](https://github.com/Fission-AI/OpenSpec): plain-document compatibility patterns, without runtime integrations.
+
+## Later validation: Ponytail cleanup on 2026-09-26
+
+This section is a separate macOS validation snapshot for the later cleanup branch, not an update to the Windows results above. The cleanup branch passed 198 unit/bundled-DOM tests (85.08% lines, 72.68% branches), 7/7 extension-host integration tests on both VS Code 1.85.2 and 1.139.1, the 58/58 no-edit round-trip corpus, typecheck, lint, formatting, no-telemetry, and package/archive checks. Its tested VSIX SHA-256 was `6b35e55e1fe4f9b6afc68dfd7ed5b7975be4edbb2ef1042a47a0acc2b0a3b2e4`.
+
+The installed-VSIX suite did not pass: 4/9 cases passed on the cleanup branch. A packaged comparison of the original `c17b4e9` source in the same macOS/VS Code environment passed 5/9. Both runs failed the same four cases: undo after typing (the test reads a closed webview frame), deleted-table undo, image insertion, and New Markdown Note. Restricted Mode passed on the original commit but timed out during the cleanup run while waiting for a hidden workbench panel, so that case needs a fresh check before any release claim. These comparisons establish that the four shared failures predate the cleanup; they do not establish that those product journeys work.
+
+The cleanup removed retired v1 specifications, generated issue-source files, one-shot scripts, obsolete root reports, the custom logger, an inert setting's runtime reads, unused configuration caching, and direct unused development dependencies. Current contributor rules and retained manual checks are in [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Source fidelity](ROUNDTRIP_CONTRACT.md), and [Testing](TESTING.md). The primary checkout's unrelated local changes were preserved.

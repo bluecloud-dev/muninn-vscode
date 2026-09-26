@@ -7,7 +7,6 @@ import {
   isViewToHostMessage,
 } from '../../src/custom-editor/protocol';
 import type { ConfigService } from '../../src/services/config-service';
-import type { Logger } from '../../src/services/logger';
 
 let expect: Chai.ExpectStatic;
 
@@ -85,11 +84,11 @@ const createConfigService = (): ConfigService =>
     getImageDestination: () => 'images/',
   }) as unknown as ConfigService;
 
-const createLogger = (): Logger =>
+const createLogger = (): vscode.LogOutputChannel =>
   ({
     warn: sinon.stub(),
     error: sinon.stub(),
-  }) as unknown as Logger;
+  }) as unknown as vscode.LogOutputChannel;
 
 describe('custom editor init protocol', () => {
   it('includes the document file name in the host init payload', async () => {

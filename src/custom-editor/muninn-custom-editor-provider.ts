@@ -7,7 +7,6 @@ import * as vscode from 'vscode';
 import MarkdownIt from 'markdown-it';
 import frontMatterPlugin from 'markdown-it-front-matter';
 import { ConfigService } from '../services/config-service';
-import { Logger } from '../services/logger';
 import type { ContentWidthSetting } from '../types/config';
 import { isMermaidIntegrationActive } from '../integrations/mermaid-adapter';
 import { t } from '../utils/l10n';
@@ -100,7 +99,7 @@ type PendingImageInsert = {
 export class MuninnCustomEditorProvider
   implements vscode.CustomTextEditorProvider, vscode.Disposable
 {
-  private readonly sessionsByUri = new Map<string, Set<string>>();
+  private readonly sessionsByUri = new Map<string, EditorSession>();
   private readonly sessions = new Map<string, EditorSession>();
   private readonly disposables: vscode.Disposable[] = [];
   private nextSessionId = 1;
@@ -116,7 +115,7 @@ export class MuninnCustomEditorProvider
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly configService: ConfigService,
-    private readonly logger: Logger,
+    private readonly logger: vscode.LogOutputChannel,
   ) {
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
@@ -173,10 +172,7 @@ export class MuninnCustomEditorProvider
       disposables: [],
     };
     this.sessions.set(sessionId, session);
-    if (!this.sessionsByUri.has(uriKey)) {
-      this.sessionsByUri.set(uriKey, new Set());
-    }
-    this.sessionsByUri.get(uriKey)?.add(sessionId);
+    this.sessionsByUri.set(uriKey, session);
 
     session.disposables.push(
       webviewPanel.webview.onDidReceiveMessage(async (rawMessage: unknown) => {
@@ -447,26 +443,14 @@ export class MuninnCustomEditorProvider
 
   private handleDocumentChanged(event: vscode.TextDocumentChangeEvent): void {
     const uriKey = event.document.uri.toString();
-    const sessionIds = this.sessionsByUri.get(uriKey);
-    if (!sessionIds || sessionIds.size === 0) {
-      return;
-    }
-
-    for (const sessionId of sessionIds) {
-      const session = this.sessions.get(sessionId);
-      if (!session) {
-        continue;
-      }
-      const snapshot = session.sync.handleDocumentChanged(event);
-      if (!snapshot || !session.ready) {
-        continue;
-      }
-      if (snapshot.markdown === session.applyingText) continue;
-      void this.postMessage(session.panel.webview, {
-        type: 'host.documentChanged',
-        payload: this.withImageSources(snapshot, session),
-      });
-    }
+    const session = this.sessionsByUri.get(uriKey);
+    if (!session) return;
+    const snapshot = session.sync.handleDocumentChanged(event);
+    if (!snapshot || !session.ready || snapshot.markdown === session.applyingText) return;
+    void this.postMessage(session.panel.webview, {
+      type: 'host.documentChanged',
+      payload: this.withImageSources(snapshot, session),
+    });
   }
 
   private disposeSession(sessionId: string): void {
@@ -515,14 +499,7 @@ export class MuninnCustomEditorProvider
     }
 
     const uriKey = session.document.uri.toString();
-    const sessionIds = this.sessionsByUri.get(uriKey);
-    if (!sessionIds) {
-      return;
-    }
-    sessionIds.delete(sessionId);
-    if (sessionIds.size === 0) {
-      this.sessionsByUri.delete(uriKey);
-    }
+    if (this.sessionsByUri.get(uriKey) === session) this.sessionsByUri.delete(uriKey);
   }
 
   private async openRawMarkdown(uri: vscode.Uri): Promise<void> {
@@ -687,18 +664,7 @@ export class MuninnCustomEditorProvider
   }
 
   private getFirstSessionForUri(uri: vscode.Uri): EditorSession | undefined {
-    const uriKey = uri.toString();
-    const sessionIds = this.sessionsByUri.get(uriKey);
-    if (!sessionIds || sessionIds.size === 0) {
-      return undefined;
-    }
-    for (const sessionId of sessionIds) {
-      const session = this.sessions.get(sessionId);
-      if (session) {
-        return session;
-      }
-    }
-    return undefined;
+    return this.sessionsByUri.get(uri.toString());
   }
 
   private async postMessage(webview: vscode.Webview, message: HostToViewMessage): Promise<boolean> {

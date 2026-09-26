@@ -1,5 +1,7 @@
 # Testing
 
+Use the gates below for changes to the editor. Unit coverage thresholds are enforced at 80% lines/statements and 70% branches/functions; do not lower them to make a change pass. The unit denominator includes the provider, codec, and sync. DOM adapters have bundled-editor tests and installed-VSIX coverage outside that denominator.
+
 | Layer              | Command                                                     | Evidence                                                                                                                                     |
 | ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Types/lint/format  | `npm run typecheck`, `npm run lint`, `npm run format:check` | Static gates                                                                                                                                 |
@@ -11,7 +13,7 @@
 
 ## Regressions
 
-The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. `deviations.json` is empty after these fixes. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes.
+The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. `deviations.json` is empty after the September fixes. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes. The [source fidelity contract](ROUNDTRIP_CONTRACT.md) lists the required checks for codec and sync changes.
 
 `host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, flush, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host; it is not a replacement for native UI checks.
 
@@ -19,18 +21,29 @@ The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixtu
 
 `tests/electron/editor.test.mjs` uses Playwright's Electron API and `@vscode/test-electron`. It installs the exact VSIX into temporary user/extension/shared-application directories, without an extension-development-path fallback. The harness waits for contribution registration and invokes the native Inspect Configuration command before opening fixtures; default-editor behavior is tested after activation. No injected application implementation or special production test command is used.
 
+The extension-host runner and installed-VSIX runner resolve the executable declared by the downloaded macOS app bundle. Current VS Code bundles may call it `Code`; the library's older default path assumes `Electron`.
+
 The former quarantined WebDriver runner lost its VS Code renderer connection on the tested current build. Its core journeys now run through Electron: toolbar/focus, formatting, code languages, table operations, Mermaid, reading and source mode. Mock-only message injection is reserved for unit regressions.
 
 Set `VSCODE_VERSION` to `1.85.2` or `stable`. CI runs extension-host tests on both, and packaged UI on Linux (both versions), Windows and macOS (stable). UI failures block CI. Traces/screenshots are saved to `artifacts/e2e/`; temporary profiles are retained in the OS temp directory for diagnosis.
 
 Playwright's Electron API is experimental. A runner failure must be reported as such; never quarantine it silently or replace it with a source-string assertion.
 
+Workspace Trust is disabled in the default integration configuration. Tests that assert Restricted Mode or trust grants need a separate restricted-workspace setup; a passing default integration run cannot establish that behavior. Run `npm run package` before `npm run test:e2e` so the installed VSIX includes the latest code. The extension runs from `dist/extension.js`; `npm run compile` alone refreshes only `out/` and the test bundle.
+
 ## Manual acceptance before release
 
+- Install the exact VSIX under review in a clean profile. Open a Markdown file from Explorer and Quick Open; confirm the custom editor and a readable native **Muninn for VS Code** Output channel. Use **Reopen Editor With…** to choose the native text editor, then return to Muninn. The deprecated `muninn.editorAssociations` setting is inert.
+- Exercise bold/italic toggles, link and code insertion, table row/column actions, and raw Source. Save and reopen; inspect exact Markdown bytes, including untouched surrounding text and terminal newline.
+- Edit a table through its raw-source panel and Apply control, including the keyboard shortcut. Confirm the grid updates and the saved file reflects the edit. Close/reopen during a pending apply and confirm draft recovery or an actionable error.
+- Render Mermaid in light, dark, and high-contrast themes; scroll while its preview is focused. Disable Mermaid and repeat in a restricted workspace to confirm the trust gate. Test the explicit application-scoped override separately if enabled.
+- Open an empty file, use keyboard-only toolbar/table/Source flows, and check that critical actions remain reachable without a mouse.
 - NVDA/VoiceOver reading, table labels, live-region verbosity and keyboard reachability.
 - Narrow split editors, 200% zoom, light/dark/high contrast and visible focus.
 - Long-document cold-open/typing latency and many retained tabs' memory.
 - Actual Remote SSH/Codespaces filesystem providers and multi-root capture preferences.
 - Abrupt process termination versus normal save/close recovery; backups remain VS Code's responsibility.
+
+Record the VS Code version, OS, tested VSIX hash, outcome, and any remaining manual or provider limits. The old root `MANUAL_QA.md`, February QA/baseline/refactor reports, and draft preview design were retired; their dated claims remain available in Git history.
 
 The CI matrix and local results are separate claims. See [implementation status](AUDIT_IMPLEMENTATION_2026-09.md) for what was executed locally.

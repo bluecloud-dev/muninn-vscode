@@ -11,19 +11,9 @@ This guide covers common issues for the current Muninn v2 custom editor workflow
 ### Checks
 
 1. Ensure the extension is installed and enabled.
-2. Verify `muninn.editorAssociations` is enabled.
-3. Verify workspace editor associations:
-
-```json
-{
-  "workbench.editorAssociations": {
-    "*.md": "muninn.markdownEditor",
-    "*.markdown": "muninn.markdownEditor"
-  }
-}
-```
-
-4. Run `Muninn for VS Code: Inspect Configuration` and confirm values in output.
+2. Use **Reopen Editor With… → Muninn Markdown Editor** on the tab. Choose **Configure default editor** there if you want Muninn as your default.
+3. If a different editor keeps opening, inspect existing `workbench.editorAssociations` user/workspace preferences for `.md` and `.markdown`; VS Code owns those preferences. The deprecated `muninn.editorAssociations` setting has no effect.
+4. Use `Muninn for VS Code: Inspect Configuration` for Muninn settings and workspace trust. It does not change the editor preference.
 
 ## 2) Mermaid is not rendering
 
@@ -35,7 +25,7 @@ This guide covers common issues for the current Muninn v2 custom editor workflow
 
 1. Confirm `muninn.integrations.mermaid.enabled` is `true`.
 2. If the workspace is untrusted, Mermaid stays disabled by default.
-3. In restricted workspaces, explicitly enable:
+3. If you choose to render diagrams in Restricted Mode, set this **in user settings**, not workspace settings:
 
 ```json
 {
@@ -43,7 +33,7 @@ This guide covers common issues for the current Muninn v2 custom editor workflow
 }
 ```
 
-4. Reload the window after changing trust-sensitive settings.
+4. If the preview remains stale after changing trust or settings, reopen the Markdown tab and inspect the extension output.
 
 ## 3) Toolbar actions are missing
 
@@ -88,8 +78,7 @@ This guide covers common issues for the current Muninn v2 custom editor workflow
 
 ### Known Environment Notes
 
-- Integration tests can fail on some macOS setups with `SIGABRT` from VS Code host runtime.
-- E2E browser tests can fail intermittently from VS Code/chromedriver session disconnects.
+- Integration or installed-VSIX Electron tests can fail to launch when the local VS Code runtime or display environment is unavailable. Separate runner failures from product assertions.
 
 ### What to do
 
@@ -101,14 +90,14 @@ npm run typecheck
 npm run coverage
 ```
 
-2. Re-run flaky suites:
+2. Re-run the affected suite after checking the runtime and display setup:
 
 ```bash
 npm test
 npm run test:e2e
 ```
 
-3. Prefer Linux CI/xvfb results as the stability source of truth when local GUI env is noisy.
+3. Inspect CI for the exact commit and packaged archive. A failing or unavailable local runner is unvalidated behavior, even when another platform passes.
 
 ## 7) Useful Debug Commands
 
