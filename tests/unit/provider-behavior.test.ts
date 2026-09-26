@@ -6,7 +6,6 @@ import sinon from 'sinon';
 import * as vscode from 'vscode';
 import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 import { ConfigService } from '../../src/services/config-service';
-import type { Logger } from '../../src/services/logger';
 import type { HostToViewMessage } from '../../src/custom-editor/protocol';
 
 const noop = (): void => {};
@@ -73,7 +72,10 @@ describe('custom editor host lifecycle', () => {
       has: () => false,
       update: async () => {},
     } as vscode.WorkspaceConfiguration);
-    const logger = { warn: sinon.stub(), error: sinon.stub() } as unknown as Logger;
+    const logger = {
+      warn: sinon.stub(),
+      error: sinon.stub(),
+    } as unknown as vscode.LogOutputChannel;
     provider = new MuninnCustomEditorProvider(
       vscode.Uri.file('/extension'),
       new ConfigService(),

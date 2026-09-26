@@ -3,7 +3,6 @@
 
 import * as vscode from 'vscode';
 import { ConfigInspection, ConfigService } from './services/config-service';
-import { Logger } from './services/logger';
 import { createMarkdownNote } from './custom-editor/note-commands';
 import { t } from './utils/l10n';
 import {
@@ -56,13 +55,12 @@ const registerCommands = (
   entries.map((entry) => vscode.commands.registerCommand(entry.id, entry.run));
 
 export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel(t('Muninn for VS Code'));
-  const logger = new Logger(outputChannel);
+  const outputChannel = vscode.window.createOutputChannel(t('Muninn for VS Code'), { log: true });
   const configService = new ConfigService();
   const customEditorProvider = new MuninnCustomEditorProvider(
     context.extensionUri,
     configService,
-    logger,
+    outputChannel,
   );
 
   const logConfigInspection = (resource?: vscode.Uri): void => {
@@ -200,19 +198,13 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!event.affectsConfiguration('muninn')) {
         return;
       }
-      configService.clearCache();
-      logger.info(t('Muninn configuration cache cleared after settings change.'));
       void customEditorProvider.notifyConfigurationChanged();
     }),
     ...commandDisposables,
   ];
 
   context.subscriptions.push(...disposables);
-  logger.info(t('Muninn custom markdown editor activated.'));
-}
-
-export function deactivate(): void {
-  // No-op.
+  outputChannel.info(t('Muninn custom markdown editor activated.'));
 }
 
 export const __testing = { formatInspectValue };

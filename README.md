@@ -30,7 +30,7 @@ Remote images do not load automatically. Imported images are limited to 10 MiB. 
 
 ## Development
 
-Use Node 24. See [Getting started](docs/GETTING_STARTED.md), [Architecture](docs/ARCHITECTURE.md), [Testing](docs/TESTING.md) and the [audit implementation](docs/AUDIT_IMPLEMENTATION_2026-09.md).
+Use Node 24. The [contributor documentation](docs/README.md) is the current source of guidance for humans and AI agents. Start with [Getting started](docs/GETTING_STARTED.md), [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Testing](docs/TESTING.md). The [audit implementation](docs/AUDIT_IMPLEMENTATION_2026-09.md) records an earlier validation snapshot.
 
 ```bash
 npm ci

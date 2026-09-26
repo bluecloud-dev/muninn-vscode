@@ -1,6 +1,6 @@
 # Muninn for VS Code — Strategic Roadmap (May 2026 → Q2 2027)
 
-> Historical planning snapshot. See [September implementation status](AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+> Historical planning snapshot. [ROADMAP.md](ROADMAP.md) now governs current product direction, and [ARCHITECTURE.md](ARCHITECTURE.md) governs the implementation. The schedules, issue references, agent tools, and statement below that this document supersedes ROADMAP.md describe the old planning state.
 
 
 > Converts the competitive brief (`docs/COMPETITIVE_BRIEF.md`) into a sequenced, scored, single‑maintainer roadmap. Supersedes the alpha‑only material in `docs/ROADMAP.md`.

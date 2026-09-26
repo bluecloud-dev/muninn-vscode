@@ -5,9 +5,9 @@ import { after, before, describe, it } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { download, runVSCodeCommand } from '@vscode/test-electron';
 import { _electron as electron } from 'playwright-core';
+import { resolveVSCodeExecutable } from '../../scripts/vscode-executable.mjs';
 
 const root = process.cwd();
 const version = process.env.VSCODE_VERSION || 'stable';
@@ -43,17 +43,7 @@ fs.writeFileSync(
 );
 let app, page;
 async function vscodeExecutable() {
-  const downloaded = await download({ version });
-  if (process.platform !== 'darwin') return downloaded;
-  // test-electron assumes "Electron"; use the executable declared by the actual bundle.
-  const contents = path.dirname(path.dirname(downloaded));
-  const executable = execFileSync(
-    '/usr/bin/plutil',
-    ['-extract', 'CFBundleExecutable', 'raw', '-o', '-', path.join(contents, 'Info.plist')],
-    { encoding: 'utf8' },
-  ).trim();
-  assert.ok(executable && path.basename(executable) === executable, 'Invalid bundle executable');
-  return path.join(contents, 'MacOS', executable);
+  return resolveVSCodeExecutable(await download({ version }));
 }
 async function activateMuninn() {
   // The palette snapshots available commands. Reopen it while extensions are registering.
@@ -79,8 +69,10 @@ async function activateMuninn() {
   );
   await page.keyboard.press('Escape');
   await command('Muninn for VS Code: Inspect Configuration');
-  await page.locator('[id="workbench.parts.panel"]').waitFor();
-  await page.keyboard.press(`${modifier}+j`);
+  // A log channel may leave the panel hidden, especially in Restricted Mode.
+  if (await page.locator('[id="workbench.parts.panel"]').isVisible()) {
+    await page.keyboard.press(`${modifier}+j`);
+  }
 }
 async function eventually(check, message, timeout = 15000) {
   const start = Date.now();

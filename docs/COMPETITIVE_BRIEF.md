@@ -1,6 +1,6 @@
 # Muninn for VS Code — Competitive Brief (May 2026)
 
-> Historical planning snapshot. See [September implementation status](AUDIT_IMPLEMENTATION_2026-09.md) and the current architecture for shipped behavior; preserve these earlier decisions as context.
+> Historical May 2026 planning snapshot. Its product, version, market, and release claims are not current. See [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), and the dated [September implementation record](AUDIT_IMPLEMENTATION_2026-09.md).
 
 
 > Strategic positioning, feature matrix, and roadmap to take Muninn from `2.0.0-alpha` to a top‑tier VS Code extension that catalyzes Aymen Hammouda's personal brand.

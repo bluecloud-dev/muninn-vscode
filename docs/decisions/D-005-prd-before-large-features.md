@@ -9,8 +9,8 @@ Solo-maintainer capacity (~10–15 h/week) cannot absorb scope creep; 80% of ind
 
 ## Decision
 
-Every initiative estimated over one week of effort gets a one-page PRD in `specs/<feature>/spec.md` before code.
+Every initiative estimated over one week of effort gets a concise proposal in `docs/proposals/<feature>.md` before code. This location was updated in September 2026 so contributor planning lives with the current documentation.
 
 ## Consequences
 
-`specs/round-trip-correctness/spec.md` is the pattern instance. Issues reference their spec; agents read the spec first.
+Link the proposal from its live issue and read it before implementation. The former round-trip draft specification was retired; the current requirements are in [ROUNDTRIP_CONTRACT.md](../ROUNDTRIP_CONTRACT.md).

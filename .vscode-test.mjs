@@ -3,6 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@vscode/test-cli';
+import { download } from '@vscode/test-electron';
+import { resolveVSCodeExecutable } from './scripts/vscode-executable.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +18,11 @@ const sharedDataArgs =
     ? []
     : [`--shared-data-dir=${path.join(runRoot, 'shared')}`];
 const fixturesRoot = path.join(__dirname, 'tests', 'fixtures');
+const version = process.env.VSCODE_VERSION ?? 'stable';
+const installation =
+  process.platform === 'darwin'
+    ? { fromPath: resolveVSCodeExecutable(await download({ version })) }
+    : undefined;
 
 fs.mkdirSync(runRoot, { recursive: true });
 if (fs.existsSync(workspaceFolder)) {
@@ -25,7 +32,8 @@ fs.cpSync(fixturesRoot, workspaceFolder, { recursive: true });
 
 export default defineConfig({
   files: ['out/tests/integration-cli/**/*.test.js'],
-  version: process.env.VSCODE_VERSION ?? 'stable',
+  version,
+  useInstallation: installation,
   extensionDevelopmentPath: __dirname,
   workspaceFolder,
   launchArgs: [
