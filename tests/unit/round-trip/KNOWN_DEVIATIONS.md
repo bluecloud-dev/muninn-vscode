@@ -9,16 +9,12 @@ honestly, never silently normalized away (#245). The test suite additionally ass
 that each deviation fails in exactly the way documented here, so an entry that drifts
 (or quietly starts passing) breaks CI.
 
-Output samples are verbatim. Independently of each listed cause, the pure webview
-serializer still drops the final newline (#282). The host save path reconciles that
-state in `DocumentSync.applyDocument()` so real files that already end in `\n` keep
-their final newline, while files without one do not gain one.
+Current result: **58/58 byte-identical**, with **0 known deviations**.
 
-## Final-newline-only deviations (#282) — 0 fixtures
+Byte equality includes final-newline state; the codec retains original source bytes.
+Any future deviation must be reproduced and recorded explicitly rather than normalized.
 
-These fixtures round-trip their construct byte-identically and differ only by the
-missing trailing newline in the pure codec — a serializer defect reconciled by the host
-save path:
+## Final-newline-only deviations — 0 fixtures
 
 
 ## Construct deviations — 0 fixtures

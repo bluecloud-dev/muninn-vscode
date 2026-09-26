@@ -10,7 +10,7 @@ export const createMarkdownNote = async (): Promise<void> => {
   const uri = await vscode.window.showSaveDialog({
     title: t('Create Markdown Note'),
     defaultUri: root ? vscode.Uri.joinPath(root, 'note.md') : undefined,
-    filters: { Markdown: ['md', 'markdown'] },
+    filters: { [t('Markdown')]: ['md', 'markdown'] },
   });
   if (!uri) return;
   const edit = new vscode.WorkspaceEdit();

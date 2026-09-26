@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import MarkdownIt from 'markdown-it';
+import frontMatterPlugin from 'markdown-it-front-matter';
 import { ConfigService } from '../services/config-service';
 import { Logger } from '../services/logger';
 import type { ContentWidthSetting } from '../types/config';
@@ -54,7 +55,7 @@ const serializeForInlineScript = (value: unknown): string =>
 const markdownItParser = MarkdownIt('commonmark', {
   html: false,
   linkify: true,
-});
+}).use(frontMatterPlugin, () => {});
 
 type EditorSession = {
   document: vscode.TextDocument;

@@ -6,7 +6,7 @@
 and final-newline state. This is the exact pipeline the editor runs between the host
 document and the ProseMirror view (`src/webview/editor/markdown-codec.ts`).
 
-**Corpus**: 56 cases — 52 stored fixtures plus 4
+**Corpus**: 58 cases — 54 stored fixtures plus 4
 synthesized byte-fragile variants (CRLF, trailing space, two-space hard break, missing
 final newline) that editors would silently normalize if stored on disk. This is the
 hand-curated construct corpus from issue #245, not the full CommonMark 0.31.2 example
@@ -16,18 +16,15 @@ suite (that larger corpus is spec requirement R-01 and tracked separately).
 
 | Verdict | Cases |
 | --- | ---: |
-| Byte-identical | 56 |
-| Final-newline-only deviation (single root cause, #282) | 0 |
+| Byte-identical | 58 |
+| Final-newline-only deviation | 0 |
 | Construct deviations | 0 |
-| **Total** | **56** |
+| **Total** | **58** |
 
-**Reading the numbers honestly**: the markdown construct survives byte-identically in
-56 of 56 cases; the missing trailing newline (#282) is a single
-pure-serializer defect that still blocks every stored fixture from a strict codec pass,
-but the host save path now preserves the existing final-newline state for real files.
-Construct deviations remain; each has a tracking issue in the deviation index below.
-Until #283/#284 are fixed, hard-wrapped paragraphs unfold and dash bullets,
-underscore emphasis, and setext headings are rewritten to canonical forms.
+**Current conformance**: 58 of 58 cases satisfy the byte-identical contract.
+The source-preserving codec retains final newlines, wrapping, list markers and emphasis
+spelling. These no-op round trips complement actual edit regression tests; they do not
+prove support for every Markdown dialect or editing operation.
 
 ## Per-category breakdown
 
@@ -50,7 +47,7 @@ underscore emphasis, and setext headings are rewritten to canonical forms.
 | mixed | 1 | 1 | 0 | 0 |
 | paragraphs | 2 | 2 | 0 | 0 |
 | strikethrough | 1 | 1 | 0 | 0 |
-| tables | 5 | 5 | 0 | 0 |
+| tables | 7 | 7 | 0 | 0 |
 | task-lists | 1 | 1 | 0 | 0 |
 | thematic-breaks | 2 | 2 | 0 | 0 |
 | unicode | 1 | 1 | 0 | 0 |

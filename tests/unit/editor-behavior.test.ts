@@ -100,6 +100,36 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
   };
 
+  it('preserves remote Markdown bytes during a subsequent unrelated local edit', async () => {
+    const editor = open('Alpha\n');
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'Alpha\n\n* _remote_\n', revision: 1, imageSources: {} },
+    });
+    await tick();
+    await append(editor, 'X');
+    assert.equal(applies().at(-1)!.payload.markdown, 'AlphaX\n\n* _remote_\n');
+  });
+
+  for (const source of [
+    '> | A | B |\n> | - | - |\n> | old | value |\n',
+    '- | A | B |\n  | - | - |\n  | old | value |\n',
+    '> - | A | B |\n>   | - | - |\n>   | old | value |\n',
+  ]) {
+    it(
+      'opens and edits a table inside a Markdown container: ' + JSON.stringify(source),
+      async () => {
+        open(source);
+        const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+        assert.ok(input, 'nested table grid opens');
+        input.value = 'new';
+        input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: 'new' }));
+        await tick();
+        assert.equal(applies().at(-1)!.payload.markdown, source.replace('old', 'new'));
+      },
+    );
+  }
+
   it('keeps later typing and undo history when an earlier operation is acknowledged', async () => {
     const editor = open('Alpha\n');
     await append(editor, 'X');

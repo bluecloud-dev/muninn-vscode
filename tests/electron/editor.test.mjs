@@ -282,10 +282,14 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     fs.writeFileSync(path.join(workspace, 'target.md'), '# Target\n\n## Destination\n');
     const { editor, file } = await open(
       'tasks.md',
-      '# Résumé\n\n- [ ] Read spec\n\n[Target](target.md#destination)\n',
+      '---\ntitle: Metadata\n---\n\n# Résumé\n\n- [ ] Read spec\n\n[Target](target.md#destination)\n',
     );
     await editor.locator('input[type="checkbox"]').check();
-    await save(editor, file, '# Résumé\n\n- [x] Read spec\n\n[Target](target.md#destination)\n');
+    await save(
+      editor,
+      file,
+      '---\ntitle: Metadata\n---\n\n# Résumé\n\n- [x] Read spec\n\n[Target](target.md#destination)\n',
+    );
     assert.equal(await editor.locator('h1').getAttribute('id'), 'résumé');
     await editor.locator('[data-command="goToHeading"]').click();
     await page.getByText('Résumé', { exact: true }).first().click();
@@ -296,6 +300,18 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       }
       return false;
     }, 'Relative Markdown link did not open target');
+  });
+
+  it('creates a standard GFM task and keeps typing outside the hidden marker', async () => {
+    const { editor, file } = await open('new-task.md', 'Alpha\n');
+    await editor.locator('.ProseMirror p').click();
+    await page.keyboard.press(lineStart);
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await editor.locator('[data-testid="muninn-toolbar-more"]').click();
+    await editor.locator('[data-command="toggleTask"]').click();
+    await page.keyboard.type('X');
+    await save(editor, file, '* [ ] AlXpha\n');
   });
 
   it('opens Source after saving edits and creates a native note', async () => {

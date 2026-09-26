@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { EditorState } from 'prosemirror-state';
+import { EditorState, TextSelection } from 'prosemirror-state';
+import { toggleTask } from '../../src/webview/editor/document-navigation';
 import {
   parseHostMarkdown,
   serializeToHostMarkdown,
@@ -38,6 +39,22 @@ const editWord = (source: string, before: string, after: string): string => {
 };
 
 describe('source-preserving edits', () => {
+  for (const source of ['Alpha\n', '- Alpha\n']) {
+    it('keeps the cursor in visible text after creating a task: ' + JSON.stringify(source), () => {
+      let state = EditorState.create({ doc: parseHostMarkdown(source) });
+      const start = source.startsWith('-') ? 3 : 1;
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, start + 2)));
+      toggleTask(state, (tr) => {
+        state = state.apply(tr);
+      });
+      assert.equal(state.selection.$from.parentOffset, 6);
+      state = state.apply(state.tr.insertText('X'));
+      assert.equal(
+        serializeToHostMarkdown(state.doc),
+        (source.startsWith('-') ? '-' : '*') + ' [ ] AlXpha\n',
+      );
+    });
+  }
   for (const family of ['spec-kit', 'openspec']) {
     for (const file of ['spec.md', 'tasks.md']) {
       it('preserves and edits plain ' + family + '/' + file, () => {

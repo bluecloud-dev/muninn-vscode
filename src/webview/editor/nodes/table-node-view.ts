@@ -251,8 +251,14 @@ class TableNodeView implements NodeView {
       return false;
     }
     if (node.eq(this.node)) return true;
+    let source: string;
+    try {
+      source = normalizeTableSource(getTableSource(node));
+    } catch {
+      return false; // Recreate as the protected source fallback.
+    }
     this.node = node;
-    this.normalizedCurrentSource = normalizeTableSource(getTableSource(this.node));
+    this.normalizedCurrentSource = source;
     if (!this.updatingCell) {
       this.pendingFocus ??= this.getFocusedCellCoordinates();
       this.render();
@@ -724,5 +730,20 @@ class TableNodeView implements NodeView {
 
 export const createTableNodeViewConstructor =
   (options: TableNodeViewOptions): NodeViewConstructor =>
-  (node, view, getPos) =>
-    new TableNodeView(node, view, getPos, options);
+  (node, view, getPos) => {
+    try {
+      normalizeTableSource(getTableSource(node));
+    } catch {
+      // Unexpected source must never prevent the rest of the document from opening.
+      const dom = document.createElement('div');
+      dom.className = 'muninn-table-node';
+      dom.contentEditable = 'false';
+      const message = document.createElement('p');
+      message.textContent = getString('statusSourceRequired');
+      const source = document.createElement('pre');
+      source.textContent = getTableSource(node);
+      dom.append(message, source);
+      return { dom, ignoreMutation: () => true };
+    }
+    return new TableNodeView(node, view, getPos, options);
+  };

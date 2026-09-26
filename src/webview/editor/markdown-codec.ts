@@ -44,20 +44,29 @@ export const schema = new Schema({
 const markdownItParser = MarkdownIt('commonmark', { html: false, linkify: true })
   .enable(['table', 'strikethrough'])
   .use(frontMatterPlugin, () => {});
-markdownItParser.core.ruler.after('block', 'muninn-table-source', (state) => {
-  const lines = state.src.split('\n');
-  for (let index = 0; index < state.tokens.length; index++) {
-    const token = state.tokens[index];
-    if (token.type !== 'table_open' || !token.map) continue;
-    let end = index + 1;
-    while (end < state.tokens.length && state.tokens[end].type !== 'table_close') end++;
+// Isolate the public table rule without importing markdown-it's internal modules.
+const tableRule = MarkdownIt('zero').enable('table').block.ruler.getRules('')[0];
+markdownItParser.block.ruler.at(
+  'table',
+  (state, startLine, endLine, silent) => {
+    const first = state.tokens.length;
+    if (!tableRule(state, startLine, endLine, silent)) return false;
+    if (silent) return true;
+    const token = state.tokens[first];
+    const source: string[] = [];
+    // Capture before the container parser restores bMarks/tShift (quotes and list markers).
+    for (let line = token.map![0]; line < token.map![1]; line++) {
+      source.push(state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]));
+    }
     const replacement = new state.Token('muninn_table', 'table', 0);
-    replacement.content = lines.slice(token.map[0], token.map[1]).join('\n');
+    replacement.content = source.join('\n');
     replacement.map = token.map;
     replacement.block = true;
-    state.tokens.splice(index, end - index + 1, replacement);
-  }
-});
+    state.tokens.splice(first, state.tokens.length - first, replacement);
+    return true;
+  },
+  { alt: ['paragraph', 'reference'] },
+);
 
 const parserTokens = {
   ...(defaultMarkdownParser as unknown as { tokens: Record<string, ParseSpec> }).tokens,
@@ -79,8 +88,18 @@ export const markdownParser = new MarkdownParser(schema, markdownItParser, parse
 export const markdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
+    paragraph: (state, node, parent, index) => {
+      const marker =
+        parent.type.name === 'list_item' && index === 0
+          ? /^\[[ xX]\] /.exec(node.textContent)?.[0]
+          : undefined;
+      if (!marker) return defaultMarkdownSerializer.nodes.paragraph(state, node, parent, index);
+      state.write(marker);
+      state.renderInline(node.cut(marker.length));
+      state.closeBlock(node);
+    },
     table: (state, node) => {
-      state.write(node.attrs.source as string);
+      state.text(node.attrs.source as string, false);
       state.closeBlock(node);
     },
     front_matter: (state, node) => {

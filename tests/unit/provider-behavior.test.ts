@@ -286,7 +286,7 @@ describe('custom editor host lifecycle', () => {
   });
 
   it('creates relative file links and native heading selections', async () => {
-    const f = await fixture('# First\n\n## Next\n');
+    const f = await fixture('---\ntitle: Metadata\n---\n\n# First\n\n## Next\n');
     sinon
       .stub(vscode.window, 'showOpenDialog')
       .resolves([vscode.Uri.joinPath(f.document.uri, '..', 'related note.md')]);
@@ -296,6 +296,10 @@ describe('custom editor host lifecycle', () => {
     if (last.type === 'host.insertLink') assert.equal(last.payload.href, 'related%20note.md');
     sinon.stub(vscode.window, 'showQuickPick').callsFake(async (items) => {
       const values = await items;
+      assert.deepEqual(
+        values.map((item) => (item as vscode.QuickPickItem).label),
+        ['First', 'Next'],
+      );
       return values[1] as never;
     });
     await provider.goToHeadingInActiveEditor();

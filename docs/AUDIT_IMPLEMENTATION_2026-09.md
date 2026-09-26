@@ -9,7 +9,7 @@ The existing ProseMirror custom text editor, ordinary Markdown files, AGPL licen
 | Audit item | Result | Main evidence |
 | --- | --- | --- |
 | P0.1 — Sync/save/undo/close | Explicit operation IDs and acknowledgments, one apply in flight, minimal host edits, independent-change merge, recovery on overlap, save/Source flush, retained document and raw table drafts. Undo/Redo use one native command path. | `document-sync.ts`, `sync.ts`, provider, `remote-document.ts`, delayed-host/unit/native tests |
-| P0.2 — Source fidelity | All 56 untouched fixtures byte-identical; real edits preserve markers, spacing, numbering, references, entities, CRLF, EOF and table alignment/escapes. Real code fences remain code. Standard GFM tasks/strike supported. Narrow provisional whitespace handling permits normal typing. | Codec, table utilities, source-fidelity/editor tests, generated round-trip reports |
+| P0.2 — Source fidelity | All 58 untouched fixtures byte-identical; real edits preserve markers, spacing, numbering, references, entities, CRLF, EOF and table alignment/escapes. Real code fences remain code. Standard GFM tasks/strike supported. Narrow provisional whitespace handling permits normal typing. | Codec, table utilities, source-fidelity/editor tests, generated round-trip reports |
 | P0.3 — Trust/resources | Mermaid gated before import/render and after asynchronous work; explicit permission read only from user settings; local assets and narrowed roots; remote image loads blocked; 10 MiB checks before read/decode; stat permission failures cannot cause image overwrite. | Config service, Mermaid adapter/renderer, provider/image tests, native Restricted Mode test |
 | P0.4 — Preferences | Removed startup/editor-association rewriting and redundant explicit activation list. Native editor picker controls defaults; old setting is deprecated and inert. | Manifest, extension, association regression test |
 | P0.5 — Behavioral gates | Provider included in unit coverage, real bundled DOM tests, installed-VSIX Electron journeys, minimum/current host gates and blocking cross-platform UI matrix. Removed the quarantined WebDriver stack. | Tests, package scripts and CI |
@@ -25,18 +25,20 @@ The existing ProseMirror custom text editor, ordinary Markdown files, AGPL licen
 
 Windows, Node **24.20.0**, VS Code **1.85.2** and current stable **1.139.1**:
 
-- **191 unit/bundled-DOM tests passed.** Coverage: **85.11% lines**, **72.08% branches**, **83.98% statements**, **81.43% functions**; configured thresholds retained. DOM adapters are covered behaviorally outside the unit coverage denominator.
-- **56/56 golden fixtures byte-identical**, with zero known deviations. Actual edit tests also cover source preservation and plain Spec Kit/OpenSpec document shapes.
+- **200 unit/bundled-DOM tests passed.** Coverage: **85.33% lines**, **72.26% branches**, **84.19% statements**, **81.87% functions**; configured thresholds retained. DOM adapters are covered behaviorally outside the unit coverage denominator.
+- **58/58 golden fixtures byte-identical**, with zero known deviations. Actual edit tests also cover source preservation and plain Spec Kit/OpenSpec document shapes.
 - **7/7 extension-host integration tests passed** on both VS Code versions.
-- **7/7 installed-VSIX native UI tests passed** on both versions: read/type/save/undo, keyboard toolbar and insertion, focused table save/source/delete/undo, code languages, lazy Mermaid/CSP/accessibility markup, tasks/headings/file links, Source/note capture and Restricted Mode/remote-image blocking.
+- **8/8 installed-VSIX native UI tests passed** on both versions: read/type/save/undo, keyboard toolbar and insertion, focused table save/source/delete/undo, code languages, lazy Mermaid/CSP/accessibility markup, tasks/headings/file links, Source/note capture and Restricted Mode/remote-image blocking.
 - Typecheck, lint, format check, no-telemetry guard and package checks passed.
 - `npm audit`: **zero vulnerabilities**, including development dependencies. The removed WebDriver stack accounted for most of the prior advisory surface. Narrow Mocha transitive overrides use patched jsdiff/serialize-javascript while preserving the minimum-host-compatible integration runner.
 
-The production VSIX has **127 files**, **1,822,443 bytes** (about 1.74 MiB), with **438,643 bytes** (about 428 KiB) in the initial editor JavaScript. This is a byte measurement, not a startup-latency claim. The baseline's 8.36 MiB webview included Mermaid eagerly; the current package loads local diagram chunks when permitted and needed.
+The production VSIX has **127 files**, **1,823,226 bytes** (about 1.74 MiB), with **439,268 bytes** (about 429 KiB) in the initial editor JavaScript. This is a byte measurement, not a startup-latency claim. The baseline's 8.36 MiB webview included Mermaid eagerly; the current package loads local diagram chunks when permitted and needed.
 
-The tested archive SHA-256 was `1b66558e590744b11326376f9dbb2e7615e841c7376069f188351ab317bec4d5`. Future packaging updates `artifacts/build/package-report.json`; only the workflow-produced, UI-tested archive may be published.
+The tested archive SHA-256 was `45327fff5fef706bb99c4c95ed80639be8ce56e583af57d4d3a13f087526ac69`. Future packaging updates `artifacts/build/package-report.json`; only the workflow-produced, UI-tested archive may be published.
 
 The native harness required separate shared-application state directories on recent VS Code builds. User-data isolation alone was insufficient for trust/extension state. It also waits for contribution registration and explicit native activation before opening fixtures. The minimum version uses its older supported isolation flags. No test failure is silently quarantined.
+
+Review regressions additionally cover a local edit after non-canonical remote Markdown arrives, heading indices with front matter, task creation followed by immediate typing, blockquote/list/nested tables, and a protected fallback for malformed table source. Table content is captured before the Markdown parser restores container offsets; serialization restores those prefixes. Package validation and hashing use one in-memory archive snapshot. macOS launch reads the bundle executable from its property list, and command registration waits refresh the native palette.
 
 ## Preserved boundaries and remaining validation
 

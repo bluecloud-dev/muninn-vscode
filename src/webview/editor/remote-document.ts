@@ -19,7 +19,8 @@ export const applyRemoteDocument = (view: EditorView, markdown: string): void =>
       transaction = transaction.replace(start, oldEnd, next.slice(start, newEnd));
     }
   }
-  setDocumentSource(previous, markdown);
   transaction.setMeta('addToHistory', false);
-  view.updateState(view.state.apply(transaction));
+  const nextState = view.state.apply(transaction);
+  setDocumentSource(nextState.doc, markdown);
+  view.updateState(nextState);
 };

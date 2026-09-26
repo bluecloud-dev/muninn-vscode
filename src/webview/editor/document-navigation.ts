@@ -119,15 +119,16 @@ export const toggleTask: Command = (state, dispatch) => {
     state.schema.text('[ ] '),
     ...$from.parent.content.content,
   ]);
-  const replacement =
-    $from.depth > 1 && $from.node($from.depth - 1).type.name === 'list_item'
-      ? paragraph
-      : state.schema.nodes.bullet_list.create(
-          undefined,
-          state.schema.nodes.list_item.create(undefined, paragraph),
-        );
+  const inList = $from.depth > 1 && $from.node($from.depth - 1).type.name === 'list_item';
+  const replacement = inList
+    ? paragraph
+    : state.schema.nodes.bullet_list.create(
+        { tight: true },
+        state.schema.nodes.list_item.create(undefined, paragraph),
+      );
   const tr = state.tr.replaceWith($from.before(), $from.after(), replacement);
-  tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(tr.doc.content.size, start + 4))));
+  const contentStart = start + (inList ? 0 : 2);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(contentStart + 4 + $from.parentOffset)));
   dispatch?.(tr);
   return true;
 };
