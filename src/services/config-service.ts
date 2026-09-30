@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as vscode from 'vscode';
 import { ContentWidthSetting, ExtensionConfiguration } from '../types/config';
 
@@ -9,7 +12,6 @@ export type ConfigInspection<T> = {
 };
 
 const DEFAULT_CONFIG: ExtensionConfiguration = {
-  editorAssociations: true,
   mermaidEnabled: true,
   mermaidAllowInUntrustedWorkspaces: false,
   toolbarMode: 'basic',
@@ -26,12 +28,6 @@ const normalizeContentWidthSetting = (value: unknown): ContentWidthSetting =>
   isContentWidthSetting(value) ? value : DEFAULT_CONFIG.contentWidth;
 
 export class ConfigService {
-  private readonly cachedConfigs = new Map<string, ExtensionConfiguration>();
-
-  getEditorAssociations(resource?: vscode.Uri): boolean {
-    return this.getConfig(resource).editorAssociations;
-  }
-
   getMermaidEnabled(resource?: vscode.Uri): boolean {
     return this.getConfig(resource).mermaidEnabled;
   }
@@ -53,29 +49,10 @@ export class ConfigService {
   }
 
   getConfig(resource?: vscode.Uri): ExtensionConfiguration {
-    const cacheKey = this.getCacheKey(resource);
-    const cached = this.cachedConfigs.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const config = this.loadConfig(resource);
-    this.cachedConfigs.set(cacheKey, config);
-    return config;
-  }
-
-  reload(resource?: vscode.Uri): ExtensionConfiguration {
-    const config = this.loadConfig(resource);
-    this.cachedConfigs.set(this.getCacheKey(resource), config);
-    return config;
-  }
-
-  clearCache(): void {
-    this.cachedConfigs.clear();
+    return this.loadConfig(resource);
   }
 
   inspect(resource?: vscode.Uri): {
-    editorAssociations?: ConfigInspection<boolean>;
     mermaidEnabled?: ConfigInspection<boolean>;
     mermaidAllowInUntrustedWorkspaces?: ConfigInspection<boolean>;
     toolbarMode?: ConfigInspection<'basic' | 'advanced'>;
@@ -84,7 +61,6 @@ export class ConfigService {
   } {
     const config = vscode.workspace.getConfiguration('muninn', resource);
     return {
-      editorAssociations: config.inspect<boolean>('editorAssociations'),
       mermaidEnabled: config.inspect<boolean>('integrations.mermaid.enabled'),
       mermaidAllowInUntrustedWorkspaces: config.inspect<boolean>(
         'integrations.mermaid.allowInUntrustedWorkspaces',
@@ -95,19 +71,14 @@ export class ConfigService {
     };
   }
 
-  private getCacheKey(resource?: vscode.Uri): string {
-    return resource?.toString() ?? '__global__';
-  }
-
   private loadConfig(resource?: vscode.Uri): ExtensionConfiguration {
     const config = vscode.workspace.getConfiguration('muninn', resource);
     return {
-      editorAssociations: config.get('editorAssociations', DEFAULT_CONFIG.editorAssociations),
       mermaidEnabled: config.get('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled),
-      mermaidAllowInUntrustedWorkspaces: config.get(
-        'integrations.mermaid.allowInUntrustedWorkspaces',
-        DEFAULT_CONFIG.mermaidAllowInUntrustedWorkspaces,
-      ),
+      // Permission must come from the user, never a repository's settings.
+      mermaidAllowInUntrustedWorkspaces:
+        config.inspect<boolean>('integrations.mermaid.allowInUntrustedWorkspaces')?.globalValue ===
+        true,
       toolbarMode: config.get('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
       contentWidth: normalizeContentWidthSetting(
         config.get<unknown>('appearance.contentWidth', DEFAULT_CONFIG.contentWidth),

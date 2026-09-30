@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import * as vscode from 'vscode';
 import { ConfigInspection, ConfigService } from './services/config-service';
-import { Logger } from './services/logger';
+import { createMarkdownNote } from './custom-editor/note-commands';
 import { t } from './utils/l10n';
 import {
   MUNINN_MARKDOWN_EDITOR_VIEW_TYPE,
@@ -25,222 +28,6 @@ const formatInspectValue = <T>(inspect?: ConfigInspection<T>): string => {
   }
 
   return parts.map(([label, value]) => `${label}=${JSON.stringify(value)}`).join(' | ');
-};
-
-type EditorAssociationEntry = Readonly<{
-  filenamePattern: string;
-  viewType: string;
-}>;
-
-type EditorAssociationRecord = Readonly<Record<string, string>>;
-type EditorAssociations = ReadonlyArray<EditorAssociationEntry> | EditorAssociationRecord;
-
-const MARKDOWN_ASSOCIATION_PATTERNS = ['*.md', '*.markdown'];
-const MARKDOWN_ASSOCIATION_VIEW = MUNINN_MARKDOWN_EDITOR_VIEW_TYPE;
-const MARKDOWN_ASSOCIATION_STATE_KEY = 'muninn.editorAssociationsAdded';
-
-type AssociationState = {
-  patterns: string[];
-};
-
-const matchesAssociationPattern = (pattern: string, candidate: string): boolean =>
-  candidate === pattern || candidate === `**/${pattern}`;
-
-const addMarkdownAssociation = (
-  current: unknown,
-): { updated: boolean; value: EditorAssociations; addedPatterns: string[] } => {
-  if (Array.isArray(current)) {
-    const entries = current as ReadonlyArray<EditorAssociationEntry>;
-    const changedPatterns: string[] = [];
-    const nextEntries = [...entries];
-
-    for (const pattern of MARKDOWN_ASSOCIATION_PATTERNS) {
-      const existingIndex = nextEntries.findIndex((entry) =>
-        matchesAssociationPattern(pattern, entry.filenamePattern),
-      );
-      if (existingIndex === -1) {
-        nextEntries.push({
-          filenamePattern: pattern,
-          viewType: MARKDOWN_ASSOCIATION_VIEW,
-        });
-        changedPatterns.push(pattern);
-        continue;
-      }
-
-      const existingEntry = nextEntries[existingIndex];
-      if (existingEntry.viewType !== MARKDOWN_ASSOCIATION_VIEW) {
-        nextEntries[existingIndex] = {
-          ...existingEntry,
-          viewType: MARKDOWN_ASSOCIATION_VIEW,
-        };
-        changedPatterns.push(pattern);
-      }
-    }
-
-    return {
-      updated: changedPatterns.length > 0,
-      value: nextEntries,
-      addedPatterns: changedPatterns,
-    };
-  }
-
-  if (current && typeof current === 'object') {
-    const record = current as EditorAssociationRecord;
-    const changedPatterns: string[] = [];
-    const nextRecord: Record<string, string> = { ...record };
-
-    for (const pattern of MARKDOWN_ASSOCIATION_PATTERNS) {
-      const directPattern = pattern;
-      const nestedPattern = `**/${pattern}`;
-      if (record[directPattern] === MARKDOWN_ASSOCIATION_VIEW) {
-        continue;
-      }
-      if (record[nestedPattern] === MARKDOWN_ASSOCIATION_VIEW) {
-        continue;
-      }
-
-      if (record[nestedPattern] !== undefined) {
-        delete nextRecord[nestedPattern];
-      }
-
-      nextRecord[directPattern] = MARKDOWN_ASSOCIATION_VIEW;
-      changedPatterns.push(pattern);
-    }
-
-    return {
-      updated: changedPatterns.length > 0,
-      value: nextRecord,
-      addedPatterns: changedPatterns,
-    };
-  }
-
-  return {
-    updated: true,
-    value: Object.fromEntries(
-      MARKDOWN_ASSOCIATION_PATTERNS.map((pattern) => [pattern, MARKDOWN_ASSOCIATION_VIEW]),
-    ),
-    addedPatterns: [...MARKDOWN_ASSOCIATION_PATTERNS],
-  };
-};
-
-const removeMarkdownAssociation = (
-  current: unknown,
-  patterns: string[],
-): { updated: boolean; value: EditorAssociations; removedPatterns: string[] } => {
-  if (Array.isArray(current)) {
-    const entries = current as ReadonlyArray<EditorAssociationEntry>;
-    const removedPatterns = new Set<string>();
-    const nextEntries = entries.filter((entry) => {
-      const match = patterns.find((pattern) =>
-        matchesAssociationPattern(pattern, entry.filenamePattern),
-      );
-      if (!match) {
-        return true;
-      }
-      if (entry.viewType !== MARKDOWN_ASSOCIATION_VIEW) {
-        return true;
-      }
-      removedPatterns.add(match);
-      return false;
-    });
-    return {
-      updated: removedPatterns.size > 0,
-      value: nextEntries,
-      removedPatterns: [...removedPatterns],
-    };
-  }
-
-  if (current && typeof current === 'object') {
-    const record = current as EditorAssociationRecord;
-    const removedPatterns: string[] = [];
-    const nextRecord: Record<string, string> = { ...record };
-    for (const pattern of patterns) {
-      if (nextRecord[pattern] === MARKDOWN_ASSOCIATION_VIEW) {
-        delete nextRecord[pattern];
-        removedPatterns.push(pattern);
-      }
-      const nestedPattern = `**/${pattern}`;
-      if (nextRecord[nestedPattern] === MARKDOWN_ASSOCIATION_VIEW) {
-        delete nextRecord[nestedPattern];
-        removedPatterns.push(pattern);
-      }
-    }
-    return {
-      updated: removedPatterns.length > 0,
-      value: nextRecord,
-      removedPatterns,
-    };
-  }
-
-  return {
-    updated: false,
-    value: {},
-    removedPatterns: [],
-  };
-};
-
-const isAssociationsEmpty = (value: EditorAssociations): boolean => {
-  if (Array.isArray(value)) {
-    return value.length === 0;
-  }
-  return Object.keys(value).length === 0;
-};
-
-const syncMarkdownAssociations = async (
-  context: vscode.ExtensionContext,
-  configService: ConfigService,
-  logger: Logger,
-): Promise<void> => {
-  const hasWorkspace =
-    (vscode.workspace.workspaceFolders?.length ?? 0) > 0 ||
-    vscode.workspace.workspaceFile !== undefined;
-  if (!hasWorkspace) {
-    return;
-  }
-
-  const config = configService.getConfig();
-  const shouldSet = config.editorAssociations;
-  const state = context.workspaceState.get<AssociationState | undefined>(
-    MARKDOWN_ASSOCIATION_STATE_KEY,
-  );
-
-  try {
-    const workbenchConfig = vscode.workspace.getConfiguration('workbench');
-    const current = workbenchConfig.get<unknown>('editorAssociations');
-
-    if (!shouldSet) {
-      if (!state?.patterns?.length) {
-        return;
-      }
-      const { updated, value } = removeMarkdownAssociation(current, state.patterns);
-      if (!updated) {
-        return;
-      }
-      await workbenchConfig.update(
-        'editorAssociations',
-        isAssociationsEmpty(value) ? undefined : value,
-        vscode.ConfigurationTarget.Workspace,
-      );
-      await context.workspaceState.update(MARKDOWN_ASSOCIATION_STATE_KEY, void 0);
-      logger.info(t('Removed workspace editor association for Muninn markdown editor.'));
-      return;
-    }
-
-    const { updated, value, addedPatterns } = addMarkdownAssociation(current);
-    if (!updated) {
-      return;
-    }
-    await workbenchConfig.update('editorAssociations', value, vscode.ConfigurationTarget.Workspace);
-    if (addedPatterns.length > 0) {
-      await context.workspaceState.update(MARKDOWN_ASSOCIATION_STATE_KEY, {
-        patterns: addedPatterns,
-      });
-    }
-    logger.info(t('Set workspace editor association for Muninn markdown editor.'));
-  } catch (error) {
-    logger.warn(t('Failed to update workspace editor association for Muninn markdown editor.'));
-    logger.error(t('Editor association update error.'), error);
-  }
 };
 
 const getActiveMarkdownResource = (): vscode.Uri | undefined => {
@@ -268,19 +55,19 @@ const registerCommands = (
   entries.map((entry) => vscode.commands.registerCommand(entry.id, entry.run));
 
 export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel(t('Muninn for VS Code'));
-  const logger = new Logger(outputChannel);
+  const outputChannel = vscode.window.createOutputChannel(t('Muninn for VS Code'), { log: true });
   const configService = new ConfigService();
   const customEditorProvider = new MuninnCustomEditorProvider(
     context.extensionUri,
     configService,
-    logger,
+    outputChannel,
   );
 
   const logConfigInspection = (resource?: vscode.Uri): void => {
     const inspection = configService.inspect(resource);
     outputChannel.clear();
     outputChannel.appendLine(t('Muninn for VS Code configuration'));
+    outputChannel.appendLine(t('Workspace trusted: {0}', String(vscode.workspace.isTrusted)));
     outputChannel.appendLine(t('Resource: {0}', resource?.toString() ?? 'global'));
     outputChannel.appendLine(
       t('integrations.mermaid.enabled: {0}', formatInspectValue(inspection.mermaidEnabled)),
@@ -332,6 +119,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const editorCommandEntries: ReadonlyArray<Readonly<{ id: string; command: ViewEditorCommand }>> =
     [
+      { id: 'muninn.undo', command: 'undo' },
+      { id: 'muninn.redo', command: 'redo' },
+      { id: 'muninn.toggleTask', command: 'toggleTask' },
+      { id: 'muninn.toggleStrike', command: 'toggleStrike' },
       { id: 'muninn.toggleBold', command: 'toggleBold' },
       { id: 'muninn.toggleItalic', command: 'toggleItalic' },
       { id: 'muninn.setHeading1', command: 'setHeading1' },
@@ -348,6 +139,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ];
 
   const commandDisposables = registerCommands([
+    { id: 'muninn.newNote', run: createMarkdownNote },
+    { id: 'muninn.goToHeading', run: () => customEditorProvider.goToHeadingInActiveEditor() },
+    { id: 'muninn.insertFileLink', run: () => customEditorProvider.insertFileLinkInActiveEditor() },
     {
       id: 'muninn.inspectConfiguration',
       run: () => {
@@ -395,6 +189,7 @@ export function activate(context: vscode.ExtensionContext): void {
       {
         webviewOptions: {
           retainContextWhenHidden: true,
+          enableFindWidget: true,
         },
         supportsMultipleEditorsPerDocument: false,
       },
@@ -403,31 +198,13 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!event.affectsConfiguration('muninn')) {
         return;
       }
-      configService.clearCache();
-      logger.info(t('Muninn configuration cache cleared after settings change.'));
-      void syncMarkdownAssociations(context, configService, logger);
       void customEditorProvider.notifyConfigurationChanged();
     }),
     ...commandDisposables,
   ];
 
   context.subscriptions.push(...disposables);
-  void syncMarkdownAssociations(context, configService, logger);
-  logger.info(t('Muninn custom markdown editor activated.'));
+  outputChannel.info(t('Muninn custom markdown editor activated.'));
 }
 
-export function deactivate(): void {
-  // No-op.
-}
-
-export const __testing = {
-  formatInspectValue,
-  matchesAssociationPattern,
-  addMarkdownAssociation,
-  removeMarkdownAssociation,
-  isAssociationsEmpty,
-  syncMarkdownAssociations,
-  MARKDOWN_ASSOCIATION_PATTERNS,
-  MARKDOWN_ASSOCIATION_VIEW,
-  MARKDOWN_ASSOCIATION_STATE_KEY,
-};
+export const __testing = { formatInspectValue };

@@ -4,9 +4,18 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to rehearse (vMAJOR.MINOR.PATCH); no registry publish or GitHub release'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   release:
@@ -18,8 +27,30 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
+
+      - name: Validate pre-release tag and manifest
+        run: |
+          node <<'NODE'
+          const { version } = require('./package.json');
+          const tag = process.env.TAG_NAME || '';
+          if (!/^v\d+\.\d+\.\d+$/.test(tag) || tag !== `v${version}`) {
+            throw new Error(`Release tag ${tag || '<empty>'} must match package version v${version}`);
+          }
+          if (Number(version.split('.')[1]) % 2 !== 1) {
+            throw new Error('This workflow packages pre-releases; stable promotion needs a deliberate workflow change');
+          }
+          NODE
+
+      - name: Validate publishing tokens
+        if: github.event_name == 'push'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          test -n "$VSCE_PAT" || { echo 'Missing VSCE_PAT repository secret' >&2; exit 1; }
+          test -n "$OVSX_PAT" || { echo 'Missing OVSX_PAT repository secret' >&2; exit 1; }
 
       - name: Install dependencies
         run: npm ci
@@ -56,14 +87,20 @@ jobs:
       - name: Package VSIX
         run: npm run package
 
-      - name: Publish to VS Code Marketplace
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: node scripts/vsce-wrapper.js publish --pat "$VSCE_PAT"
+      - name: Test exact packaged extension
+        run: xvfb-run -a npm run test:e2e
+
+      - name: Locate packaged VSIX
+        run: |
+          shopt -s nullglob
+          vsix_files=(muninn-vscode-*.vsix)
+          if [ "${#vsix_files[@]}" -ne 1 ]; then
+            echo "Expected one packaged VSIX, found ${#vsix_files[@]}" >&2
+            exit 1
+          fi
+          echo "VSIX_PATH=${vsix_files[0]}" >> "$GITHUB_ENV"
 
       - name: Extract release notes from CHANGELOG
-        env:
-          TAG_NAME: ${{ github.ref_name }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -93,10 +130,20 @@ jobs:
           fs.writeFileSync('release-notes.md', `${body}\n`);
           NODE
 
+      - name: Publish to VS Code Marketplace
+        if: github.event_name == 'push'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: node scripts/vsce-wrapper.js publish --pre-release --packagePath "$VSIX_PATH" --pat "$VSCE_PAT"
+
+      - name: Publish to Open VSX
+        if: github.event_name == 'push'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --no-install ovsx publish --packagePath "$VSIX_PATH" --pre-release
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: Muninn for VS Code ${{ github.ref_name }}
-          body_path: release-notes.md
-          files: |
-            muninn-vscode-*.vsix
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG_NAME" "$VSIX_PATH" --title "Muninn for VS Code $TAG_NAME" --notes-file release-notes.md --prerelease

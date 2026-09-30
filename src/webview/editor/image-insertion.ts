@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { NodeType } from 'prosemirror-model';
 import type { EditorState, Transaction } from 'prosemirror-state';
 import { TextSelection } from 'prosemirror-state';
@@ -15,7 +18,9 @@ export const createImageInsertionTransaction = (
   const insertAt = state.selection.from;
   const imageNode = imageNodeType.create({
     src: source,
-    alt: getImageAltTextFromSelection(state),
+    // The Markdown parser represents an empty alt attribute as null. Match that
+    // shape so source-backed edits pass the exact-AST fidelity check.
+    alt: getImageAltTextFromSelection(state) || undefined,
   });
   const transaction = state.tr.replaceSelectionWith(imageNode, false);
   const nextPosition = Math.min(transaction.doc.content.size, insertAt + imageNode.nodeSize);

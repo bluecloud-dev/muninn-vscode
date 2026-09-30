@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { ContentWidthSetting } from '../types/config';
 
 export type DocumentRevision = number;
@@ -6,6 +9,10 @@ export type ImageInsertKind = 'paste' | 'drop';
 export type ImageUriMap = Record<string, string>;
 
 export type ViewEditorCommand =
+  | 'undo'
+  | 'redo'
+  | 'toggleTask'
+  | 'toggleStrike'
   | 'toggleBold'
   | 'toggleItalic'
   | 'setHeading1'
@@ -22,6 +29,19 @@ export type ViewEditorCommand =
   | 'addTableColumn';
 
 export type HostToViewMessage =
+  | { type: 'host.revealAnchor'; payload: { anchor: string } }
+  | {
+      type: 'host.applyResult';
+      payload: SerializedMarkdownPayload & {
+        operationId: number;
+        ok: boolean;
+        imageSources: ImageUriMap;
+      };
+    }
+  | { type: 'host.requestFlush'; payload: { requestId: number } }
+  | { type: 'host.linkInputCanceled' }
+  | { type: 'host.draftRecovered'; payload: SerializedMarkdownPayload }
+  | { type: 'host.revealHeading'; payload: { index: number } }
   | {
       type: 'host.init';
       payload: SerializedMarkdownPayload & {
@@ -62,6 +82,7 @@ export type HostToViewMessage =
   | {
       type: 'host.imageInserted';
       payload: {
+        requestId: number;
         path: string;
         webviewUri: string;
         filename: string;
@@ -82,17 +103,18 @@ export type HostToViewMessage =
     };
 
 export type ViewToHostMessage =
+  | { type: 'view.tableDraft'; payload: { key: string; markdown?: string } }
   | {
       type: 'view.ready';
     }
   | {
       type: 'view.applyDocument';
-      payload: SerializedMarkdownPayload;
+      payload: SerializedMarkdownPayload & { operationId: number };
     }
   | {
       type: 'view.executeCommand';
       payload: {
-        command: 'openRawMarkdown';
+        command: 'openRawMarkdown' | 'save' | 'insertImage' | 'insertFileLink' | 'goToHeading';
       };
     }
   | {
@@ -109,7 +131,12 @@ export type ViewToHostMessage =
         mime?: string;
         bytesBase64: string;
       };
-    };
+    }
+  | { type: 'view.imageInsertResult'; payload: { requestId: number; ok: boolean } }
+  | { type: 'view.flushComplete'; payload: { requestId: number; ok: boolean } }
+  | { type: 'view.draft'; payload: { markdown: string; baseMarkdown: string } }
+  | { type: 'view.recoverDraft'; payload: { markdown: string } }
+  | { type: 'view.openLink'; payload: { href: string } };
 
 export type SerializedMarkdownPayload = {
   markdown: string;
@@ -120,6 +147,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const isString = (value: unknown): value is string => typeof value === 'string';
+const isRevision = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const isImageUriMap = (value: unknown): value is ImageUriMap => {
   if (!isObject(value)) {
     return false;
@@ -133,14 +162,14 @@ const isSerializedMarkdownPayload = (value: unknown): value is SerializedMarkdow
     return false;
   }
 
-  return (
-    isString(value.markdown) &&
-    typeof value.revision === 'number' &&
-    Number.isFinite(value.revision)
-  );
+  return isString(value.markdown) && isRevision(value.revision);
 };
 
 const isViewEditorCommand = (value: unknown): value is ViewEditorCommand =>
+  value === 'undo' ||
+  value === 'redo' ||
+  value === 'toggleTask' ||
+  value === 'toggleStrike' ||
   value === 'toggleBold' ||
   value === 'toggleItalic' ||
   value === 'setHeading1' ||
@@ -169,16 +198,49 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
     return false;
   }
 
+  if (value.type === 'view.tableDraft')
+    return (
+      isObject(value.payload) &&
+      isString(value.payload.key) &&
+      (value.payload.markdown === undefined || isString(value.payload.markdown))
+    );
+
   if (value.type === 'view.ready') {
     return true;
   }
 
   if (value.type === 'view.applyDocument') {
-    return isSerializedMarkdownPayload(value.payload);
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.operationId) &&
+      isSerializedMarkdownPayload(value.payload)
+    );
   }
 
+  if (value.type === 'view.flushComplete')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
+      typeof value.payload.ok === 'boolean'
+    );
+  if (value.type === 'view.draft')
+    return (
+      isObject(value.payload) &&
+      isString(value.payload.markdown) &&
+      isString(value.payload.baseMarkdown)
+    );
+  if (value.type === 'view.recoverDraft')
+    return isObject(value.payload) && isString(value.payload.markdown);
+  if (value.type === 'view.openLink')
+    return isObject(value.payload) && isString(value.payload.href);
+
   if (value.type === 'view.executeCommand') {
-    return isObject(value.payload) && value.payload.command === 'openRawMarkdown';
+    return (
+      isObject(value.payload) &&
+      ['openRawMarkdown', 'save', 'insertImage', 'insertFileLink', 'goToHeading'].includes(
+        value.payload.command as string,
+      )
+    );
   }
 
   if (value.type === 'view.requestLinkInput') {
@@ -198,6 +260,13 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
     );
   }
 
+  if (value.type === 'view.imageInsertResult')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
+      typeof value.payload.ok === 'boolean'
+    );
+
   return false;
 };
 
@@ -205,6 +274,23 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (!isObject(value) || !isString(value.type)) {
     return false;
   }
+
+  if (value.type === 'host.revealAnchor')
+    return isObject(value.payload) && isString(value.payload.anchor);
+  if (value.type === 'host.linkInputCanceled') return true;
+  if (value.type === 'host.requestFlush')
+    return isObject(value.payload) && isRevision(value.payload.requestId);
+  if (value.type === 'host.revealHeading')
+    return isObject(value.payload) && isRevision(value.payload.index);
+  if (value.type === 'host.draftRecovered') return isSerializedMarkdownPayload(value.payload);
+  if (value.type === 'host.applyResult')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.operationId) &&
+      typeof value.payload.ok === 'boolean' &&
+      isImageUriMap(value.payload.imageSources) &&
+      isSerializedMarkdownPayload(value.payload)
+    );
 
   if (value.type === 'host.init') {
     const payload = value.payload;
@@ -252,6 +338,7 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (value.type === 'host.imageInserted') {
     return (
       isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
       isString(value.payload.path) &&
       isString(value.payload.webviewUri) &&
       isString(value.payload.filename)
