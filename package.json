@@ -540,7 +540,7 @@
   },
   "dependencies": {
     "diff": "^8.0.4",
-    "markdown-it": "^14.3.0",
+    "markdown-it": "^14.3.2",
     "markdown-it-front-matter": "^0.2.4",
     "mermaid": "^11.16.1",
     "prosemirror-commands": "^1.7.2",
