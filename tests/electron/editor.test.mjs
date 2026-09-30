@@ -88,33 +88,49 @@ async function command(label) {
   await page.getByText(label, { exact: true }).first().waitFor();
   await page.keyboard.press('Enter');
 }
+async function visibleEditorFrame(name) {
+  for (const frame of page.frames()) {
+    try {
+      const prose = frame.locator('.ProseMirror');
+      if ((await prose.isVisible()) && (await prose.getAttribute('aria-label'))?.includes(name)) {
+        return frame;
+      }
+    } catch {
+      /* VS Code can replace a webview frame while opening or updating a file. */
+    }
+  }
+  return undefined;
+}
 async function open(name, source) {
   const file = path.join(workspace, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, source);
   await page.keyboard.press(`${modifier}+P`);
   await page.locator('.quick-input-widget input[type="text"]').fill(file);
-  await page.locator('.quick-input-list .monaco-list-row').first().waitFor();
-  await page.keyboard.press('Enter');
+  await page
+    .locator('.quick-input-list .monaco-list-row')
+    .filter({ hasText: name })
+    .first()
+    .click();
   let editor;
   await eventually(async () => {
-    for (const frame of page.frames()) {
-      try {
-        const prose = frame.locator('.ProseMirror');
-        if ((await prose.isVisible()) && (await prose.getAttribute('aria-label'))?.includes(name)) {
-          editor = frame;
-          return true;
-        }
-      } catch {
-        /* A replaced webview frame is expected while opening a file. */
-      }
-    }
-    return false;
+    editor = await visibleEditorFrame(name);
+    return Boolean(editor);
   }, 'Default Markdown editor did not open ' + name);
   return { editor, file };
 }
 async function save(editor, file, expected) {
-  await editor.locator('.ProseMirror').press(`${modifier}+s`);
+  let currentEditor = editor;
+  await eventually(async () => {
+    try {
+      await currentEditor.locator('.ProseMirror').press(`${modifier}+s`, { timeout: 3000 });
+      return true;
+    } catch (error) {
+      if (!/frame was detached/i.test(String(error))) throw error;
+      currentEditor = (await visibleEditorFrame(path.basename(file))) ?? currentEditor;
+      return false;
+    }
+  }, 'Markdown editor frame was replaced before save');
   try {
     await eventually(
       () => fs.readFileSync(file, 'utf8') === expected,
