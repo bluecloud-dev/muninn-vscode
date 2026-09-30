@@ -1,37 +1,29 @@
-import type {
-  HostToViewMessage,
-  ImageUriMap,
-  ToolbarMode,
-  ViewEditorCommand,
-} from '../../custom-editor/protocol';
-import type { ContentWidthSetting } from '../../types/config';
-import { isHostToViewMessage } from '../../custom-editor/protocol';
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
 
+import {
+  isHostToViewMessage,
+  type HostToViewMessage,
+  type ViewEditorCommand,
+} from '../../custom-editor/protocol';
+
+type Payload<T extends HostToViewMessage['type']> =
+  Extract<HostToViewMessage, { type: T }> extends { payload: infer P } ? P : never;
 type HostMessageHandlers = {
-  onInit: (payload: {
-    fileName: string;
-    markdown: string;
-    revision: number;
-    mermaidEnabled: boolean;
-    toolbarMode: ToolbarMode;
-    contentWidth: ContentWidthSetting;
-    imageSources: ImageUriMap;
-  }) => void;
-  onDocumentChanged: (payload: {
-    markdown: string;
-    revision: number;
-    imageSources: ImageUriMap;
-  }) => void;
+  onRevealAnchor: (payload: { anchor: string }) => void;
+  onInit: (payload: Payload<'host.init'>) => void;
+  onDocumentChanged: (payload: Payload<'host.documentChanged'>) => void;
+  onApplyResult: (payload: Payload<'host.applyResult'>) => void;
+  onRequestFlush: (payload: Payload<'host.requestFlush'>) => void;
+  onDraftRecovered: (payload: Payload<'host.draftRecovered'>) => void;
+  onLinkInputCanceled: () => void;
+  onRevealHeading: (payload: Payload<'host.revealHeading'>) => void;
   onExecuteCommand: (command: ViewEditorCommand) => void;
-  onSettingsChanged: (payload: {
-    mermaidEnabled: boolean;
-    toolbarMode: ToolbarMode;
-    contentWidth: ContentWidthSetting;
-  }) => void;
-  onInsertLink: (payload: { href: string; text?: string }) => void;
-  onImageInserted: (payload: { path: string; webviewUri: string; filename: string }) => void;
-  onImageRejected: (payload: { reason: string }) => void;
-  onError: (payload: { code: 'revision_mismatch' | 'apply_failed'; message: string }) => void;
+  onSettingsChanged: (payload: Payload<'host.settingsChanged'>) => void;
+  onInsertLink: (payload: Payload<'host.insertLink'>) => void;
+  onImageInserted: (payload: Payload<'host.imageInserted'>) => void;
+  onImageRejected: (payload: Payload<'host.imageRejected'>) => void;
+  onError: (payload: Payload<'host.error'>) => void;
 };
 
 export const dispatchHostMessage = (
@@ -39,12 +31,36 @@ export const dispatchHostMessage = (
   handlers: HostMessageHandlers,
 ): void => {
   switch (message.type) {
+    case 'host.revealAnchor': {
+      handlers.onRevealAnchor(message.payload);
+      break;
+    }
     case 'host.init': {
       handlers.onInit(message.payload);
       return;
     }
     case 'host.documentChanged': {
       handlers.onDocumentChanged(message.payload);
+      return;
+    }
+    case 'host.applyResult': {
+      handlers.onApplyResult(message.payload);
+      return;
+    }
+    case 'host.requestFlush': {
+      handlers.onRequestFlush(message.payload);
+      return;
+    }
+    case 'host.draftRecovered': {
+      handlers.onDraftRecovered(message.payload);
+      return;
+    }
+    case 'host.linkInputCanceled': {
+      handlers.onLinkInputCanceled();
+      return;
+    }
+    case 'host.revealHeading': {
+      handlers.onRevealHeading(message.payload);
       return;
     }
     case 'host.executeCommand': {
@@ -71,22 +87,13 @@ export const dispatchHostMessage = (
       handlers.onError(message.payload);
       return;
     }
-    default: {
-      return;
-    }
   }
 };
 
 export const attachHostMessageListener = (handlers: HostMessageHandlers): (() => void) => {
   const listener = (event: MessageEvent<unknown>): void => {
-    if (!isHostToViewMessage(event.data)) {
-      return;
-    }
-    dispatchHostMessage(event.data, handlers);
+    if (isHostToViewMessage(event.data)) dispatchHostMessage(event.data, handlers);
   };
-
   window.addEventListener('message', listener);
-  return () => {
-    window.removeEventListener('message', listener);
-  };
+  return () => window.removeEventListener('message', listener);
 };

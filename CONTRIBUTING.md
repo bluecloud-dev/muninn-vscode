@@ -1,29 +1,5 @@
 # Contributing
 
-Thanks for your interest in contributing to Muninn for VS Code!
+Human and AI contributors use the same current guidance in [docs/README.md](docs/README.md). Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workflow and contribution rules, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system boundaries, and [docs/TESTING.md](docs/TESTING.md) for verification. Editor changes also require [docs/ROUNDTRIP_CONTRACT.md](docs/ROUNDTRIP_CONTRACT.md).
 
-## Ways to Help
-
-- Report bugs or request features via GitHub issues.
-- Improve documentation and examples.
-- Submit pull requests for fixes or enhancements.
-
-## Development Workflow
-
-1. Fork and clone the repository.
-2. Install dependencies:
-   ```sh
-   npm ci
-   ```
-3. Run tests and linting:
-   ```sh
-   npm test
-   npm run lint
-   ```
-4. Open the project in VS Code and press `F5` to start the Extension Development Host.
-
-## Pull Requests
-
-- Keep changes focused and include tests where applicable.
-- Update documentation when behavior changes.
-- Ensure `npm test` and `npm run lint` pass before submitting.
+Check the [live issues](https://github.com/bluecloud-dev/muninn-vscode/issues) for task status. This root file is an entrypoint, not a second policy source.

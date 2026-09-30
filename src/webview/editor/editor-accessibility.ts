@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { formatString, getString } from './localization';
 
 export const getEditorAriaLabel = (fileName: string): string => {

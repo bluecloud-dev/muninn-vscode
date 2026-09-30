@@ -7,7 +7,6 @@ import {
   isViewToHostMessage,
 } from '../../src/custom-editor/protocol';
 import type { ConfigService } from '../../src/services/config-service';
-import type { Logger } from '../../src/services/logger';
 
 let expect: Chai.ExpectStatic;
 
@@ -85,11 +84,11 @@ const createConfigService = (): ConfigService =>
     getImageDestination: () => 'images/',
   }) as unknown as ConfigService;
 
-const createLogger = (): Logger =>
+const createLogger = (): vscode.LogOutputChannel =>
   ({
     warn: sinon.stub(),
     error: sinon.stub(),
-  }) as unknown as Logger;
+  }) as unknown as vscode.LogOutputChannel;
 
 describe('custom editor init protocol', () => {
   it('includes the document file name in the host init payload', async () => {
@@ -118,7 +117,7 @@ describe('custom editor protocol guards', () => {
     expect(
       isViewToHostMessage({
         type: 'view.applyDocument',
-        payload: { markdown: '# title', revision: 3 },
+        payload: { markdown: '# title', revision: 3, operationId: 1 },
       }),
     ).to.equal(true);
     expect(
@@ -137,6 +136,12 @@ describe('custom editor protocol guards', () => {
       isViewToHostMessage({
         type: 'view.requestImageInsert',
         payload: { kind: 'paste', name: 'clip.png', mime: 'image/png', bytesBase64: 'aGVsbG8=' },
+      }),
+    ).to.equal(true);
+    expect(
+      isViewToHostMessage({
+        type: 'view.imageInsertResult',
+        payload: { requestId: 1, ok: false },
       }),
     ).to.equal(true);
     expect(
@@ -160,6 +165,12 @@ describe('custom editor protocol guards', () => {
       isViewToHostMessage({
         type: 'view.requestImageInsert',
         payload: { kind: 'command', bytesBase64: 'aGVsbG8=' },
+      }),
+    ).to.equal(false);
+    expect(
+      isViewToHostMessage({
+        type: 'view.imageInsertResult',
+        payload: { requestId: -1, ok: 'false' },
       }),
     ).to.equal(false);
   });
@@ -201,6 +212,7 @@ describe('custom editor protocol guards', () => {
       isHostToViewMessage({
         type: 'host.imageInserted',
         payload: {
+          requestId: 1,
           path: 'images/screenshot.png',
           webviewUri: 'vscode-webview://view/images/screenshot.png',
           filename: 'screenshot.png',

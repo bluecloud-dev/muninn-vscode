@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import path from 'node:path';
 import * as vscode from 'vscode';
 
@@ -113,10 +116,7 @@ export const normalizeImageDestination = (destination: string | undefined): stri
 export const getImageDestinationDirectory = (
   documentUri: vscode.Uri,
   destination: string | undefined,
-): vscode.Uri =>
-  vscode.Uri.file(
-    path.resolve(path.dirname(documentUri.fsPath), normalizeImageDestination(destination)),
-  );
+): vscode.Uri => vscode.Uri.joinPath(documentUri, '..', normalizeImageDestination(destination));
 
 const encodeMarkdownImagePath = (sourcePath: string): string =>
   sourcePath
@@ -136,8 +136,12 @@ const decodeMarkdownImagePath = (source: string): string | undefined => {
 };
 
 export const getMarkdownImagePath = (documentUri: vscode.Uri, imageUri: vscode.Uri): string => {
-  const relativePath = path.relative(path.dirname(documentUri.fsPath), imageUri.fsPath);
-  return encodeMarkdownImagePath(relativePath.split(path.sep).join('/'));
+  if (documentUri.scheme !== imageUri.scheme || documentUri.authority !== imageUri.authority) {
+    throw new Error('Linked files must use the same file-system provider.');
+  }
+  return encodeMarkdownImagePath(
+    path.posix.relative(path.posix.dirname(documentUri.path), imageUri.path),
+  );
 };
 
 export const isRemoteOrDataImageSource = (source: string): boolean =>
@@ -147,7 +151,7 @@ export const resolveMarkdownImageUri = (
   documentUri: vscode.Uri,
   source: string,
 ): vscode.Uri | undefined => {
-  if (documentUri.scheme !== 'file' || isRemoteOrDataImageSource(source)) {
+  if (documentUri.scheme === 'untitled' || isRemoteOrDataImageSource(source)) {
     return undefined;
   }
 
@@ -156,5 +160,5 @@ export const resolveMarkdownImageUri = (
     return undefined;
   }
 
-  return vscode.Uri.file(path.resolve(path.dirname(documentUri.fsPath), decodedSource));
+  return vscode.Uri.joinPath(documentUri, '..', decodedSource);
 };

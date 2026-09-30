@@ -1,6 +1,6 @@
 :root {
   color-scheme: light dark;
-  font-size: 13px;
+  font-size: var(--vscode-font-size, 13px);
 }
 
 * {
@@ -24,40 +24,6 @@ body {
   flex-direction: column;
   width: 100%;
   height: 100%;
-}
-
-.muninn-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--vscode-editorGroup-border);
-  background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
-  color: var(--vscode-sideBar-foreground, var(--vscode-editor-foreground));
-}
-
-.muninn-editor-identity {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.muninn-editor-identity strong {
-  color: var(--vscode-sideBarTitle-foreground, var(--vscode-editor-foreground));
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.muninn-editor-identity span,
-.muninn-editor-help {
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-}
-
-.muninn-editor-help {
-  text-align: right;
 }
 
 .muninn-toolbar {
@@ -502,3 +468,27 @@ body {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+/* Preserve Markdown soft line breaks and inherit the workbench reading preferences. */
+.ProseMirror {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--vscode-editor-font-size, 14px);
+  line-height: 1.65;
+}
+.ProseMirror a {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+.ProseMirror a:hover { color: var(--vscode-textLink-activeForeground); }
+.ProseMirror :is(h1,h2,h3,h4,h5,h6):focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 4px;
+}
+.muninn-table-node-cell { text-align: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+.muninn-task-marker { display: inline-block; width: 0; overflow: hidden; font-size: 0; }
+.muninn-task-checkbox { margin-inline: 0 0.4em; accent-color: var(--vscode-checkbox-foreground); }

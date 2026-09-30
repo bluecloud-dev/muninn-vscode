@@ -1,87 +1,7 @@
-import { renderMermaidDiagram } from './renderers/mermaid-renderer';
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { escapeHtml, formatString, getString } from './localization';
-import type { Announce } from './announcements';
-
-type MermaidPreviewOptions = {
-  panel: HTMLElement;
-  body: HTMLDivElement;
-  getSelectedMermaidSource: () => string | undefined;
-  announce: Announce;
-  renderDelayMs: number;
-};
-
-export class MermaidPreviewController {
-  private enabled = false;
-  private renderSerial = 0;
-  private renderTimer: ReturnType<typeof setTimeout> | undefined;
-
-  constructor(private readonly options: MermaidPreviewOptions) {}
-
-  setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-  }
-
-  scheduleRender(): void {
-    if (this.renderTimer) {
-      return;
-    }
-
-    this.renderTimer = setTimeout(() => {
-      this.renderTimer = undefined;
-      this.renderSerial += 1;
-      void this.render();
-    }, this.options.renderDelayMs);
-  }
-
-  dispose(): void {
-    if (!this.renderTimer) {
-      return;
-    }
-    clearTimeout(this.renderTimer);
-    this.renderTimer = undefined;
-  }
-
-  private async render(): Promise<void> {
-    const source = this.options.getSelectedMermaidSource();
-    if (!source) {
-      this.setPanelHidden(true);
-      this.options.body.innerHTML = '';
-      return;
-    }
-
-    this.setPanelHidden(false);
-    if (!this.enabled) {
-      this.options.body.textContent = getString('mermaidDisabledMessage');
-      return;
-    }
-
-    const serialAtStart = this.renderSerial;
-    const renderId = `muninn-mermaid-${Date.now()}`;
-    const result = await renderMermaidDiagram(source, renderId);
-    if (serialAtStart !== this.renderSerial) {
-      return;
-    }
-
-    if (!result.ok) {
-      this.options.body.innerHTML = `<div class="muninn-mermaid-error">${escapeHtml(result.error)}</div>`;
-      return;
-    }
-
-    this.options.body.innerHTML = sanitizeMermaidSvg(result.svg, source);
-  }
-
-  private setPanelHidden(hidden: boolean): void {
-    if (this.options.panel.hidden === hidden) {
-      return;
-    }
-
-    this.options.panel.hidden = hidden;
-    this.options.announce(
-      hidden ? getString('statusMermaidPreviewHidden') : getString('statusMermaidPreviewShown'),
-      { kind: 'status' },
-    );
-  }
-}
 
 const stripMermaidLabelQuotes = (label: string): string =>
   label
@@ -217,18 +137,20 @@ const convertForeignObjectLabel = (foreignObject: Element): void => {
 };
 
 export const applyDiagramA11y = (svgElement: SVGElement, source: string): void => {
-  for (const node of svgElement.querySelectorAll('desc,title')) {
-    node.remove();
-  }
-
-  svgElement.removeAttribute('aria-describedby');
-  for (const element of svgElement.querySelectorAll('[aria-describedby]')) {
-    element.removeAttribute('aria-describedby');
-  }
-
-  const label = getMermaidDiagramAccessibleLabel(source);
+  const existingTitle = svgElement.querySelector('title');
+  const existingDescription = svgElement.querySelector('desc');
+  const label = existingTitle?.textContent?.trim() || getMermaidDiagramAccessibleLabel(source);
   svgElement.setAttribute('role', 'img');
   svgElement.setAttribute('aria-label', label);
+  if (existingDescription?.textContent?.trim()) {
+    const id =
+      existingDescription.getAttribute('id') || `muninn-diagram-description-${crypto.randomUUID()}`;
+    existingDescription.setAttribute('id', id);
+    svgElement.setAttribute('aria-describedby', id);
+  } else {
+    svgElement.removeAttribute('aria-describedby');
+  }
+  if (existingTitle) return;
 
   const ownerDocument =
     svgElement.ownerDocument ?? (typeof document === 'undefined' ? undefined : document);
@@ -260,18 +182,17 @@ export const sanitizeMermaidSvg = (
     node.remove();
   }
 
-  for (const element of svgElement.querySelectorAll('*')) {
-    for (const attribute of element.attributes) {
+  for (const element of [svgElement, ...svgElement.querySelectorAll('*')]) {
+    // NamedNodeMap is live; snapshot before removing attributes.
+    const attributes = [...element.attributes];
+    for (const attribute of attributes) {
       const name = attribute.name.toLowerCase();
       const value = attribute.value.trim().toLowerCase();
       if (name.startsWith('on')) {
         element.removeAttribute(attribute.name);
         continue;
       }
-      if (
-        (name === 'href' || name === 'xlink:href') &&
-        (value.startsWith('javascript:') || value.startsWith('data:text/html'))
-      ) {
+      if ((name === 'href' || name === 'xlink:href') && !value.startsWith('#')) {
         element.removeAttribute(attribute.name);
       }
     }

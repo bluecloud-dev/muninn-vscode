@@ -5,6 +5,7 @@ import {
 } from '../../src/webview/editor/image-insertion';
 import {
   markdownParser,
+  parseHostMarkdown,
   schema,
   serializeToHostMarkdown,
 } from '../../src/webview/editor/markdown-codec';
@@ -16,8 +17,27 @@ before(async () => {
 });
 
 describe('webview image insertion helpers', () => {
+  it('inserts an image into a source-backed document without changing surrounding Markdown', () => {
+    const source = 'Alpha\n\n+ _untouched_\n';
+    const documentNode = parseHostMarkdown(source);
+    const state = EditorState.create({
+      doc: documentNode,
+      selection: TextSelection.create(documentNode, 6),
+    });
+
+    const transaction = createImageInsertionTransaction(
+      state,
+      schema.nodes.image,
+      'images/icon.png',
+    );
+
+    expect(serializeToHostMarkdown(transaction.doc)).to.equal(
+      'Alpha![](images/icon.png)\n\n+ _untouched_\n',
+    );
+  });
+
   it('uses selected text as alt text and serializes markdown image syntax', () => {
-    const documentNode = markdownParser.parse('A screenshot appears here.');
+    const documentNode = parseHostMarkdown('A screenshot appears here.');
     const selectedFrom = 3;
     const selectedTo = 'A screenshot'.length + 1;
     const state = EditorState.create({

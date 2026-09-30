@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import type { NodeView, NodeViewConstructor } from 'prosemirror-view';
 import { getString } from '../localization';

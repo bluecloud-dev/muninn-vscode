@@ -30,14 +30,14 @@ This is a breaking migration. There is no compatibility shim.
 
 Only these settings are currently shipped by v2:
 
-| Old Setting                                                      | New Setting                                              |
-| ---------------------------------------------------------------- | -------------------------------------------------------- |
-| `markdownReader.editorAssociations`                              | `muninn.editorAssociations`                              |
-| `markdownReader.integrations.mermaid.enabled`                    | `muninn.integrations.mermaid.enabled`                    |
-| `markdownReader.integrations.mermaid.allowInUntrustedWorkspaces` | `muninn.integrations.mermaid.allowInUntrustedWorkspaces` |
-| `markdownReader.toolbar.mode`                                    | `muninn.toolbar.mode`                                    |
+| Old Setting                                                      | New Setting                                                                             |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `markdownReader.editorAssociations`                              | No active replacement; use VS Code's **Reopen Editor With… → Configure default editor** |
+| `markdownReader.integrations.mermaid.enabled`                    | `muninn.integrations.mermaid.enabled`                                                   |
+| `markdownReader.integrations.mermaid.allowInUntrustedWorkspaces` | `muninn.integrations.mermaid.allowInUntrustedWorkspaces`                                |
+| `markdownReader.toolbar.mode`                                    | `muninn.toolbar.mode`                                                                   |
 
-If your workspace relied on legacy settings that are not listed above, remove them or keep them as comments until equivalent features are reintroduced.
+`muninn.editorAssociations` remains a deprecated, inert setting solely to explain the migration. Do not enable it or write `workbench.editorAssociations` automatically. If your workspace relied on legacy settings that are not listed above, remove them or keep them as comments until equivalent features are introduced.
 
 ## Command Mapping
 
@@ -60,6 +60,13 @@ The v2 command surface is editor-centric. Use these command IDs:
 - `muninn.addTableColumn`
 - `muninn.tableActions`
 - `muninn.inspectConfiguration`
+- `muninn.newNote`
+- `muninn.goToHeading`
+- `muninn.insertFileLink`
+- `muninn.insertImage`
+- `muninn.toggleTask`
+- `muninn.toggleStrike`
+- `muninn.undo` / `muninn.redo`
 
 ## Manual Checks After Migration
 

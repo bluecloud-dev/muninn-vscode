@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { DEFAULT_WEBVIEW_STRINGS, type WebviewStrings } from '../../shared/webview-strings';
 
 type WebviewGlobal = typeof globalThis & {

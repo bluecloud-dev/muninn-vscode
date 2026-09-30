@@ -1,5 +1,8 @@
 # Muninn — Market Position Review (June 9, 2026)
 
+> Historical June 2026 planning snapshot. The AGPL decision remains recorded in [D-006](decisions/D-006-agpl-relicense.md); the release targets and issue instructions below are not current. See [ROADMAP.md](ROADMAP.md) and [ARCHITECTURE.md](ARCHITECTURE.md) for current direction and implementation.
+
+
 > Refreshes `docs/COMPETITIVE_BRIEF.md` (May 2026) with live marketplace data, records the AGPL-3.0 license decision as final, and folds in the accessibility audit (`docs/design/ACCESSIBILITY_AUDIT_2026-06.md`) and design critique (`docs/design/DESIGN_CRITIQUE_2026-06.md`) executed today. Where this document and the May brief disagree, this document wins.
 
 ---

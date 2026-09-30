@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import './styles.css';
 import { baseKeymap, setBlockType, toggleMark } from 'prosemirror-commands';
 import { history, redo, undo } from 'prosemirror-history';
@@ -11,35 +14,75 @@ import type {
   ViewEditorCommand,
   ViewToHostMessage,
 } from '../../custom-editor/protocol';
+import { mergeIndependentChanges } from '../../shared/text-edits';
+import { createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
 import { applyContentWidth } from './content-width';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
-import { markdownParser, schema, serializeToHostMarkdown } from './markdown-codec';
-import { wrapTablesForEditor } from './markdown-transforms';
+import {
+  parseHostMarkdown,
+  schema,
+  serializeToHostMarkdown,
+  setDocumentSource,
+} from './markdown-codec';
+import { applyRemoteDocument } from './remote-document';
 import { attachHostMessageListener } from './messages';
 import { getEditorViewAttributes } from './editor-accessibility';
 import { createFrontMatterNodeViewConstructor } from './nodes/front-matter-node-view';
-import { isMermaidCodeBlockNode } from './nodes/mermaid-node';
-import { createCodeBlockNodeViewConstructor, isTableCodeBlockNode } from './nodes/table-node-view';
-import { MermaidPreviewController } from './preview';
+import {
+  createTableNodeViewConstructor,
+  isTableNode,
+  getTableSource,
+} from './nodes/table-node-view';
+import { setMermaidRenderingEnabled } from './renderers/mermaid-renderer';
+import { initializeTableDrafts } from './table-drafts';
+import { createCodeBlockNodeViewConstructor } from './nodes/code-block-node-view';
 import { HostSyncController } from './sync';
 import {
   DEFAULT_TABLE_SOURCE,
   parseMarkdownTable,
   serializeMarkdownTable,
-  TABLE_FENCE_LANGUAGE,
 } from './tables/markdown-table-utilities';
 import { attachToolbarRovingFocus } from './toolbar-roving-focus';
 
 declare function acquireVsCodeApi(): {
   postMessage: (message: ViewToHostMessage) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
 };
 
 const vscode = acquireVsCodeApi();
+type RetainedState = {
+  tableDrafts?: Record<string, string>;
+  draft?: { markdown: string; baseMarkdown: string };
+  scrollTop?: number;
+};
+const saved = vscode.getState();
+const retained: RetainedState = saved && typeof saved === 'object' ? (saved as RetainedState) : {};
+const savedDraft =
+  retained.draft &&
+  typeof retained.draft.markdown === 'string' &&
+  typeof retained.draft.baseMarkdown === 'string'
+    ? retained.draft
+    : undefined;
+const preserveState = (): void => {
+  vscode.setState(retained);
+};
+initializeTableDrafts(retained.tableDrafts, (drafts, key, markdown) => {
+  retained.tableDrafts = drafts;
+  preserveState();
+  vscode.postMessage({ type: 'view.tableDraft', payload: { key, markdown } });
+});
+let recovering = false;
 
 const ADVANCED_TOOLBAR_COMMANDS = new Set<string>([
+  'setHeading1',
+  'setHeading2',
+  'toggleStrike',
+  'toggleTask',
+  'insertFileLink',
   'setHeading3',
   'setParagraph',
   'insertCodeBlock',
@@ -56,9 +99,7 @@ const PRESSABLE_TOOLBAR_COMMANDS = new Set<string>([
   'setParagraph',
   'toggleBulletList',
   'toggleNumberedList',
-  'insertTable',
-  'insertCodeBlock',
-  'openRawMarkdown',
+  'toggleStrike',
 ]);
 
 const TRANSIENT_ACTIVE_COMMANDS = new Set<string>([
@@ -71,6 +112,8 @@ const TRANSIENT_ACTIVE_COMMANDS = new Set<string>([
 const COMMAND_LABELS = new Map<string, string>([
   ['toggleBold', getString('commandLabelBold')],
   ['toggleItalic', getString('commandLabelItalic')],
+  ['toggleStrike', getString('commandLabelStrike')],
+  ['toggleTask', getString('commandLabelTask')],
   ['setHeading1', getString('commandLabelHeading1')],
   ['setHeading2', getString('commandLabelHeading2')],
   ['setHeading3', getString('commandLabelHeading3')],
@@ -97,16 +140,8 @@ const formatCommandFailure = (command: string): string => {
   return formatString(getString('commandFailureGenericTemplate'), label);
 };
 
-const {
-  editorContainer,
-  editorShell,
-  toolbar,
-  statusLine,
-  alertLine,
-  mermaidPreviewPanel,
-  mermaidPreviewBody,
-  toolbarButtons,
-} = bootstrapEditorApp();
+const { editorContainer, editorShell, toolbar, statusLine, alertLine, toolbarButtons } =
+  bootstrapEditorApp();
 const moreButton = document.querySelector<HTMLButtonElement>('[data-testid="muninn-toolbar-more"]');
 const toolbarRovingFocus = attachToolbarRovingFocus(toolbar);
 
@@ -123,7 +158,7 @@ const setImageSources = (sources: Record<string, string>): void => {
   imageSources = new Map(Object.entries(sources));
 };
 
-const getRenderedImageSource = (source: string): string => imageSources.get(source) ?? source;
+const getRenderedImageSource = (source: string): string | undefined => imageSources.get(source);
 
 const updateAdvancedToolbarVisibility = (): void => {
   const showAdvancedActions = toolbarMode === 'advanced' || advancedActionsVisible;
@@ -189,7 +224,18 @@ const serializeMarkdownForHost = (): string => {
 };
 
 const syncController = new HostSyncController({
-  debounceMs: 80,
+  applyRemote: (markdown) => applyHostMarkdown(markdown),
+  onConflict: (markdown) => {
+    recovering = true;
+    view?.setProps({ editable: () => false });
+    announce(getString('statusSyncConflict'), { kind: 'error' });
+    vscode.postMessage({ type: 'view.recoverDraft', payload: { markdown } });
+  },
+  onSettled: (markdown) => {
+    retained.draft = undefined;
+    preserveState();
+    vscode.postMessage({ type: 'view.draft', payload: { markdown, baseMarkdown: markdown } });
+  },
   postApply: (payload) => {
     vscode.postMessage({
       type: 'view.applyDocument',
@@ -198,58 +244,21 @@ const syncController = new HostSyncController({
   },
 });
 
-const selectCodeBlockSource = (matcher: (node: ProseMirrorNode) => boolean): string | undefined => {
-  if (!view) {
-    return undefined;
-  }
-
-  const { from, to } = view.state.selection;
-  let selectedSource: string | undefined;
-  view.state.doc.nodesBetween(from, to, (node) => {
-    if (!selectedSource && matcher(node)) {
-      selectedSource = node.textContent;
-      return false;
-    }
-    return true;
-  });
-  if (selectedSource) {
-    return selectedSource;
-  }
-
-  let firstSource: string | undefined;
-  view.state.doc.descendants((node) => {
-    if (!firstSource && matcher(node)) {
-      firstSource = node.textContent;
-      return false;
-    }
-    return true;
-  });
-  return firstSource;
-};
-
-const mermaidPreview = new MermaidPreviewController({
-  panel: mermaidPreviewPanel,
-  body: mermaidPreviewBody,
-  getSelectedMermaidSource: () => selectCodeBlockSource(isMermaidCodeBlockNode),
-  announce,
-  renderDelayMs: 120,
-});
-
-const schedulePreviewRender = (): void => {
-  mermaidPreview.scheduleRender();
-};
-
 const parseMarkdown = (markdown: string): EditorState =>
   EditorState.create({
-    doc: markdownParser.parse(markdown),
+    doc: parseHostMarkdown(markdown),
     plugins: [
+      createDocumentNavigation((href) =>
+        vscode.postMessage({ type: 'view.openLink', payload: { href } }),
+      ),
       history(),
       keymap({
-        'Mod-z': undo,
-        'Shift-Mod-z': redo,
-        'Mod-y': redo,
         'Mod-b': () => executeEditorCommand('toggleBold'),
         'Mod-i': () => executeEditorCommand('toggleItalic'),
+        'Mod-s': () => {
+          void requestHostCommand('save');
+          return true;
+        },
       }),
       keymap(baseKeymap),
       new Plugin({
@@ -298,7 +307,6 @@ const parseMarkdown = (markdown: string): EditorState =>
         view: () => ({
           update: () => {
             updateToolbarState();
-            schedulePreviewRender();
           },
         }),
       }),
@@ -379,7 +387,7 @@ const getWordSelection = (state: EditorState): TextSelection | undefined => {
     return undefined;
   }
 
-  const matcher = /[A-Za-z0-9_]/;
+  const matcher = /[\p{L}\p{N}_]/u;
   let candidateOffset = $from.parentOffset;
   if (candidateOffset >= text.length) {
     candidateOffset = text.length - 1;
@@ -513,24 +521,6 @@ type SelectedCodeBlock = {
   position: number;
 };
 
-const findFirstCodeBlock = (
-  matcher: (node: ProseMirrorNode) => boolean,
-): SelectedCodeBlock | undefined => {
-  if (!view) {
-    return undefined;
-  }
-
-  let match: SelectedCodeBlock | undefined;
-  view.state.doc.descendants((node, position) => {
-    if (!matcher(node)) {
-      return true;
-    }
-    match = { node, position };
-    return false;
-  });
-  return match;
-};
-
 const findSelectedCodeBlock = (
   matcher: (node: ProseMirrorNode) => boolean,
 ): SelectedCodeBlock | undefined => {
@@ -538,6 +528,9 @@ const findSelectedCodeBlock = (
     return undefined;
   }
 
+  const atSelection = view.state.doc.nodeAt(view.state.selection.from);
+  if (atSelection && matcher(atSelection))
+    return { node: atSelection, position: view.state.selection.from };
   const { $from } = view.state.selection;
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const node = $from.node(depth);
@@ -558,8 +551,7 @@ const replaceCodeBlock = (selectedBlock: SelectedCodeBlock, source: string): boo
   }
 
   const normalizedSource = source.trimEnd();
-  const content = normalizedSource.length > 0 ? [schema.text(normalizedSource)] : undefined;
-  const replacementNode = schema.nodes.code_block.create({ params: TABLE_FENCE_LANGUAGE }, content);
+  const replacementNode = schema.nodes.table.create({ source: normalizedSource });
 
   const transaction = view.state.tr
     .replaceWith(
@@ -570,6 +562,15 @@ const replaceCodeBlock = (selectedBlock: SelectedCodeBlock, source: string): boo
     .scrollIntoView();
   view.dispatch(transaction);
   return true;
+};
+
+const insertBlockAfterSelection = (node: ProseMirrorNode): void => {
+  if (!view) return;
+  const selection = view.state.selection;
+  const position = selection.$to.depth > 0 ? selection.$to.after(1) : selection.to;
+  const tr = view.state.tr.insert(position, node);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(position + 1)));
+  view.dispatch(tr.scrollIntoView());
 };
 
 const insertMermaidBlock = (): boolean => {
@@ -585,8 +586,7 @@ const insertMermaidBlock = (): boolean => {
 
   const content = schema.text('graph TD\n  A[Start] --> B[Finish]');
   const node = schema.nodes.code_block.create({ params: 'mermaid' }, content);
-  const transaction = view.state.tr.replaceSelectionWith(node, false).scrollIntoView();
-  view.dispatch(transaction);
+  insertBlockAfterSelection(node);
   announce(getString('statusInsertedMermaid'), { kind: 'status' });
   return true;
 };
@@ -596,10 +596,8 @@ const insertTableBlock = (): boolean => {
     return false;
   }
 
-  const content = schema.text(DEFAULT_TABLE_SOURCE);
-  const node = schema.nodes.code_block.create({ params: TABLE_FENCE_LANGUAGE }, content);
-  const transaction = view.state.tr.replaceSelectionWith(node, false).scrollIntoView();
-  view.dispatch(transaction);
+  const node = schema.nodes.table.create({ source: DEFAULT_TABLE_SOURCE });
+  insertBlockAfterSelection(node);
   announce(getString('statusInsertedTable'), { kind: 'status' });
   return true;
 };
@@ -610,36 +608,33 @@ const insertCodeBlock = (): boolean => {
   }
 
   const node = schema.nodes.code_block.create();
-  const transaction = view.state.tr.replaceSelectionWith(node, false).scrollIntoView();
-  view.dispatch(transaction);
+  insertBlockAfterSelection(node);
 
   announce(getString('statusInsertedCodeBlock'), { kind: 'status' });
   return true;
 };
 
 const addTableRow = (): boolean => {
-  const selectedTable =
-    findSelectedCodeBlock(isTableCodeBlockNode) ?? findFirstCodeBlock(isTableCodeBlockNode);
+  const selectedTable = findSelectedCodeBlock(isTableNode);
   if (!selectedTable) {
     announce(getString('commandFailureAddRowNoTable'), { kind: 'error' });
     return false;
   }
 
-  const table = parseMarkdownTable(selectedTable.node.textContent);
+  const table = parseMarkdownTable(getTableSource(selectedTable.node));
   const columnCount = Math.max(2, table.headers.length);
   table.rows.push(Array.from({ length: columnCount }, () => ''));
   return replaceCodeBlock(selectedTable, serializeMarkdownTable(table));
 };
 
 const addTableColumn = (): boolean => {
-  const selectedTable =
-    findSelectedCodeBlock(isTableCodeBlockNode) ?? findFirstCodeBlock(isTableCodeBlockNode);
+  const selectedTable = findSelectedCodeBlock(isTableNode);
   if (!selectedTable) {
     announce(getString('commandFailureAddColumnNoTable'), { kind: 'error' });
     return false;
   }
 
-  const table = parseMarkdownTable(selectedTable.node.textContent);
+  const table = parseMarkdownTable(getTableSource(selectedTable.node));
   const nextColumnIndex = table.headers.length + 1;
   table.headers.push(formatString(getString('tableNewColumnHeaderTemplate'), nextColumnIndex));
   for (const row of table.rows) {
@@ -704,7 +699,12 @@ const insertImageFromHost = (source: string, webviewUri: string, filename: strin
 
   imageSources.set(source, webviewUri);
   const state = view.state;
-  view.dispatch(createImageInsertionTransaction(state, schema.nodes.image, source));
+  const transaction = createImageInsertionTransaction(state, schema.nodes.image, source);
+  view.dispatch(transaction);
+  if (!view.state.doc.eq(transaction.doc)) {
+    imageSources.delete(source);
+    return false;
+  }
   announce(formatString(getString('statusImageAddedTemplate'), filename), { kind: 'status' });
   return true;
 };
@@ -716,7 +716,9 @@ const createImageNodeView = (
   const updateImage = (imageNode: ProseMirrorNode): void => {
     const source = typeof imageNode.attrs.src === 'string' ? imageNode.attrs.src : '';
     const alt = typeof imageNode.attrs.alt === 'string' ? imageNode.attrs.alt : '';
-    dom.src = getRenderedImageSource(source);
+    const renderedSource = getRenderedImageSource(source);
+    if (renderedSource) dom.src = renderedSource;
+    else dom.removeAttribute('src');
     dom.alt = alt;
   };
   updateImage(node);
@@ -739,6 +741,18 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
   }
 
   switch (command) {
+    case 'undo': {
+      return runViewCommand(undo);
+    }
+    case 'redo': {
+      return runViewCommand(redo);
+    }
+    case 'toggleTask': {
+      return runViewCommand(toggleTask);
+    }
+    case 'toggleStrike': {
+      return runInlineMarkCommand(toggleMark(schema.marks.strike));
+    }
     case 'toggleBold': {
       return runInlineMarkCommand(toggleMark(schema.marks.strong));
     }
@@ -794,15 +808,26 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
   }
 };
 
+const requestHostCommand = async (
+  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading',
+): Promise<void> => {
+  document.dispatchEvent(new Event('muninn-flush'));
+  syncController.flushApply(serializeMarkdownForHost);
+  if (await syncController.whenIdle()) {
+    vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
+  } else {
+    announce(getString('statusSyncPending'), { kind: 'error' });
+  }
+};
+
 for (const [command, button] of toolbarButtons.entries()) {
   button.addEventListener('click', () => {
+    if (command === 'goToHeading' || command === 'insertFileLink') {
+      void requestHostCommand(command);
+      return;
+    }
     if (command === 'openRawMarkdown') {
-      syncController.flushApply(serializeMarkdownForHost);
-      button.classList.add('is-active');
-      vscode.postMessage({
-        type: 'view.executeCommand',
-        payload: { command: 'openRawMarkdown' },
-      });
+      void requestHostCommand('openRawMarkdown');
       globalThis.setTimeout(() => {
         updateToolbarPressedState('openRawMarkdown', false);
       }, 600);
@@ -871,24 +896,10 @@ const isListActive = (listNodeType: NodeType): boolean => {
   return false;
 };
 
-const isSelectionInCodeBlock = (matcher: (node: ProseMirrorNode) => boolean): boolean => {
-  if (!view) {
-    return false;
-  }
-
-  const { $from } = view.state.selection;
-  for (let depth = $from.depth; depth >= 0; depth -= 1) {
-    const node = $from.node(depth);
-    if (matcher(node)) {
-      return true;
-    }
-  }
-  return false;
-};
-
 const updateToolbarState = (): void => {
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
   updateToolbarPressedState('toggleItalic', isMarkActive(schema.marks.em));
+  updateToolbarPressedState('toggleStrike', isMarkActive(schema.marks.strike));
   updateToolbarPressedState('insertLink', isMarkActive(schema.marks.link));
 
   const headingLevel = getActiveHeadingLevel();
@@ -899,19 +910,12 @@ const updateToolbarState = (): void => {
 
   updateToolbarPressedState('toggleBulletList', isListActive(schema.nodes.bullet_list));
   updateToolbarPressedState('toggleNumberedList', isListActive(schema.nodes.ordered_list));
-  updateToolbarPressedState('insertTable', isSelectionInCodeBlock(isTableCodeBlockNode));
-  updateToolbarPressedState(
-    'insertCodeBlock',
-    isSelectionInCodeBlock(
-      (node) => node.type === schema.nodes.code_block && !isTableCodeBlockNode(node),
-    ),
-  );
 };
 
 const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): void => {
   documentFileName = fileName;
   const editorViewAttributes = getEditorViewAttributes(documentFileName);
-  const editorMarkdown = wrapTablesForEditor(hostMarkdown);
+  const editorMarkdown = hostMarkdown;
 
   if (!view) {
     view = new EditorView(editorContainer, {
@@ -919,22 +923,40 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
       attributes: editorViewAttributes,
       nodeViews: {
         code_block: createCodeBlockNodeViewConstructor({ announce }),
+        table: createTableNodeViewConstructor({ announce }),
         front_matter: createFrontMatterNodeViewConstructor(),
         image: createImageNodeView,
       },
       dispatchTransaction(transaction) {
-        if (!view) {
+        if (!view || (recovering && transaction.docChanged)) {
           return;
         }
+        let nextMarkdown: string | undefined;
+        if (transaction.docChanged) {
+          try {
+            nextMarkdown = serializeToHostMarkdown(transaction.doc);
+          } catch {
+            announce(getString('statusSourceRequired'), { kind: 'error' });
+            view.updateState(view.state);
+            return;
+          }
+        }
         const nextState = view.state.apply(transaction);
+        if (nextMarkdown !== undefined) setDocumentSource(nextState.doc, nextMarkdown);
         view.updateState(nextState);
         if (transaction.docChanged) {
-          syncController.queueApply(serializeMarkdownForHost);
+          const markdown = serializeMarkdownForHost();
+          retained.draft = { markdown, baseMarkdown: syncController.getBaseMarkdown() };
+          preserveState();
+          vscode.postMessage({
+            type: 'view.draft',
+            payload: { markdown, baseMarkdown: syncController.getBaseMarkdown() },
+          });
+          syncController.queueApply(() => markdown);
         }
       },
     });
     updateToolbarState();
-    schedulePreviewRender();
     return;
   }
 
@@ -945,30 +967,81 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
   }
 
   syncController.withSuppressedSync(() => {
-    view?.updateState(parseMarkdown(editorMarkdown));
+    if (view) applyRemoteDocument(view, editorMarkdown);
   });
   updateToolbarState();
-  schedulePreviewRender();
 };
 
 const detachHostMessageListener = attachHostMessageListener({
   onInit: (payload) => {
-    syncController.setRevision(payload.revision);
-    mermaidPreview.setEnabled(payload.mermaidEnabled);
+    syncController.initialize(payload.markdown, payload.revision);
+    setMermaidRenderingEnabled(payload.mermaidEnabled);
     applyContentWidth(editorShell, payload.contentWidth);
     setImageSources(payload.imageSources);
     setToolbarMode(payload.toolbarMode);
     applyHostMarkdown(payload.markdown, payload.fileName);
     announce(getString('statusConnected'), { kind: 'status' });
-    view?.focus();
+    if (savedDraft && savedDraft.markdown !== payload.markdown) {
+      const merged = mergeIndependentChanges(
+        savedDraft.baseMarkdown,
+        savedDraft.markdown,
+        payload.markdown,
+      );
+      if (merged === undefined) {
+        recovering = true;
+        view?.setProps({ editable: () => false });
+        vscode.postMessage({
+          type: 'view.recoverDraft',
+          payload: { markdown: savedDraft.markdown },
+        });
+      } else {
+        applyHostMarkdown(merged);
+        syncController.queueApply(() => merged);
+      }
+    }
+    if (typeof retained.scrollTop === 'number') editorShell.scrollTop = retained.scrollTop;
   },
   onDocumentChanged: (payload) => {
-    const shouldRetry = syncController.handleHostDocumentChanged(payload.revision);
     setImageSources(payload.imageSources);
+    syncController.handleHostDocumentChanged(payload);
+  },
+  onApplyResult: (payload) => {
+    setImageSources(payload.imageSources);
+    syncController.handleApplyResult(payload);
+  },
+  onRequestFlush: (payload) => {
+    document.dispatchEvent(new Event('muninn-flush'));
+    syncController.flushApply(serializeMarkdownForHost);
+    void syncController.whenIdle().then((ok) => {
+      vscode.postMessage({
+        type: 'view.flushComplete',
+        payload: { requestId: payload.requestId, ok },
+      });
+    });
+  },
+  onDraftRecovered: (payload) => {
+    recovering = false;
+    view?.setProps({ editable: () => true });
+    retained.draft = undefined;
+    preserveState();
+    syncController.initialize(payload.markdown, payload.revision);
     applyHostMarkdown(payload.markdown);
-    if (shouldRetry) {
-      syncController.queueApply(serializeMarkdownForHost);
-    }
+  },
+  onLinkInputCanceled: () => {
+    announce('', { kind: 'status' });
+    view?.focus();
+  },
+  onRevealAnchor: ({ anchor }) => {
+    const heading = [...editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')].find(
+      (element) => element.id === anchor,
+    );
+    heading?.scrollIntoView({ block: 'center' });
+    heading?.focus();
+  },
+  onRevealHeading: ({ index }) => {
+    const heading = editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')[index];
+    heading?.scrollIntoView({ block: 'center' });
+    heading?.focus();
   },
   onExecuteCommand: (command) => {
     const executed = executeEditorCommand(command);
@@ -977,10 +1050,9 @@ const detachHostMessageListener = attachHostMessageListener({
     }
   },
   onSettingsChanged: (payload) => {
-    mermaidPreview.setEnabled(payload.mermaidEnabled);
+    setMermaidRenderingEnabled(payload.mermaidEnabled);
     applyContentWidth(editorShell, payload.contentWidth);
     setToolbarMode(payload.toolbarMode);
-    schedulePreviewRender();
   },
   onInsertLink: (payload) => {
     const inserted = insertLinkFromHost(payload.href, payload.text);
@@ -990,26 +1062,32 @@ const detachHostMessageListener = attachHostMessageListener({
   },
   onImageInserted: (payload) => {
     const inserted = insertImageFromHost(payload.path, payload.webviewUri, payload.filename);
-    if (!inserted) {
-      announce(getString('statusInsertImageFailed'), { kind: 'error' });
-    }
+    if (!inserted && !view) announce(getString('statusInsertImageFailed'), { kind: 'error' });
+    vscode.postMessage({
+      type: 'view.imageInsertResult',
+      payload: { requestId: payload.requestId, ok: inserted },
+    });
   },
   onImageRejected: (payload) => {
     announce(payload.reason, { kind: 'error' });
   },
   onError: (payload) => {
-    const shouldRetry = syncController.handleHostError();
     announce(payload.message, { kind: 'error' });
-    if (shouldRetry) {
-      syncController.queueApply(serializeMarkdownForHost);
-    }
   },
 });
 
 window.addEventListener('beforeunload', () => {
+  syncController.flushApply(serializeMarkdownForHost);
   detachHostMessageListener();
   syncController.dispose();
-  mermaidPreview.dispose();
 });
 
+editorShell.addEventListener(
+  'scroll',
+  () => {
+    retained.scrollTop = editorShell.scrollTop;
+    preserveState();
+  },
+  { passive: true },
+);
 vscode.postMessage({ type: 'view.ready' });
