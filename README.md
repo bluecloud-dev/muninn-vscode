@@ -1,5 +1,7 @@
 # Muninn for VS Code
 
+![Muninn for VS Code: a reading-first Markdown editor for specs, documentation, and notes. Version 1.0.0 Preview.](assets/hero.png)
+
 A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
 ## Start reading
