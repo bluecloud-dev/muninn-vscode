@@ -10,6 +10,11 @@ on:
         description: 'Version to rehearse (vMAJOR.MINOR.PATCH); no registry publish or GitHub release'
         required: true
         type: string
+      verify_credentials:
+        description: 'Verify Marketplace and Open VSX publisher access without uploading'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -20,6 +25,7 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,24 +39,15 @@ jobs:
       - name: Validate pre-release tag and manifest
         run: |
           node <<'NODE'
-          const { version } = require('./package.json');
+          const { version, preview } = require('./package.json');
           const tag = process.env.TAG_NAME || '';
           if (!/^v\d+\.\d+\.\d+$/.test(tag) || tag !== `v${version}`) {
             throw new Error(`Release tag ${tag || '<empty>'} must match package version v${version}`);
           }
-          if (Number(version.split('.')[1]) % 2 !== 1) {
-            throw new Error('This workflow packages pre-releases; stable promotion needs a deliberate workflow change');
+          if (preview !== true) {
+            throw new Error('This workflow publishes Preview pre-releases; keep preview: true in package.json');
           }
           NODE
-
-      - name: Validate publishing tokens
-        if: github.event_name == 'push'
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: |
-          test -n "$VSCE_PAT" || { echo 'Missing VSCE_PAT repository secret' >&2; exit 1; }
-          test -n "$OVSX_PAT" || { echo 'Missing OVSX_PAT repository secret' >&2; exit 1; }
 
       - name: Install dependencies
         run: npm ci
@@ -111,13 +108,13 @@ jobs:
 
           const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
           const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const headerRegex = new RegExp(`^## \\[${escapedVersion}\\].*$`, 'm');
-          const headerMatch = changelog.match(headerRegex);
-          if (!headerMatch) {
-            throw new Error(`Could not find changelog section for version ${version}`);
+          const headerRegex = new RegExp(`^## \\[${escapedVersion}\\].*$`, 'gm');
+          const headers = [...changelog.matchAll(headerRegex)];
+          if (headers.length !== 1) {
+            throw new Error(`Expected one changelog section for version ${version}, found ${headers.length}`);
           }
 
-          const headerIndex = changelog.search(headerRegex);
+          const headerIndex = headers[0].index;
           const startIndex = changelog.indexOf('\n', headerIndex);
           if (startIndex === -1) throw new Error('Malformed changelog section header');
 
@@ -130,11 +127,58 @@ jobs:
           fs.writeFileSync('release-notes.md', `${body}\n`);
           NODE
 
+      - name: Retain tested release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-${{ env.TAG_NAME }}
+          path: |
+            muninn-vscode-*.vsix
+            release-notes.md
+            artifacts/build/package-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify VS Code Marketplace publisher access
+        id: marketplace_access
+        if: github.event_name == 'push' || inputs.verify_credentials
+        continue-on-error: true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          test -n "$VSCE_PAT" || { echo '::error::Missing VSCE_PAT repository secret'; exit 1; }
+          node scripts/vsce-wrapper.js verify-pat
+
+      - name: Verify Open VSX namespace access
+        id: openvsx_access
+        if: github.event_name == 'push' || inputs.verify_credentials
+        continue-on-error: true
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          test -n "$OVSX_PAT" || { echo '::error::Missing OVSX_PAT repository secret'; exit 1; }
+          npx --no-install ovsx verify-pat
+
+      - name: Require verified publisher access
+        if: github.event_name == 'push' || inputs.verify_credentials
+        env:
+          MARKETPLACE_STATUS: ${{ steps.marketplace_access.outcome }}
+          OPENVSX_STATUS: ${{ steps.openvsx_access.outcome }}
+        run: |
+          {
+            echo "VS Code Marketplace credential verification: $MARKETPLACE_STATUS"
+            echo "Open VSX credential verification: $OPENVSX_STATUS"
+            echo 'Credential verification does not upload an extension; registry validation still happens at publication.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$MARKETPLACE_STATUS" != success ] || [ "$OPENVSX_STATUS" != success ]; then
+            echo '::error::Publisher verification failed. Check the verification steps and docs/RELEASE.md.'
+            exit 1
+          fi
+
       - name: Publish to VS Code Marketplace
         if: github.event_name == 'push'
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: node scripts/vsce-wrapper.js publish --pre-release --packagePath "$VSIX_PATH" --pat "$VSCE_PAT"
+        run: node scripts/vsce-wrapper.js publish --pre-release --packagePath "$VSIX_PATH"
 
       - name: Publish to Open VSX
         if: github.event_name == 'push'

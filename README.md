@@ -4,7 +4,7 @@ A reading-first Markdown editor for specifications, documentation and notes. Rea
 
 ## Start reading
 
-Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+The first release candidate is **1.0.0 Preview**, distributed on the pre-release channel. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a compact toolbar with additional actions under More; standard GFM tasks and strikethrough; editable table cells with raw-source access.

@@ -35,6 +35,9 @@ await new Promise((resolve, reject) => {
 });
 const packaged = JSON.parse(entries.get('extension/package.json').toString());
 assert.equal(packaged.version, manifest.version);
+assert.equal(packaged.name, manifest.name);
+assert.equal(packaged.publisher, manifest.publisher);
+assert.equal(packaged.preview, true, 'Release candidate must retain the Marketplace Preview badge');
 assert.match(packaged.version, /^\d+\.\d+\.\d+$/);
 assert.match(
   entries.get('extension.vsixmanifest').toString(),
