@@ -17,18 +17,20 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -138,56 +140,127 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Verify VS Code Marketplace publisher access
-        id: marketplace_access
-        if: github.event_name == 'push' || inputs.verify_credentials
-        continue-on-error: true
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+  marketplace:
+    needs: build
+    if: github.event_name == 'push' || inputs.verify_credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-candidate-${{ env.TAG_NAME }}
+      - name: Verify downloaded candidate hash
         run: |
-          test -n "$VSCE_PAT" || { echo '::error::Missing VSCE_PAT repository secret'; exit 1; }
-          node scripts/vsce-wrapper.js verify-pat
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const assert = require('node:assert/strict');
+          const report = JSON.parse(fs.readFileSync('artifacts/build/package-report.json', 'utf8'));
+          const expected = 'muninn-vscode-' + require('./package.json').version + '.vsix';
+          assert.equal(report.file, expected);
+          const bytes = fs.readFileSync(expected);
+          assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), report.sha256);
+          fs.appendFileSync(process.env.GITHUB_ENV, 'VSIX_PATH=' + expected + '\n');
+          NODE
+
+      - name: Authenticate and verify Marketplace Contributor access
+        uses: ./.github/actions/marketplace-auth
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      - name: Publish to VS Code Marketplace
+        if: github.event_name == 'push'
+        run: node scripts/vsce-wrapper.js publish --azure-credential --pre-release --packagePath "$VSIX_PATH"
+
+  openvsx:
+    needs: build
+    if: github.event_name == 'push' || inputs.verify_credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-candidate-${{ env.TAG_NAME }}
+      - name: Verify downloaded candidate hash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const assert = require('node:assert/strict');
+          const report = JSON.parse(fs.readFileSync('artifacts/build/package-report.json', 'utf8'));
+          const expected = 'muninn-vscode-' + require('./package.json').version + '.vsix';
+          assert.equal(report.file, expected);
+          const bytes = fs.readFileSync(expected);
+          assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), report.sha256);
+          fs.appendFileSync(process.env.GITHUB_ENV, 'VSIX_PATH=' + expected + '\n');
+          NODE
 
       - name: Verify Open VSX namespace access
-        id: openvsx_access
-        if: github.event_name == 'push' || inputs.verify_credentials
-        continue-on-error: true
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           test -n "$OVSX_PAT" || { echo '::error::Missing OVSX_PAT repository secret'; exit 1; }
           npx --no-install ovsx verify-pat
-
-      - name: Require verified publisher access
-        if: github.event_name == 'push' || inputs.verify_credentials
-        env:
-          MARKETPLACE_STATUS: ${{ steps.marketplace_access.outcome }}
-          OPENVSX_STATUS: ${{ steps.openvsx_access.outcome }}
-        run: |
-          {
-            echo "VS Code Marketplace credential verification: $MARKETPLACE_STATUS"
-            echo "Open VSX credential verification: $OPENVSX_STATUS"
-            echo 'Credential verification does not upload an extension; registry validation still happens at publication.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$MARKETPLACE_STATUS" != success ] || [ "$OPENVSX_STATUS" != success ]; then
-            echo '::error::Publisher verification failed. Check the verification steps and docs/RELEASE.md.'
-            exit 1
-          fi
-
-      - name: Publish to VS Code Marketplace
-        if: github.event_name == 'push'
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: node scripts/vsce-wrapper.js publish --pre-release --packagePath "$VSIX_PATH"
-
       - name: Publish to Open VSX
         if: github.event_name == 'push'
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: npx --no-install ovsx publish --packagePath "$VSIX_PATH" --pre-release
 
+  github-release:
+    needs: [build, marketplace, openvsx]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-candidate-${{ env.TAG_NAME }}
+      - name: Verify downloaded candidate hash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const assert = require('node:assert/strict');
+          const report = JSON.parse(fs.readFileSync('artifacts/build/package-report.json', 'utf8'));
+          const expected = 'muninn-vscode-' + require('./package.json').version + '.vsix';
+          assert.equal(report.file, expected);
+          const bytes = fs.readFileSync(expected);
+          assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), report.sha256);
+          fs.appendFileSync(process.env.GITHUB_ENV, 'VSIX_PATH=' + expected + '\n');
+          NODE
+
       - name: Create GitHub Release
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$TAG_NAME" "$VSIX_PATH" --title "Muninn for VS Code $TAG_NAME" --notes-file release-notes.md --prerelease

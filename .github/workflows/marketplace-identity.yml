@@ -1,0 +1,34 @@
+name: Marketplace identity
+on:
+  workflow_dispatch:
+    inputs:
+      verify_publisher_access:
+        description: Also require Marketplace Contributor/Owner membership (disable for first-time setup)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  identity:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Authenticate and inspect Marketplace identity
+        uses: ./.github/actions/marketplace-auth
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          verify-access: ${{ inputs.verify_publisher_access }}

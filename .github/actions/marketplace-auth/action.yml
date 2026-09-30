@@ -1,0 +1,74 @@
+name: Marketplace Entra authentication
+description: Authenticate with GitHub OIDC and verify direct Marketplace publishing membership.
+inputs:
+  client-id:
+    description: Entra application client ID
+    required: true
+  tenant-id:
+    description: Entra directory tenant ID
+    required: true
+  verify-access:
+    description: Verify Contributor or Owner membership after resolving the identity
+    default: 'true'
+outputs:
+  identity-id:
+    description: Marketplace identity ID to add to the blueclouddev publisher
+    value: ${{ steps.identity.outputs.id }}
+runs:
+  using: composite
+  steps:
+    - name: Validate identity configuration
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client-id }}
+        TENANT_ID: ${{ inputs.tenant-id }}
+      run: |
+        uuid='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        [[ "$CLIENT_ID" =~ $uuid && "$TENANT_ID" =~ $uuid ]] || {
+          echo '::error::Set AZURE_CLIENT_ID and AZURE_TENANT_ID variables in the marketplace environment.'
+          exit 1
+        }
+    - name: Sign in with workload identity federation
+      uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        allow-no-subscriptions: true
+    - name: Resolve Marketplace identity
+      id: identity
+      shell: bash
+      run: |
+        identity_id="$(az rest \
+          --url 'https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1' \
+          --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+          --query id --output tsv --only-show-errors)"
+        [[ "$identity_id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
+          echo '::error::Marketplace did not return a valid identity ID.'
+          exit 1
+        }
+        echo "id=$identity_id" >> "$GITHUB_OUTPUT"
+        {
+          echo '### Marketplace publishing identity'
+          printf 'Identity ID: `%s`\n' "$identity_id"
+          echo 'Publisher: blueclouddev'
+          echo 'This run has not uploaded an extension.'
+        } >> "$GITHUB_STEP_SUMMARY"
+    - name: Require direct Contributor or Owner membership
+      if: inputs.verify-access == 'true'
+      shell: bash
+      env:
+        IDENTITY_ID: ${{ steps.identity.outputs.id }}
+      run: |
+        roles="$(az rest \
+          --url 'https://marketplace.visualstudio.com/_apis/securityroles/scopes/gallery.publisher/roleassignments/resources/blueclouddev?api-version=3.2-preview.1' \
+          --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+          --query "value[identity.id=='$IDENTITY_ID'].role.name" --output tsv --only-show-errors)"
+        if ! printf '%s\n' "$roles" | grep -Eiq '^(Contributor|Owner)$'; then
+          echo '::error::Add the identity shown in the summary to publisher blueclouddev as Contributor. Reader access is insufficient.'
+          exit 1
+        fi
+        echo 'Direct Contributor/Owner membership verified.' >> "$GITHUB_STEP_SUMMARY"
+    - name: Verify vsce can use the Azure identity
+      if: inputs.verify-access == 'true'
+      shell: bash
+      run: node scripts/vsce-wrapper.js verify-pat blueclouddev --azure-credential
