@@ -62,7 +62,7 @@ runs:
         roles="$(az rest \
           --url 'https://marketplace.visualstudio.com/_apis/securityroles/scopes/gallery.publisher/roleassignments/resources/blueclouddev?api-version=3.2-preview.1' \
           --resource 499b84ac-1321-427f-aa17-267ca6975798 \
-          --query "value[identity.id=='$IDENTITY_ID'].role.name" --output tsv --only-show-errors)"
+          --query "value[?identity.id=='$IDENTITY_ID'].role.name" --output tsv --only-show-errors)"
         if ! printf '%s\n' "$roles" | grep -Eiq '^(Contributor|Owner)$'; then
           echo '::error::Add the identity shown in the summary to publisher blueclouddev as Contributor. Reader access is insufficient.'
           exit 1
