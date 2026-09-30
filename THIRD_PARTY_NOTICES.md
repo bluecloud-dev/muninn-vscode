@@ -2288,7 +2288,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-commands@1.7.1
+## prosemirror-commands@1.7.2
 
 License: MIT
 
@@ -2366,7 +2366,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-markdown@1.13.5
+## prosemirror-markdown@1.13.8
 
 License: MIT
 
@@ -2392,7 +2392,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-model@1.25.11
+## prosemirror-model@1.25.12
 
 License: MIT
 
@@ -2496,7 +2496,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-view@1.42.1
+## prosemirror-view@1.42.5
 
 License: MIT
 

@@ -17,8 +17,10 @@ Inspect `artifacts/build/package-report.json` for the SHA-256 and bytes. The arc
 
 ## Publish an authorized release
 
-A matching `vX.Y.Z` tag triggers the release workflow. It verifies tag/version, performs checks, packages, tests that exact archive in real VS Code, then publishes with `--packagePath` and `--pre-release`. It must never rebuild between the packaged UI gate and publication. GitHub Release receives the same VSIX and is marked pre-release.
+A matching `vX.Y.Z` tag triggers the release workflow. The current workflow accepts odd-minor pre-release versions, verifies the tag against `package.json`, performs checks, packages, and tests that exact archive in real VS Code. It then publishes the same VSIX to the VS Code Marketplace and Open VSX with `--pre-release`, and attaches it to a pre-release GitHub Release. It must never rebuild between the packaged UI gate and publication.
 
-Maintainers own release credentials, accounts and approval of public release notes. Creating a PR does not authorize a Marketplace upload or tag. Keep `VSCE_PAT` in the configured secret, never repository files.
+Run the workflow manually with the matching `tag` input to rehearse the full build, test, package, and release-note path without publishing. A rehearsal does not validate registry credentials or permissions. The tag-triggered run checks that both `VSCE_PAT` and `OVSX_PAT` repository secrets are present before building. Both registry accounts must have publisher access. Registry publishes cannot be rolled back together; if the second publish fails, publish the already tested VSIX to that registry before announcing the release.
+
+Maintainers own release credentials, accounts and approval of public release notes. Creating a PR does not authorize a registry upload or tag. Keep `VSCE_PAT` and `OVSX_PAT` in configured repository secrets, never repository files.
 
 Before tagging, complete the manual accessibility/platform/performance checks in [TESTING.md](TESTING.md), review the versioned changelog section and verify CI for the commit to be released.
