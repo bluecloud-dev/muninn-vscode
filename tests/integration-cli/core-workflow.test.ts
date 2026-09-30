@@ -51,7 +51,7 @@ describe('Integration CLI: core workflow', () => {
   });
 
   it('opens markdown in custom editor, applies editor commands, and can open raw source', async () => {
-    const extension = vscode.extensions.getExtension('blueclouddev.muninn-vscode');
+    const extension = vscode.extensions.getExtension('bluecloud-dev.muninn-vscode');
     expect(extension).to.not.equal(undefined);
     await extension?.activate();
 
@@ -87,7 +87,7 @@ describe('Integration CLI: core workflow', () => {
   });
 
   it('keeps markdown table blocks intact after command-driven document rewrites', async () => {
-    const extension = vscode.extensions.getExtension('blueclouddev.muninn-vscode');
+    const extension = vscode.extensions.getExtension('bluecloud-dev.muninn-vscode');
     expect(extension).to.not.equal(undefined);
     await extension?.activate();
 
@@ -96,6 +96,10 @@ describe('Integration CLI: core workflow', () => {
 
     const uri = vscode.Uri.joinPath(workspaceFolder!.uri, 'table.md');
     const document = await vscode.workspace.openTextDocument(uri);
+    const originalTable = document
+      .getText()
+      .match(/^\| Name \| Value \|\r?\n(?:\|[^\r\n]*\r?\n)+/m)?.[0];
+    expect(originalTable, 'expected a complete table fixture').to.be.a('string');
 
     await vscode.commands.executeCommand('vscode.open', uri);
     await waitFor(() => getActiveCustomViewType() === 'muninn.markdownEditor');
@@ -117,12 +121,12 @@ describe('Integration CLI: core workflow', () => {
     const text = document.getText();
     expect(text).to.include('| Name | Value |');
     expect(text).to.include('| --- | --- |');
-    expect(text).to.include('\n| A | 1 |\n');
+    expect(text).to.include(originalTable!);
     expect(text.includes('| Name | Value | | --- | --- |')).to.equal(false);
   });
 
   it('supports prompt-driven link and code block insertion commands', async () => {
-    const extension = vscode.extensions.getExtension('blueclouddev.muninn-vscode');
+    const extension = vscode.extensions.getExtension('bluecloud-dev.muninn-vscode');
     expect(extension).to.not.equal(undefined);
     await extension?.activate();
 
@@ -153,7 +157,7 @@ describe('Integration CLI: core workflow', () => {
   });
 
   it('routes table action quick pick commands to the active custom editor', async () => {
-    const extension = vscode.extensions.getExtension('blueclouddev.muninn-vscode');
+    const extension = vscode.extensions.getExtension('bluecloud-dev.muninn-vscode');
     expect(extension).to.not.equal(undefined);
     await extension?.activate();
 
@@ -162,7 +166,6 @@ describe('Integration CLI: core workflow', () => {
 
     const uri = vscode.Uri.joinPath(workspaceFolder!.uri, 'table.md');
     const document = await vscode.workspace.openTextDocument(uri);
-
     await vscode.commands.executeCommand('vscode.open', uri);
     await waitFor(() => getActiveCustomViewType() === 'muninn.markdownEditor');
 

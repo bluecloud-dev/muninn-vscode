@@ -35,7 +35,7 @@ Registry publishes cannot be rolled back together. If one registry publishes and
 
 ## Marketplace: Microsoft Entra federation
 
-The publisher is `blueclouddev` and the extension name is `muninn-vscode`. Marketplace publishing uses an Entra application with a federated credential, without a client secret or `VSCE_PAT`. The installed vsce supports both `verify-pat --azure-credential` and `publish --azure-credential`. Despite its command name, `verify-pat` supports Entra identities.
+The publisher is `bluecloud-dev` and the extension name is `muninn-vscode`. Marketplace publishing uses an Entra application with a federated credential, without a client secret or `VSCE_PAT`. The installed vsce supports both `verify-pat --azure-credential` and `publish --azure-credential`. Despite its command name, `verify-pat` supports Entra identities.
 
 ### One-time configuration
 
@@ -43,7 +43,7 @@ The publisher is `blueclouddev` and the extension name is `muninn-vscode`. Marke
 2. Enable immutable OIDC subjects for this repository. Check the current value with `gh api repos/bluecloud-dev/muninn-vscode/actions/oidc/customization/sub`; `use_immutable_subject` must be true. Names and numeric IDs must match the subject GitHub actually emits.
 3. Create a GitHub environment named `marketplace`. Restrict deployment branches/tags to the `main` branch (manual identity checks and rehearsals) and `v*.*.*` tags (releases). Restrict who can modify release workflows and create release tags using repository rules. An environment credential trusts jobs in that environment, not one workflow filename.
 4. Set environment variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` from the application's Overview page. These identify the application and directory; they are not passwords.
-5. Resolve the Marketplace identity with the workflow below. Add that returned identity ID to the [blueclouddev publisher](https://marketplace.visualstudio.com/manage/publishers/blueclouddev) as a direct **Contributor**. It is not the application's client ID or Entra object ID.
+5. Resolve the Marketplace identity with the workflow below. Add that returned identity ID to the [bluecloud-dev publisher](https://marketplace.visualstudio.com/manage/publishers/bluecloud-dev) as a direct **Contributor**. It is not the application's client ID or Entra object ID.
 6. Run the access check, then the complete release rehearsal. Delete the retired `VSCE_PAT` secret after successful Entra validation.
 
 | Federation field | Value                                                                           |
@@ -81,7 +81,7 @@ Reference: [Azure Login OIDC](https://github.com/Azure/login#login-with-openid-c
 
 ## Open VSX credentials
 
-Open VSX remains an independent registry. Its `OVSX_PAT` repository secret must contain an unexpired token for an account authorized to publish in the `blueclouddev` namespace, with the required publisher agreement completed. Entra federation does not replace this credential.
+Open VSX remains an independent registry. Its `OVSX_PAT` repository secret must contain an unexpired token for an account authorized to publish in the `bluecloud-dev` namespace, with the required publisher agreement completed. Entra federation does not replace this credential.
 
 Update it through GitHub settings or the interactive prompt:
 

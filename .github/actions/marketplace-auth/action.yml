@@ -12,7 +12,7 @@ inputs:
     default: 'true'
 outputs:
   identity-id:
-    description: Marketplace identity ID to add to the blueclouddev publisher
+    description: Marketplace identity ID to add to the bluecloud-dev publisher
     value: ${{ steps.identity.outputs.id }}
 runs:
   using: composite
@@ -50,7 +50,7 @@ runs:
         {
           echo '### Marketplace publishing identity'
           printf 'Identity ID: `%s`\n' "$identity_id"
-          echo 'Publisher: blueclouddev'
+          echo 'Publisher: bluecloud-dev'
           echo 'This run has not uploaded an extension.'
         } >> "$GITHUB_STEP_SUMMARY"
     - name: Require direct Contributor or Owner membership
@@ -60,15 +60,15 @@ runs:
         IDENTITY_ID: ${{ steps.identity.outputs.id }}
       run: |
         roles="$(az rest \
-          --url 'https://marketplace.visualstudio.com/_apis/securityroles/scopes/gallery.publisher/roleassignments/resources/blueclouddev?api-version=3.2-preview.1' \
+          --url 'https://marketplace.visualstudio.com/_apis/securityroles/scopes/gallery.publisher/roleassignments/resources/bluecloud-dev?api-version=3.2-preview.1' \
           --resource 499b84ac-1321-427f-aa17-267ca6975798 \
           --query "value[?identity.id=='$IDENTITY_ID'].role.name" --output tsv --only-show-errors)"
         if ! printf '%s\n' "$roles" | grep -Eiq '^(Contributor|Owner)$'; then
-          echo '::error::Add the identity shown in the summary to publisher blueclouddev as Contributor. Reader access is insufficient.'
+          echo '::error::Add the identity shown in the summary to publisher bluecloud-dev as Contributor. Reader access is insufficient.'
           exit 1
         fi
         echo 'Direct Contributor/Owner membership verified.' >> "$GITHUB_STEP_SUMMARY"
     - name: Verify vsce can use the Azure identity
       if: inputs.verify-access == 'true'
       shell: bash
-      run: node scripts/vsce-wrapper.js verify-pat blueclouddev --azure-credential
+      run: node scripts/vsce-wrapper.js verify-pat bluecloud-dev --azure-credential

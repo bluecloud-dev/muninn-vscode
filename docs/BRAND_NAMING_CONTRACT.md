@@ -23,7 +23,7 @@ This document defines canonical naming for the Muninn suite and prevents drift a
 
 | Surface | Canonical ID / Namespace | Status |
 | --- | --- | --- |
-| VS Code extension ID | `blueclouddev.muninn-vscode` | Active |
+| VS Code extension ID | `bluecloud-dev.muninn-vscode` | Active |
 | VS Code package name | `muninn-vscode` | Active |
 | VS Code command/config/context prefix | `muninn.*` | Active |
 | Legacy extension ID | `blueclouddev.markdown-preview` | Deprecated migration path only |
@@ -58,5 +58,5 @@ Exception:
 
 When referring to legacy names, always include canonical replacement:
 
-* `blueclouddev.markdown-preview` → `blueclouddev.muninn-vscode`
+* `blueclouddev.markdown-preview` → `bluecloud-dev.muninn-vscode`
 * `markdownReader.*` → `muninn.*`

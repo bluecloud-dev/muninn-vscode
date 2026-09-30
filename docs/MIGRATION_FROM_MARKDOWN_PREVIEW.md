@@ -5,7 +5,7 @@
 This guide covers migration from the legacy listing:
 
 - Old extension ID: `blueclouddev.markdown-preview`
-- New extension ID: `blueclouddev.muninn-vscode`
+- New extension ID: `bluecloud-dev.muninn-vscode`
 
 This is a breaking migration. There is no compatibility shim.
 
@@ -13,7 +13,7 @@ This is a breaking migration. There is no compatibility shim.
 
 | Area                     | Old                             | New                          |
 | ------------------------ | ------------------------------- | ---------------------------- |
-| Marketplace extension ID | `blueclouddev.markdown-preview` | `blueclouddev.muninn-vscode` |
+| Marketplace extension ID | `blueclouddev.markdown-preview` | `bluecloud-dev.muninn-vscode` |
 | Package name             | `markdown-preview`              | `muninn-vscode`              |
 | Settings namespace       | `markdownReader.*`              | `muninn.*`                   |
 | Command namespace        | `markdownReader.*`              | `muninn.*`                   |
@@ -21,7 +21,7 @@ This is a breaking migration. There is no compatibility shim.
 
 ## Required Steps
 
-1. Install `blueclouddev.muninn-vscode`.
+1. Install `bluecloud-dev.muninn-vscode`.
 2. Uninstall `blueclouddev.markdown-preview` after verification.
 3. Update existing user/workspace settings to the new namespace.
 4. Update custom keybindings and automations to new command IDs.
@@ -78,4 +78,4 @@ The v2 command surface is editor-centric. Use these command IDs:
 ## Deprecation Policy
 
 - `blueclouddev.markdown-preview` is migration-only.
-- New development targets `blueclouddev.muninn-vscode`.
+- New development targets `bluecloud-dev.muninn-vscode`.

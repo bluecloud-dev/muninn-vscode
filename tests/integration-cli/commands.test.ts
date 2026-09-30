@@ -7,7 +7,7 @@ before(async () => {
 
 describe('Integration CLI: command registration', () => {
   it('registers key Muninn commands', async () => {
-    const extension = vscode.extensions.getExtension('blueclouddev.muninn-vscode');
+    const extension = vscode.extensions.getExtension('bluecloud-dev.muninn-vscode');
     expect(extension).to.not.equal(undefined);
     await extension?.activate();
 
