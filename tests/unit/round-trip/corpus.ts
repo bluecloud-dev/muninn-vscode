@@ -47,7 +47,8 @@ export type RoundTripOutcome = {
 export const runRoundTrip = (hostMarkdown: string): string =>
   serializeToHostMarkdown(parseHostMarkdown(hostMarkdown));
 
-const categoryOf = (fixtureName: string): string => fixtureName.split('--')[0] ?? 'uncategorized';
+const categoryOf = (fixtureName: string): string =>
+  fixtureName.split('--', 1)[0] ?? 'uncategorized';
 
 // CRLF, trailing-space, and missing-final-newline cases are synthesized here instead of
 // being stored on disk: editors, format-on-save hooks, and git EOL settings silently

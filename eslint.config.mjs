@@ -35,4 +35,18 @@ export default [
       'unicorn/prefer-module': 'off',
     },
   },
+  {
+    // The SVG namespace is a fixed HTTP URI, not a web request.
+    files: ['src/webview/editor/preview.ts', 'tests/unit/preview.test.ts'],
+    rules: {
+      'unicorn/prefer-https': 'off',
+    },
+  },
+  {
+    // ProseMirror and Mocha provide `this` in their callback contracts.
+    files: ['src/webview/editor/document-navigation.ts', 'tests/unit/editor-behavior.test.ts'],
+    rules: {
+      'unicorn/no-this-outside-of-class': 'off',
+    },
+  },
 ];
