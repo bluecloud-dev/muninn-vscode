@@ -166,6 +166,8 @@ const isSerializedMarkdownPayload = (value: unknown): value is SerializedMarkdow
 };
 
 const isViewEditorCommand = (value: unknown): value is ViewEditorCommand =>
+  // Explicit comparisons preserve this security-sensitive type guard without allocating a list per message.
+  // eslint-disable-next-line unicorn/prefer-includes-over-repeated-comparisons
   value === 'undo' ||
   value === 'redo' ||
   value === 'toggleTask' ||

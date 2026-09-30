@@ -208,6 +208,7 @@ describe('bundled editor behavior with a delayed host', function () {
     open('~~~mermaid\ngraph TD\nA --> B\n~~~\n');
     await new Promise((resolve) => setTimeout(resolve, 140));
     assert.equal(dom.window.document.querySelectorAll('svg').length, 0);
+    // eslint-disable-next-line unicorn/no-incorrect-query-selector -- Count duplicates as well as presence.
     assert.equal(dom.window.document.querySelectorAll('#mermaid-preview-panel').length, 0);
     assert.match(
       dom.window.document.querySelector('.muninn-code-node-mermaid-preview')!.textContent!,

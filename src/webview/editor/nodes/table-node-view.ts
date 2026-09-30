@@ -642,6 +642,7 @@ class TableNodeView implements NodeView {
 
   private focusCell(target: TableCellCoordinates): boolean {
     const input = this.gridContainer.querySelector<HTMLInputElement>(
+      // eslint-disable-next-line unicorn/require-css-escape -- Row and column are numeric indexes.
       `.muninn-table-node-cell[data-table-row="${target.row}"][data-table-column="${target.col}"]`,
     );
     if (!input) {

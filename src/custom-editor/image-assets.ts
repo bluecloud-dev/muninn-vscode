@@ -38,7 +38,7 @@ export const getImageExtension = (name?: string, mime?: string): string | undefi
     return namedExtension;
   }
 
-  const normalizedMime = mime?.toLowerCase().split(';')[0]?.trim();
+  const normalizedMime = mime?.toLowerCase().split(';', 1)[0]?.trim();
   if (!normalizedMime) {
     return undefined;
   }

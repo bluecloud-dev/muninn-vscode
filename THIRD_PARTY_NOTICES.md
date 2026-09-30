@@ -2102,7 +2102,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
-## markdown-it@14.3.0
+## markdown-it@14.3.2
 
 License: MIT
 
