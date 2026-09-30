@@ -1,59 +1,25 @@
-# Getting Started
+# Getting started
 
-## Prerequisites
+## Use Muninn
 
-- Node.js 20+
-- VS Code 1.85+
+Install the pre-release VSIX through VS Code's **Extensions: Install from VSIX…** command. Open a `.md` or `.markdown` file. Muninn registers as a default editor and respects existing editor preferences. If a different editor opens, use **Reopen Editor With… → Muninn Markdown Editor**; choose **Configure default editor** there when you want to change your preference.
 
-## Quick Setup
+Read and edit in one pane. Use **Headings** to move through a specification, click Markdown links to follow related files, and use VS Code Find within the webview. The compact toolbar shows common formatting; **More** reveals headings, tasks, strikethrough, code, Mermaid and file links. **Source** opens the same file in VS Code's text editor.
+
+Run **Muninn for VS Code: New Markdown Note** to choose a filename with the native save dialog. Existing files are never silently overwritten. **Insert File Link** inserts an ordinary relative Markdown link; Explorer, search and Git remain the organization tools.
+
+Table cells save as you type, including when Save is pressed while a cell is focused. Raw table source uses **Apply Source** or Ctrl/Cmd+Enter. Invalid/unapplied raw source is retained and recovered separately when the panel closes.
+
+Mermaid previews are disabled in Restricted Mode unless explicitly permitted in user settings. Remote images are not fetched automatically. For unsupported Markdown or edits the fidelity guard cannot map safely, use Source.
+
+## Contribute
+
+Use Node 24 (see `.nvmrc`) and VS Code 1.85.2 or newer.
 
 ```bash
-git clone https://github.com/bluecloud-dev/muninn-vscode.git
-cd muninn-vscode
 npm ci
 npm run compile
 npm run bundle
 ```
 
-## Run Extension Host
-
-1. Open the repo in VS Code.
-2. Press `F5`.
-3. In the Extension Development Host, open `README.md` or any `.md` file.
-
-Expected behavior:
-
-- Markdown opens with `muninn.markdownEditor` by default.
-- Toolbar is visible in the custom editor.
-
-## Sanity Commands
-
-```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-```
-
-## Useful Commands in VS Code
-
-- `Muninn for VS Code: Toggle Bold`
-- `Muninn for VS Code: Toggle Italic`
-- `Muninn for VS Code: Insert Mermaid Block`
-- `Muninn for VS Code: Table Actions`
-- `Muninn for VS Code: Open Raw Markdown`
-
-## Common Issue
-
-If Markdown still opens in the native editor, set:
-
-```json
-{
-  "workbench.editorAssociations": {
-    "*.md": "muninn.markdownEditor",
-    "*.markdown": "muninn.markdownEditor"
-  }
-}
-```
-
-Muninn also tries to set this automatically when `muninn.editorAssociations` is enabled.
+Open this repository in VS Code and press F5. The configured prelaunch task compiles and bundles the runtime. Open a Markdown fixture in the Extension Development Host. See [development](DEVELOPMENT.md) and [testing](TESTING.md).

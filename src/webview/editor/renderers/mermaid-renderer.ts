@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { getString } from '../localization';
 type MermaidRenderResult =
   | {
       ok: true;
@@ -8,6 +12,38 @@ type MermaidRenderResult =
       error: string;
     };
 
+let themeObserver: MutationObserver | undefined;
+let enabled = false;
+const policyListeners = new Set<() => void>();
+export const isMermaidRenderingEnabled = (): boolean => enabled;
+export const setMermaidRenderingEnabled = (value: boolean): void => {
+  if (enabled === value) return;
+  enabled = value;
+  for (const listener of policyListeners) listener();
+};
+export const onMermaidPolicyChanged = (listener: () => void): (() => void) => {
+  policyListeners.add(listener);
+  if (!themeObserver && typeof MutationObserver !== 'undefined') {
+    themeObserver = new MutationObserver(() => {
+      for (const notify of policyListeners) notify();
+    });
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'style', 'data-vscode-theme-id'],
+    });
+  }
+  return () => {
+    policyListeners.delete(listener);
+    if (policyListeners.size === 0) {
+      themeObserver?.disconnect();
+      themeObserver = undefined;
+    }
+  };
+};
+const disabledResult = (): MermaidRenderResult => ({
+  ok: false,
+  error: getString('mermaidDisabledMessage'),
+});
 let initialized = false;
 let lastThemeSignature: string | undefined;
 
@@ -36,7 +72,7 @@ let mermaidModulePromise: Promise<MermaidModule> | undefined;
 let renderQueue: Promise<void> = Promise.resolve();
 
 const readCssVariable = (name: string, fallback: string): string => {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const value = getComputedStyle(document.body).getPropertyValue(name).trim();
   return value.length > 0 ? value : fallback;
 };
 
@@ -91,7 +127,7 @@ const ensureInitialized = (mermaidModule: MermaidModule): void => {
     startOnLoad: false,
     securityLevel: 'strict',
     suppressErrorRendering: true,
-    theme: 'default',
+    theme: 'base',
     themeVariables: themeState.variables,
     flowchart: {
       htmlLabels: false,
@@ -106,10 +142,13 @@ export const renderMermaidDiagram = async (
   renderId: string,
 ): Promise<MermaidRenderResult> => {
   const queuedRender = async (): Promise<MermaidRenderResult> => {
+    if (!enabled) return disabledResult();
     try {
       const mermaidModule = await loadMermaid();
+      if (!enabled) return disabledResult();
       ensureInitialized(mermaidModule);
       const rendered = await mermaidModule.default.render(renderId, source);
+      if (!enabled) return disabledResult();
       return {
         ok: true,
         svg: rendered.svg,

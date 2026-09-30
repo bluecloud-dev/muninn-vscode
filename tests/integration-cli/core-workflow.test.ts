@@ -129,7 +129,8 @@ describe('Integration CLI: core workflow', () => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     expect(workspaceFolder, 'expected integration workspace folder').to.not.equal(undefined);
 
-    const uri = vscode.Uri.joinPath(workspaceFolder!.uri, 'with-formatting.md');
+    const uri = vscode.Uri.joinPath(workspaceFolder!.uri, 'links.md');
+    await writeWorkspaceFile(uri, 'A fresh paragraph\n');
     const document = await vscode.workspace.openTextDocument(uri);
 
     await vscode.commands.executeCommand('vscode.open', uri);
@@ -168,8 +169,7 @@ describe('Integration CLI: core workflow', () => {
     const quickPickStub = sinon.stub(vscode.window, 'showQuickPick').callsFake(async (items) => {
       const typedItems = items as ReadonlyArray<{ command?: string }>;
       return typedItems.find((item) => item.command === 'insertTable') as
-        | vscode.QuickPickItem
-        | undefined;
+        vscode.QuickPickItem | undefined;
     });
 
     let commandApplied = false;
@@ -194,7 +194,7 @@ describe('Integration CLI: core workflow', () => {
       {
         name: 'with-final-newline.md',
         before: '# Before\n',
-        serialized: '# After',
+        serialized: '# After\n',
         expected: '# After\n',
       },
       {

@@ -61,7 +61,7 @@ const installMinimalDocument = (): (() => void) => {
 };
 
 describe('front matter codec and rendering helpers', () => {
-  it('round-trips YAML front matter byte-for-byte except for the existing final-newline defect', () => {
+  it('round-trips YAML front matter byte-for-byte including the final newline', () => {
     const markdown = [
       '---',
       'title: Muninn',
@@ -72,13 +72,13 @@ describe('front matter codec and rendering helpers', () => {
       '',
     ].join('\n');
 
-    expect(serializeToHostMarkdown(parseHostMarkdown(markdown))).to.equal(markdown.trimEnd());
+    expect(serializeToHostMarkdown(parseHostMarkdown(markdown))).to.equal(markdown);
   });
 
   it('keeps mid-document thematic breaks as markdown, not front matter', () => {
     const markdown = ['# Before', '', '---', '', '# After', ''].join('\n');
 
-    expect(serializeToHostMarkdown(parseHostMarkdown(markdown))).to.equal(markdown.trimEnd());
+    expect(serializeToHostMarkdown(parseHostMarkdown(markdown))).to.equal(markdown);
   });
 
   it('renders a localized label and displays only the YAML body text', () => {

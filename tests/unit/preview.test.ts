@@ -1,185 +1,82 @@
+// SPDX-FileCopyrightText: 2026 Muninn contributors
+// SPDX-License-Identifier: AGPL-3.0-only
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 import { escapeHtml } from '../../src/webview/editor/localization';
-import { sanitizeMermaidSvg } from '../../src/webview/editor/preview';
+import { getMermaidDiagramDescription, sanitizeMermaidSvg } from '../../src/webview/editor/preview';
+import {
+  renderMermaidDiagram,
+  setMermaidRenderingEnabled,
+  onMermaidPolicyChanged,
+} from '../../src/webview/editor/renderers/mermaid-renderer';
 
-let expect: Chai.ExpectStatic;
+describe('diagram security and accessibility', () => {
+  const dom = new JSDOM('');
+  const parse = (source: string) =>
+    new dom.window.DOMParser().parseFromString(source, 'image/svg+xml').querySelector('svg') ??
+    undefined;
+  after(() => dom.window.close());
 
-before(async () => {
-  ({ expect } = await import('chai'));
-});
-
-type MockAttribute = {
-  name: string;
-  value: string;
-};
-
-type MockSanitizableElement = {
-  attributes: MockAttribute[];
-  removeAttribute: (name: string) => void;
-  toHtml: () => string;
-};
-
-const createSanitizableElement = (
-  tagName: string,
-  attributes: Record<string, string>,
-): MockSanitizableElement => {
-  const serializedAttributes = Object.entries(attributes).map(([name, value]) => ({
-    name,
-    value,
-  }));
-  const removedAttributes = new Set<string>();
-
-  return {
-    attributes: serializedAttributes,
-    removeAttribute(name: string): void {
-      removedAttributes.add(name);
-    },
-    toHtml(): string {
-      const remainingAttributes = serializedAttributes
-        .filter((attribute) => !removedAttributes.has(attribute.name))
-        .map((attribute) => `${attribute.name}="${attribute.value}"`)
-        .join(' ');
-      if (!remainingAttributes) {
-        return `<${tagName}></${tagName}>`;
-      }
-      return `<${tagName} ${remainingAttributes}></${tagName}>`;
-    },
-  };
-};
-
-const missingSvgParser = (): Element | undefined => {
-  return;
-};
-
-describe('preview sanitization', () => {
-  it('escapes HTML content for safe error rendering', () => {
-    expect(escapeHtml(`<script>alert('x')</script>&"`)).to.equal(
-      '&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt;&amp;&quot;',
+  it('describes common diagrams and handles empty or unsupported source', () => {
+    assert.equal(getMermaidDiagramDescription('graph TD\nA[Start] --> B[End]'), 'graph TD: Start');
+    assert.equal(
+      getMermaidDiagramDescription('sequenceDiagram\nparticipant Alice'),
+      'sequenceDiagram: Alice',
     );
-  });
-
-  it('returns a user-visible error when SVG output is missing', () => {
-    const result = sanitizeMermaidSvg('<not-svg/>', missingSvgParser);
-    expect(result).to.equal(
-      '<div class="muninn-mermaid-error">Mermaid rendered no SVG output.</div>',
+    assert.equal(
+      getMermaidDiagramDescription('classDiagram\nclass Animal'),
+      'classDiagram: Animal',
     );
+    assert.equal(getMermaidDiagramDescription('not a diagram'), undefined);
+    assert.equal(getMermaidDiagramDescription('   \n'), undefined);
+    assert.equal(escapeHtml('<script>&"'), '&lt;script&gt;&amp;&quot;');
   });
 
-  it('removes script-like nodes and dangerous SVG attributes', () => {
-    const blockedNode = {
-      removed: false,
-      remove(): void {
-        this.removed = true;
-      },
-    };
-
-    const unsafeLink = createSanitizableElement('a', {
-      class: 'unsafe-link',
-      onclick: 'alert(1)',
-      href: 'javascript:alert(1)',
-      'xlink:href': 'data:text/html;base64,PHNjcmlwdA==',
-    });
-    const safeLink = createSanitizableElement('a', {
-      class: 'safe-link',
-      href: 'https://example.com/diagram.svg',
-    });
-
-    const svgElement = {
-      querySelectorAll(selector: string): Element[] {
-        if (selector === 'script,foreignObject,iframe,object,embed') {
-          return [blockedNode as unknown as Element];
-        }
-        if (selector === '*') {
-          return [unsafeLink as unknown as Element, safeLink as unknown as Element];
-        }
-        return [];
-      },
-      get outerHTML(): string {
-        const blockedMarkup = blockedNode.removed ? '' : '<script>alert(1)</script>';
-        return `<svg>${blockedMarkup}${unsafeLink.toHtml()}${safeLink.toHtml()}</svg>`;
-      },
-    } as unknown as Element;
-
-    const result = sanitizeMermaidSvg('<svg/>', () => svgElement);
-
-    expect(blockedNode.removed).to.equal(true);
-    expect(result).to.not.include('<script>');
-    expect(result).to.not.include('onclick="');
-    expect(result).to.not.include('javascript:');
-    expect(result).to.not.include('data:text/html');
-    expect(result).to.include('class="unsafe-link"');
-    expect(result).to.include('class="safe-link"');
-    expect(result).to.include('href="https://example.com/diagram.svg"');
+  it('rejects missing SVG and removes executable attributes including those on the SVG root', () => {
+    assert.match(sanitizeMermaidSvg('<missing/>', '', parse), /no SVG output/);
+    const output = sanitizeMermaidSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(1)</script><a onclick="bad()" href="javascript:bad()">Bad</a><image href="https://remote/image.svg"/><use href="#local"/></svg>',
+      'graph TD\nA[Start]',
+      parse,
+    );
+    assert.doesNotMatch(output, /onload|onclick|javascript:|<script|https:\/\/remote/);
+    assert.match(output, /href="#local"/);
+    assert.match(output, /role="img"/);
+    assert.match(output, /Mermaid diagram: graph TD: Start/);
   });
 
-  it('converts foreignObject labels into svg text fallback nodes', () => {
-    const textAttributes: MockAttribute[] = [];
-    const textNode = {
-      attributes: textAttributes,
-      textContent: '',
-      setAttribute(name: string, value: string): void {
-        const existing = textAttributes.find((attribute) => attribute.name === name);
-        if (existing) {
-          existing.value = value;
-          return;
-        }
-        textAttributes.push({ name, value });
-      },
-      removeAttribute(): void {},
-    };
+  it('preserves author-provided title and description with a valid accessible relationship', () => {
+    const output = sanitizeMermaidSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg"><title>Deployment decisions</title><desc id="authored">Failure returns to review.</desc></svg>',
+      'graph TD\nA[Start]',
+      parse,
+    );
+    assert.match(output, /<title>Deployment decisions<\/title>/);
+    assert.match(output, /<desc id="authored">Failure returns to review\.<\/desc>/);
+    assert.match(output, /aria-describedby="authored"/);
+    assert.match(output, /aria-label="Deployment decisions"/);
+  });
 
-    let insertedLabel: typeof textNode | undefined;
-    const foreignObject = {
-      tagName: 'foreignObject',
-      textContent: ' Start ',
-      attributes: [] as MockAttribute[],
-      ownerDocument: {
-        createElementNS(): typeof textNode {
-          return textNode;
-        },
-      },
-      parentElement: {
-        insertBefore(node: typeof textNode): void {
-          insertedLabel = node;
-        },
-      },
-      getAttribute(attributeName: string): string | undefined {
-        if (attributeName === 'x') {
-          return '10';
-        }
-        if (attributeName === 'y') {
-          return '20';
-        }
-        if (attributeName === 'width') {
-          return '40';
-        }
-        if (attributeName === 'height') {
-          return '16';
-        }
-        return undefined;
-      },
-      remove(): void {},
-      removeAttribute(): void {},
-    };
+  it('removes dangling root descriptions and converts HTML labels to inert text', () => {
+    const output = sanitizeMermaidSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" aria-describedby="missing"><foreignObject x="10" y="20" width="40" height="16"><div xmlns="http://www.w3.org/1999/xhtml">Start</div></foreignObject></svg>',
+      '',
+      parse,
+    );
+    assert.doesNotMatch(output, /foreignObject|aria-describedby/);
+    assert.match(output, /<text[^>]+x="30"[^>]+y="28"[^>]*>Start<\/text>/);
+  });
 
-    const svgElement = {
-      querySelectorAll(selector: string): Element[] {
-        if (selector === 'script,foreignObject,iframe,object,embed') {
-          return [foreignObject as unknown as Element];
-        }
-        if (selector === '*') {
-          return insertedLabel ? [insertedLabel as unknown as Element] : [];
-        }
-        return [];
-      },
-      get outerHTML(): string {
-        return `<svg>${insertedLabel ? '<text>Start</text>' : ''}</svg>`;
-      },
-    } as unknown as Element;
-
-    const result = sanitizeMermaidSvg('<svg/>', () => svgElement);
-
-    expect(insertedLabel).to.not.equal(undefined);
-    expect(insertedLabel?.textContent).to.equal('Start');
-    expect(result).to.include('<text>Start</text>');
+  it('does not load or execute Mermaid when the host policy is disabled', async () => {
+    setMermaidRenderingEnabled(false);
+    const result = await renderMermaidDiagram('graph TD\nA --> B', 'disabled');
+    assert.equal(result.ok, false);
+    let changes = 0;
+    const unsubscribe = onMermaidPolicyChanged(() => changes++);
+    setMermaidRenderingEnabled(true);
+    setMermaidRenderingEnabled(true);
+    setMermaidRenderingEnabled(false);
+    unsubscribe();
+    assert.equal(changes, 2);
   });
 });

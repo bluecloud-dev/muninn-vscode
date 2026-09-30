@@ -1,100 +1,95 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
-# Cancel in-progress runs for the same branch/PR
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-# Principle of least privilege
 permissions:
   contents: read
-
 jobs:
-  gate-linux:
+  quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests with coverage
-        run: npm run coverage
-
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run coverage
       - name: Round-trip report freshness
         run: |
-          node ./scripts/generate-roundtrip-report.js
+          node scripts/generate-roundtrip-report.js
           git diff --exit-code -- docs/ROUNDTRIP_REPORT.md tests/unit/round-trip/KNOWN_DEVIATIONS.md
-
-      - name: Install xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      - name: Integration tests
-        run: xvfb-run -a npm test
-
-      - name: No-telemetry guard
-        run: npm run check:no-telemetry
-
-  e2e-macos:
-    runs-on: macos-latest
-    needs: gate-linux
-    timeout-minutes: 30
-
+      - run: npm run check:no-telemetry
+      - run: npm audit --audit-level=high
+      - run: npm run package
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tested-vsix
+          path: muninn-vscode-*.vsix
+          if-no-files-found: error
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode: ['1.85.2', stable]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript build
-        run: npm run compile
-
-      - name: Bundle extension
-        run: npm run bundle
-
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
-      - name: Run UI E2E tests
-        run: env E2E_VIDEO=1 npm run test:e2e
-
-      - name: Upload E2E artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
+      - run: npm ci
+      - run: xvfb-run -a npm test
+        env:
+          VSCODE_VERSION: ${{ matrix.vscode }}
+  packaged-ui:
+    needs: quality
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            vscode: stable
+          - os: ubuntu-latest
+            vscode: '1.85.2'
+          - os: windows-latest
+            vscode: stable
+          - os: macos-latest
+            vscode: stable
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          name: e2e-artifacts-macos-${{ github.sha }}
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: tested-vsix
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+        env:
+          VSCODE_VERSION: ${{ matrix.vscode }}
+      - if: runner.os != 'Linux'
+        run: npm run test:e2e
+        env:
+          VSCODE_VERSION: ${{ matrix.vscode }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ui-${{ matrix.os }}-${{ matrix.vscode }}
           path: artifacts/e2e/**
           retention-days: 14

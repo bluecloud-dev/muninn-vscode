@@ -28,6 +28,8 @@
   "command.muninn.insertTable.shortTitle": "Table",
   "command.muninn.insertCodeBlock.title": "Insert Code Block",
   "command.muninn.insertCodeBlock.shortTitle": "Code",
+  "command.muninn.insertImage.title": "Insert Image",
+  "command.muninn.insertImage.shortTitle": "Image",
   "command.muninn.addTableRow.title": "Add Table Row",
   "command.muninn.addTableRow.shortTitle": "Add Row",
   "command.muninn.addTableColumn.title": "Add Table Column",
@@ -40,5 +42,18 @@
   "configuration.editorAssociations.description": "Automatically set workspace markdown files to open with Muninn's custom markdown editor.",
   "configuration.integrations.mermaid.enabled.description": "Enable inline Mermaid rendering inside the Muninn custom markdown editor.",
   "configuration.integrations.mermaid.allowInUntrustedWorkspaces.description": "Allow Mermaid rendering in restricted workspaces (disabled by default for safety).",
-  "configuration.toolbar.mode.description": "Choose the Muninn toolbar mode. Basic shows core actions, advanced shows the full authoring toolbar."
+  "configuration.toolbar.mode.description": "Choose the Muninn toolbar mode. Basic shows core actions, advanced shows the full authoring toolbar.",
+  "configuration.appearance.contentWidth.description": "Controls the document content column width. Comfortable uses 70ch, full uses the editor width, and numbers from 40 to 120 are treated as ch units.",
+  "configuration.images.destination.description": "Folder for pasted, dropped, and picked image files, relative to the current Markdown document.",
+  "command.muninn.newNote.title": "New Markdown Note",
+  "command.muninn.goToHeading.title": "Go to Heading",
+  "command.muninn.insertFileLink.title": "Link to a File",
+  "command.muninn.toggleTask.title": "Toggle Task",
+  "command.muninn.toggleStrike.title": "Toggle Strikethrough",
+  "capabilities.virtualWorkspaces.description": "Reading uses URI-based providers; note and image creation require a writable file-system provider.",
+  "configuration.editorAssociations.deprecationMessage": "No longer used. Choose Reopen Editor With → Configure default editor to set your Markdown editor. Muninn never changes workspace associations.",
+  "command.muninn.undo.title": "Undo",
+  "command.muninn.redo.title": "Redo",
+  "capabilities.untrustedWorkspaces.description": "The editor works in Restricted Mode. Mermaid rendering requires workspace trust or explicit user permission.",
+  "customEditor.displayName": "Muninn Markdown Editor"
 }

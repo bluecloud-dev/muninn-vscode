@@ -26,6 +26,7 @@ describe('Integration CLI: command registration', () => {
     expect(commands).to.include('muninn.insertMermaidBlock');
     expect(commands).to.include('muninn.insertTable');
     expect(commands).to.include('muninn.insertCodeBlock');
+    expect(commands).to.include('muninn.insertImage');
     expect(commands).to.include('muninn.addTableRow');
     expect(commands).to.include('muninn.addTableColumn');
     expect(commands).to.include('muninn.tableActions');

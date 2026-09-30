@@ -1,7 +1,7 @@
 import sinon from 'sinon';
 import * as vscode from 'vscode';
 import { activate } from '../../src/extension';
-import { ConfigService } from '../../src/services/config-service';
+import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 let expect: Chai.ExpectStatic;
 
 before(async () => {
@@ -93,35 +93,19 @@ describe('extension activation', () => {
     expect(appendLine.called).to.equal(true);
   });
 
-  it('reloads configuration when muninn settings change', () => {
+  it('notifies open editors when muninn settings change', () => {
     sinon.stub(vscode.window, 'createOutputChannel').returns(createOutputChannel());
     sinon.stub(vscode.window, 'registerCustomEditorProvider').returns({ dispose: () => {} });
     sinon.stub(vscode.commands, 'registerCommand').returns({ dispose: () => {} });
-    const executeCommandStub = sinon.stub(vscode.commands, 'executeCommand').resolves();
-
-    sinon.stub(ConfigService.prototype, 'clearCache');
-    sinon.stub(ConfigService.prototype, 'getConfig').returns({
-      editorAssociations: true,
-      mermaidEnabled: true,
-      mermaidAllowInUntrustedWorkspaces: false,
-      toolbarMode: 'basic',
-    });
+    const notify = sinon
+      .stub(MuninnCustomEditorProvider.prototype, 'notifyConfigurationChanged')
+      .resolves();
 
     let configChangeListener: ((event: vscode.ConfigurationChangeEvent) => void) | undefined;
     sinon.stub(vscode.workspace, 'onDidChangeConfiguration').callsFake((listener) => {
       configChangeListener = listener;
       return { dispose: () => {} };
     });
-
-    const folderUri = vscode.Uri.file('/workspace');
-    Object.defineProperty(vscode.workspace, 'workspaceFolders', {
-      value: [{ uri: folderUri }] as unknown as vscode.WorkspaceFolder[],
-      configurable: true,
-    });
-    const activeUri = vscode.Uri.file('/workspace/readme.md');
-    vscode.window.activeTextEditor = {
-      document: { uri: activeUri },
-    } as unknown as vscode.TextEditor;
 
     const context = {
       subscriptions: [],
@@ -133,20 +117,10 @@ describe('extension activation', () => {
     expect(configChangeListener).to.not.equal(undefined);
 
     configChangeListener?.({
-      affectsConfiguration: (section: string, scope?: vscode.Uri) => {
-        if (section !== 'muninn') {
-          return false;
-        }
-        if (!scope) {
-          return true;
-        }
-        return (
-          scope.toString() === activeUri.toString() || scope.toString() === folderUri.toString()
-        );
-      },
+      affectsConfiguration: (section: string) => section === 'muninn',
     } as vscode.ConfigurationChangeEvent);
 
-    expect(executeCommandStub.called).to.equal(false);
+    expect(notify.calledOnce).to.equal(true);
   });
 
   it('ignores configuration changes outside muninn scope', () => {
@@ -154,7 +128,9 @@ describe('extension activation', () => {
     sinon.stub(vscode.window, 'registerCustomEditorProvider').returns({ dispose: () => {} });
     sinon.stub(vscode.commands, 'registerCommand').returns({ dispose: () => {} });
     sinon.stub(vscode.commands, 'executeCommand').resolves();
-    const configClearCacheStub = sinon.stub(ConfigService.prototype, 'clearCache');
+    const notify = sinon
+      .stub(MuninnCustomEditorProvider.prototype, 'notifyConfigurationChanged')
+      .resolves();
 
     let configChangeListener: ((event: vscode.ConfigurationChangeEvent) => void) | undefined;
     sinon.stub(vscode.workspace, 'onDidChangeConfiguration').callsFake((listener) => {
@@ -174,6 +150,6 @@ describe('extension activation', () => {
       affectsConfiguration: (section: string) => section === 'otherSection',
     } as vscode.ConfigurationChangeEvent);
 
-    expect(configClearCacheStub.called).to.equal(false);
+    expect(notify.called).to.equal(false);
   });
 });

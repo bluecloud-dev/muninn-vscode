@@ -1,71 +1,61 @@
 # Muninn for VS Code
 
-Muninn provides a reading-first Markdown experience in VS Code with a custom editor as the default for `.md` and `.markdown` files.
+A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
-![Muninn hero banner](assets/hero.png)
+## Start reading
 
-## Preview
+Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
-![Muninn table editing workflow captured from the E2E suite](assets/muninn-demo.gif)
+- **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
+- **Edit:** a compact toolbar with additional actions under More; standard GFM tasks and strikethrough; editable table cells with raw-source access.
+- **Capture notes:** **Muninn for VS Code: New Markdown Note** uses the native file dialog. **Insert File Link** connects existing files with ordinary relative Markdown.
+- **Review diagrams:** local, lazy-loaded Mermaid previews, gated by workspace trust.
+- **Use Source:** open the same file in VS Code's Markdown text editor whenever you need the full source syntax.
 
-## Highlights
-
-- Custom markdown editor (`muninn.markdownEditor`) opens by default.
-- Single-pane rich editing toolbar with grouped Text/Structure/Insert actions.
-- Mermaid block insertion with inline preview panel and guarded rendering.
-- In-editor table node view with editable grid, add-row/add-column, and source toggle.
-- Raw markdown escape hatch command.
-- Workspace trust-aware Mermaid gating.
-- No telemetry.
-
-## Commands
-
-- `muninn.openRawMarkdown`
-- `muninn.toggleBold`
-- `muninn.toggleItalic`
-- `muninn.setHeading1`
-- `muninn.setHeading2`
-- `muninn.setHeading3`
-- `muninn.setParagraph`
-- `muninn.toggleBulletList`
-- `muninn.toggleNumberedList`
-- `muninn.insertLink`
-- `muninn.insertMermaidBlock`
-- `muninn.insertTable`
-- `muninn.insertCodeBlock`
-- `muninn.addTableRow`
-- `muninn.addTableColumn`
-- `muninn.tableActions`
-- `muninn.inspectConfiguration`
+Untouched files round-trip byte for byte in the regression corpus. Edits preserve surrounding source syntax; changes that cannot be mapped safely are rejected with a Source fallback. Conflicting external edits are preserved in a separate unsaved recovery document. Save and Source wait for pending rich edits. No proprietary note syntax or database is introduced.
 
 ## Settings
 
-- `muninn.editorAssociations`
-- `muninn.integrations.mermaid.enabled`
-- `muninn.integrations.mermaid.allowInUntrustedWorkspaces`
-- `muninn.toolbar.mode` (`basic` or `advanced`)
+| Setting                                                  | Purpose                                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `muninn.toolbar.mode`                                    | Compact `basic` (default) or always-expanded `advanced`                    |
+| `muninn.appearance.contentWidth`                         | `comfortable`, `full`, or 40–120 characters                                |
+| `muninn.images.destination`                              | Image import folder relative to the document; default `images/`            |
+| `muninn.integrations.mermaid.enabled`                    | Enable diagram previews                                                    |
+| `muninn.integrations.mermaid.allowInUntrustedWorkspaces` | Explicit user-level permission to render in Restricted Mode; default false |
+
+The old `muninn.editorAssociations` setting is deprecated and has no effect. Configure defaults with VS Code's editor picker.
+
+Remote images do not load automatically. Imported images are limited to 10 MiB. Markdown HTML stays disabled. The extension makes no telemetry calls. Desktop VS Code 1.85.2+ is supported; browser/vscode.dev support is not advertised.
 
 ## Development
+
+Use Node 24. The [contributor documentation](docs/README.md) is the current source of guidance for humans and AI agents. Start with [Getting started](docs/GETTING_STARTED.md), [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Testing](docs/TESTING.md). The [audit implementation](docs/AUDIT_IMPLEMENTATION_2026-09.md) records an earlier validation snapshot.
 
 ```bash
 npm ci
 npm run compile
 npm run bundle
-npm run lint
-npm run format:check
-npm run typecheck
+npm run coverage
 npm test
+npm run package
 npm run test:e2e
 ```
 
-## Packaging
+F5 runs the checked-in compile/bundle task. Packaging produces a minified pre-release VSIX and third-party notices; the UI suite tests that exact archive.
 
-```bash
-npm run package
-```
+[Security policy](SECURITY.md) · [Security posture](docs/SECURITY_POSTURE.md)
 
 ## License
 
 GNU Affero General Public License v3.0 (AGPL-3.0-only). See [LICENSE](LICENSE).
 
-Muninn is free software: you can use, study, share, and improve it. If you distribute a modified version — including serving it to users through a network-hosted VS Code environment (code-server, Codespaces, Gitpod, and similar) — you must make your modified source available under the same license.
+### License — plain language
+
+Using Muninn to edit files imposes nothing on those files, your employer's code, or any repository you open.
+Your markdown, and anything you write with Muninn, is yours.
+The AGPL governs copying, distributing, or modifying Muninn itself.
+If you distribute a modified Muninn, share it under the same license and keep required notices.
+If you serve a modified Muninn through hosted VS Code environments such as code-server, Codespaces, or Gitpod, offer users the source for that modified Muninn.
+Redistributing unmodified Muninn keeps the [LICENSE](LICENSE) and notices with the extension.
+Common-understanding summary, not legal advice; the [LICENSE](LICENSE) text governs.
