@@ -105,13 +105,28 @@ async function open(name, source) {
   const file = path.join(workspace, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, source);
-  await page.keyboard.press(`${modifier}+P`);
-  await page.locator('.quick-input-widget input[type="text"]').fill(file);
-  await page
-    .locator('.quick-input-list .monaco-list-row')
-    .filter({ hasText: name })
-    .first()
-    .click();
+  await eventually(
+    async () => {
+      // A newly written file may be absent from Quick Open's first search, or
+      // VS Code may close Quick Open while its workbench is still settling.
+      await page.keyboard.press('Escape');
+      await page.keyboard.press(`${modifier}+P`);
+      await page.locator('.quick-input-widget input[type="text"]').fill(file);
+      try {
+        await page
+          .locator('.quick-input-list .monaco-list-row')
+          .filter({ hasText: name })
+          .first()
+          .click({ timeout: 2500 });
+        return true;
+      } catch (error) {
+        if (error.name !== 'TimeoutError') throw error;
+        return false;
+      }
+    },
+    'Quick Open did not list ' + name,
+    30000,
+  );
   let editor;
   await eventually(async () => {
     editor = await visibleEditorFrame(name);
@@ -140,6 +155,7 @@ async function save(editor, file, expected) {
     error.message += '\\nActual file: ' + JSON.stringify(fs.readFileSync(file, 'utf8'));
     throw error;
   }
+  return (await visibleEditorFrame(path.basename(file))) ?? currentEditor;
 }
 
 describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 240000 }, () => {
@@ -203,14 +219,14 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
 
   it('opens by default, preserves source on save, and supports immediate typing/save/undo', async () => {
     const source = '# Reading\n\nAlpha\n';
-    const { editor, file } = await open('reading.md', source);
+    let { editor, file } = await open('reading.md', source);
     assert.equal(await editor.locator('.muninn-toolbar').getAttribute('role'), 'toolbar');
     assert.equal(await editor.locator('.muninn-preview').count(), 0);
-    await save(editor, file, source);
+    editor = await save(editor, file, source);
     await editor.locator('.ProseMirror p').click();
     await page.keyboard.press(lineEnd);
     await page.keyboard.type('XY');
-    await save(editor, file, '# Reading\n\nAlphaXY\n');
+    editor = await save(editor, file, '# Reading\n\nAlphaXY\n');
     await editor.locator('.ProseMirror').press(`${modifier}+z`);
     await eventually(
       async () => (await editor.locator('.ProseMirror p').innerText()) === 'Alpha',
@@ -220,8 +236,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
 
   it('keeps basic actions quiet and keyboard accessible, formats without replacing selected text', async () => {
-    const { editor, file } = await open('toolbar.md', 'Alpha\n');
-    const bold = editor.locator('[data-command="toggleBold"]');
+    let { editor, file } = await open('toolbar.md', 'Alpha\n');
+    let bold = editor.locator('[data-command="toggleBold"]');
     await bold.focus();
     await bold.press('ArrowRight');
     assert.equal(
@@ -234,7 +250,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press(lineStart);
     await page.keyboard.press(selectLineEnd);
     await bold.click();
-    await save(editor, file, '**Alpha**\n');
+    editor = await save(editor, file, '**Alpha**\n');
+    bold = editor.locator('[data-command="toggleBold"]');
     assert.equal(await bold.getAttribute('aria-pressed'), 'true');
     await editor.locator('[data-command="insertCodeBlock"]').click();
     await eventually(() => editor.locator('.muninn-code-node').count(), 'Code block missing');
@@ -249,7 +266,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
 
   it('saves focused table input immediately and supports grid actions, source apply, delete and undo', async () => {
     const source = '| Name | Score |\n| :--- | ---: |\n| Alice | 7 |\n';
-    const { editor, file } = await open('table.md', source);
+    let { editor, file } = await open('table.md', source);
     const cell = editor.locator('[data-table-row="1"][data-table-column="0"]');
     await cell.fill('Bob');
     await cell.press(`${modifier}+s`);
@@ -266,7 +283,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     const textarea = editor.locator('[data-testid="muninn-table-source-text"]');
     await textarea.fill('| Item |\n| --- |\n| Done |');
     await textarea.press(`${modifier}+Enter`);
-    await save(editor, file, '| Item |\n| --- |\n| Done |\n');
+    editor = await save(editor, file, '| Item |\n| --- |\n| Done |\n');
     await editor.locator('[data-testid="muninn-table-delete"]').click();
     assert.equal(await editor.locator('[data-testid="muninn-table-node"]').count(), 0);
     await editor.locator('.ProseMirror').press(`${modifier}+z`);
@@ -288,12 +305,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
 
   it('toggles standard GFM tasks and navigates Unicode headings and file anchors', async () => {
     fs.writeFileSync(path.join(workspace, 'target.md'), '# Target\n\n## Destination\n');
-    const { editor, file } = await open(
+    let { editor, file } = await open(
       'tasks.md',
       '---\ntitle: Metadata\n---\n\n# Résumé\n\n- [ ] Read spec\n\n[Target](target.md#destination)\n',
     );
     await editor.locator('input[type="checkbox"]').check();
-    await save(
+    editor = await save(
       editor,
       file,
       '---\ntitle: Metadata\n---\n\n# Résumé\n\n- [x] Read spec\n\n[Target](target.md#destination)\n',
