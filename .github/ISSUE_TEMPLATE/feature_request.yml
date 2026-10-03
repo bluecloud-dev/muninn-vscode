@@ -1,0 +1,29 @@
+name: Preview feedback and ideas
+description: Suggest an improvement to the Muninn reading or editing experience.
+title: 'Idea: '
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Muninn. Tell us about the task and what would make it easier. Please do not include private document content.
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What were you trying to do?
+      description: Describe the real reading or editing task, including any friction you hit.
+      placeholder: I was reviewing a long Markdown spec and...
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What would help?
+      description: Describe the result you want; a specific UI idea is welcome but optional.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: How do you handle this today?
+      description: Optional workaround or comparison that helps explain the need.

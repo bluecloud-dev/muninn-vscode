@@ -234,6 +234,11 @@
         "icon": "$(new-file)"
       },
       {
+        "command": "muninn.reportIssue",
+        "title": "%command.muninn.reportIssue.title%",
+        "category": "%command.category%"
+      },
+      {
         "command": "muninn.goToHeading",
         "title": "%command.muninn.goToHeading.title%",
         "category": "%command.category%",
@@ -275,6 +280,11 @@
       }
     ],
     "menus": {
+      "issue/reporter": [
+        {
+          "command": "muninn.reportIssue"
+        }
+      ],
       "editor/title": [
         {
           "command": "muninn.goToHeading",
@@ -396,6 +406,9 @@
         },
         {
           "command": "muninn.newNote"
+        },
+        {
+          "command": "muninn.reportIssue"
         },
         {
           "command": "muninn.goToHeading",

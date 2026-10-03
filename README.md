@@ -4,6 +4,12 @@
 
 A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
+## Help shape the preview
+
+Trying Muninn 1.0.0 Preview? Tell us where reading or editing Markdown feels awkward, or what would make it more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). For bugs, you can also choose **Help: Report Issue…** in VS Code, select Muninn, or run **Muninn for VS Code: Report an Issue** from the Command Palette.
+
+Please describe the task you were doing and the result you expected. Include steps to reproduce a bug when possible; remove private content from any sample Markdown or screenshots. Muninn does not collect feedback or usage data automatically.
+
 ## Start reading
 
 The first release candidate is **1.0.0 Preview**, distributed on the pre-release channel. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.

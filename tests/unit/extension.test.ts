@@ -50,13 +50,13 @@ describe('extension activation', () => {
     vscode.window.activeTextEditor = undefined as unknown as vscode.TextEditor;
   });
 
-  it('registers commands and updates configuration inspection output', () => {
+  it('registers commands and updates configuration inspection output', async () => {
     const registerCommandStub = sinon.stub(vscode.commands, 'registerCommand');
     const registerCustomEditorProviderStub = sinon.stub(
       vscode.window,
       'registerCustomEditorProvider',
     );
-    sinon.stub(vscode.commands, 'executeCommand').resolves();
+    const executeCommandStub = sinon.stub(vscode.commands, 'executeCommand').resolves();
     sinon.stub(vscode.workspace, 'onDidChangeConfiguration').returns({ dispose: () => {} });
 
     const outputChannel = createOutputChannel();
@@ -74,12 +74,14 @@ describe('extension activation', () => {
       subscriptions: [],
       globalState: createMemento(),
       workspaceState: createMemento(),
+      extension: { id: 'bluecloud-dev.muninn-vscode' },
     } as unknown as vscode.ExtensionContext;
 
     activate(context);
 
     const registeredCommands = registerCommandStub.getCalls().map((call) => call.args[0]);
     expect(registeredCommands).to.include('muninn.inspectConfiguration');
+    expect(registeredCommands).to.include('muninn.reportIssue');
     expect(registeredCommands).to.include('muninn.tableActions');
     expect(registerCustomEditorProviderStub.calledOnce).to.equal(true);
 
@@ -91,6 +93,17 @@ describe('extension activation', () => {
     inspectCallback();
 
     expect(appendLine.called).to.equal(true);
+
+    const reportIssueCommand = registerCommandStub
+      .getCalls()
+      .find((call) => call.args[0] === 'muninn.reportIssue');
+    const reportIssueCallback = reportIssueCommand?.args[1] as () => Promise<void>;
+    await reportIssueCallback();
+    expect(
+      executeCommandStub.calledWithExactly('workbench.action.openIssueReporter', {
+        extensionId: 'bluecloud-dev.muninn-vscode',
+      }),
+    ).to.equal(true);
   });
 
   it('notifies open editors when muninn settings change', () => {

@@ -140,6 +140,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const commandDisposables = registerCommands([
     { id: 'muninn.newNote', run: createMarkdownNote },
+    {
+      id: 'muninn.reportIssue',
+      run: () =>
+        vscode.commands.executeCommand('workbench.action.openIssueReporter', {
+          extensionId: context.extension.id,
+        }),
+    },
     { id: 'muninn.goToHeading', run: () => customEditorProvider.goToHeadingInActiveEditor() },
     { id: 'muninn.insertFileLink', run: () => customEditorProvider.insertFileLinkInActiveEditor() },
     {

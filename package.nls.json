@@ -46,6 +46,7 @@
   "configuration.appearance.contentWidth.description": "Controls the document content column width. Comfortable uses 70ch, full uses the editor width, and numbers from 40 to 120 are treated as ch units.",
   "configuration.images.destination.description": "Folder for pasted, dropped, and picked image files, relative to the current Markdown document.",
   "command.muninn.newNote.title": "New Markdown Note",
+  "command.muninn.reportIssue.title": "Report an Issue",
   "command.muninn.goToHeading.title": "Go to Heading",
   "command.muninn.insertFileLink.title": "Link to a File",
   "command.muninn.toggleTask.title": "Toggle Task",
