@@ -38,7 +38,7 @@ Remote images do not load automatically. Imported images are limited to 10 MiB. 
 
 ## Development
 
-Use Node 24. The [contributor documentation](docs/README.md) is the current source of guidance for humans and AI agents. Start with [Getting started](docs/GETTING_STARTED.md), [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Testing](docs/TESTING.md). The [audit implementation](docs/AUDIT_IMPLEMENTATION_2026-09.md) records an earlier validation snapshot.
+Use Node 24 and your preferred editor or AI development environment. The [contributor documentation](docs/README.md) contains the shared [setup](docs/GETTING_STARTED.md#development-setup), [architecture](docs/ARCHITECTURE.md), [development rules](docs/DEVELOPMENT.md), and [testing guide](docs/TESTING.md).
 
 ```bash
 npm ci

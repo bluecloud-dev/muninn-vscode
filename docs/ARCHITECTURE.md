@@ -2,7 +2,29 @@
 
 Muninn is a desktop VS Code custom text editor (`muninn.markdownEditor`) for ordinary CommonMark/GFM files. The existing ProseMirror editor remains the core. Native pickers, commands, Explorer and Find provide the surrounding workflow; there is no separate application shell, note database or agent runtime.
 
-This document defines the current architecture for human and AI contributors. [Development](DEVELOPMENT.md), [source fidelity](ROUNDTRIP_CONTRACT.md), [testing](TESTING.md), and [release](RELEASE.md) define the corresponding work rules. The root `AGENTS.md` and `CONTRIBUTING.md` are entrypoints to these documents; dated audits, strategy snapshots, old issue text, and Git history are evidence rather than current implementation instructions.
+Use [development](DEVELOPMENT.md), [source fidelity](ROUNDTRIP_CONTRACT.md), [testing](TESTING.md), and [release](RELEASE.md) for the corresponding work rules.
+
+## Product identity and design decisions
+
+| Surface                              | Canonical value                          |
+| ------------------------------------ | ---------------------------------------- |
+| Display name and command category    | Muninn for VS Code                       |
+| Extension ID                         | `bluecloud-dev.muninn-vscode`            |
+| Package name                         | `muninn-vscode`                          |
+| Custom editor                        | `muninn.markdownEditor`                  |
+| Command, setting, and context prefix | `muninn.*`                               |
+| License                              | AGPL-3.0-only; see [LICENSE](../LICENSE) |
+
+Use the existing crow mark in `assets/` and keep its silhouette consistent. Preview is release metadata, not a new product name. Legacy names belong only in [migration guidance](GETTING_STARTED.md#moving-from-the-legacy-extension).
+
+The accepted design decisions are:
+
+- ProseMirror is the editor engine. Keep source preservation at the parser/serializer boundary and use native VS Code UI around the custom editor.
+- CommonMark and GFM are the document format. Preserve unsupported constructs, including front matter, without inventing a proprietary syntax.
+- Collect no telemetry. Product feedback comes from voluntary reports and issues.
+- Preserve the AGPL-3.0-only license, source headers, and third-party notices. The earlier MIT decision was superseded by the relicensing in commit `a0829d9`.
+
+Larger features need a concise proposal under the [development workflow](DEVELOPMENT.md#planning-and-task-status). Earlier decision records remain in Git history.
 
 ## Ownership and data flow
 
@@ -34,7 +56,7 @@ Untouched input must serialize byte for byte. Edited output changes only mapped 
 
 Candidate edits are reparsed and checked against the intended structure. Empty paragraphs and trailing text whitespace require a narrow equivalence rule because they are temporary editing states that Markdown cannot distinguish as AST nodes. Structural or mark mismatches still reject the edit and announce the Source escape hatch. This is a conservative implementation, not a claim that every possible rich edit on every Markdown dialect is representable.
 
-The golden corpus and exact-edit tests are the executable contract. Add regressions for constructs touched by a change. Read the [source fidelity contract](ROUNDTRIP_CONTRACT.md) before changing the codec or sync path; the old draft specification outside `docs/` was retired because its unimplemented targets could be mistaken for current guarantees.
+The golden corpus and exact-edit tests are the executable contract. Add regressions for constructs touched by a change. Read the [source fidelity contract](ROUNDTRIP_CONTRACT.md) before changing the codec or sync path.
 
 ## Security and platform boundaries
 
@@ -52,4 +74,4 @@ There is one sanctioned custom-editor webview. Use native VS Code APIs for picke
 
 Node 24 is the contributor/CI toolchain. The host bundle targets Node 18 and the webview targets Chrome 114 for VS Code 1.85.2. Production output is isolated in `dist/` and `media/generated/`; clean builds, bundle budgets and archive checks prevent stale assets.
 
-See [testing and manual acceptance](TESTING.md), [implementation status](AUDIT_IMPLEMENTATION_2026-09.md), and the [dated audit](MUNINN_AUDIT_2026-09.md). The retired v1 native-preview specifications, root reports, and June 2026 issue-generation files were removed from the working tree; Git history retains them. The [current roadmap](ROADMAP.md) is the planning entrypoint, while live GitHub issues provide task status.
+See [testing and manual acceptance](TESTING.md) for verification requirements and limits. The [roadmap](ROADMAP.md) is the planning entrypoint; live GitHub issues provide task status.

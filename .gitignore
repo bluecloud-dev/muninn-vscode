@@ -1,8 +1,18 @@
-# AI Assistant / Speckit Configuration (local only)
-# These directories contain local development tooling and should not be committed
+# Local assistant configuration; shared guidance lives in AGENTS.md and docs/
+.agents/
 .claude/
+.claudeignore
+.codex/
+.cursor/
+.opencode/
+.windsurf/
 .specify/
 .remember/
+CLAUDE.md
+GEMINI.md
+.cursorrules
+.windsurfrules
+graphify-out/
 
 # Node.js
 node_modules/
@@ -27,6 +37,7 @@ artifacts/
 !.vscode/launch.json
 !.vscode/tasks.json
 .idea/
+.vscode-test/
 *.swp
 *.swo
 *~
@@ -47,9 +58,4 @@ coverage/
 # Logs
 logs/
 *.log
-.claude
-.codex
-.vscode-test
-# AGENTS.md is committed: canonical AI-agent instructions (CLAUDE.md stays local-only)
-CLAUDE.md
 settings.json

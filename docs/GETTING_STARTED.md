@@ -12,7 +12,7 @@ Table cells save as you type, including when Save is pressed while a cell is foc
 
 Mermaid previews are disabled in Restricted Mode unless explicitly permitted in user settings. Remote images are not fetched automatically. For unsupported Markdown or edits the fidelity guard cannot map safely, use Source.
 
-## Contribute
+## Development setup
 
 Use Node 24 (see `.nvmrc`) and VS Code 1.85.2 or newer.
 
@@ -22,4 +22,14 @@ npm run compile
 npm run bundle
 ```
 
-Open this repository in VS Code and press F5. The configured prelaunch task compiles and bundles the runtime. Open a Markdown fixture in the Extension Development Host. See [development](DEVELOPMENT.md) and [testing](TESTING.md).
+On Windows PowerShell, use `npm.cmd` if the execution policy blocks `npm.ps1`.
+
+Open this repository in VS Code and press F5. The configured prelaunch task compiles and bundles the runtime. Open a Markdown fixture in the Extension Development Host. You can edit the source in any environment; see [tool choice](DEVELOPMENT.md#editor-and-ai-tool-choice) and [testing](TESTING.md) for the shared workflow.
+
+## Moving from the legacy extension
+
+The legacy extension ID was `blueclouddev.markdown-preview`; the current ID is `bluecloud-dev.muninn-vscode`. Install Muninn, verify your Markdown files open correctly, then uninstall the old extension.
+
+Remove obsolete `markdownReader.*` settings and keybindings. Mermaid and toolbar settings use the corresponding `muninn.*` names; current settings are listed in the [README](../README.md#settings), and command IDs are declared in [package.json](../package.json). There are no legacy command aliases.
+
+Use **Reopen Editor With… → Configure default editor** for editor preferences. Both the legacy association setting and the deprecated `muninn.editorAssociations` have no active effect. Check **Muninn for VS Code: Inspect Configuration** and **Open Raw Markdown** after migrating.

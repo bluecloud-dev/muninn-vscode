@@ -22,4 +22,4 @@ For changes to the schema, parser tokens, serializer, table model, or `src/webvi
 
 For sync or host-provider changes, also test delayed and reordered acknowledgments, no-ops, external edits, selection/undo, Save, Source, and panel close. Run extension-host and installed-VSIX tests when behavior reaches the UI. See [TESTING.md](TESTING.md) for the commands and evidence boundaries.
 
-Some rich edits cannot be represented safely against noncanonical source. The Source fallback is part of the contract; do not silently normalize input to make a rich action appear successful. The [September implementation record](AUDIT_IMPLEMENTATION_2026-09.md) describes the tested baseline and remaining manual validation.
+Some rich edits cannot be represented safely against noncanonical source. The Source fallback is part of the contract; do not silently normalize input to make a rich action appear successful. See [manual acceptance](TESTING.md#manual-acceptance-before-release) for validation beyond the automated suites.
