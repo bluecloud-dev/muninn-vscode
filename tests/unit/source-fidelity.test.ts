@@ -95,6 +95,22 @@ describe('source-preserving edits', () => {
     });
   }
 
+  for (const eol of ['\n', '\r\n']) {
+    it('preserves newline bytes when splitting a paragraph: ' + JSON.stringify(eol), () => {
+      const source = ['# Reading ###', '', 'AlphaBeta', '', '_Untouched_  '].join(eol);
+      const state = EditorState.create({ doc: parseHostMarkdown(source) });
+      let splitAt: number | undefined;
+      state.doc.descendants((node, position) => {
+        if (node.isText && node.text === 'AlphaBeta') splitAt = position + 5;
+      });
+      assert.notEqual(splitAt, undefined);
+      assert.equal(
+        serializeToHostMarkdown(state.tr.split(splitAt!).doc),
+        ['# Reading ###', '', 'Alpha', '', 'Beta', '', '_Untouched_  '].join(eol),
+      );
+    });
+  }
+
   it('keeps intermediate trailing spaces while typing and subsequent undo edits', () => {
     let state = EditorState.create({ doc: parseHostMarkdown('# Reading\n\nAlpha\n') });
     for (const addition of [' ', 'Beta', ' ']) {
