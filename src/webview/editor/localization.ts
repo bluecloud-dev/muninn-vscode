@@ -33,7 +33,7 @@ export const formatString = (
 ): string => {
   let output = template;
   for (const [index, value] of values.entries()) {
-    output = output.replaceAll(`{${index}}`, String(value));
+    output = output.replaceAll(`{${index}}`, () => String(value));
   }
   return output;
 };
