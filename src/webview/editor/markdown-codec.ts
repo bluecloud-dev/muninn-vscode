@@ -146,7 +146,7 @@ const comparableContent = (node: ProseMirrorNode): unknown => {
   if (node.isText) return { text: node.text, marks: node.marks.map((mark) => mark.toJSON()) };
   const children: unknown[] = [];
   // ProseMirror Node.forEach is not Array.forEach; Node is not iterable.
-  // eslint-disable-next-line unicorn/no-array-for-each
+  // eslint-disable-next-line unicorn/no-for-each
   node.forEach((child) => {
     if (child.type.name === 'paragraph' && child.content.size === 0) return;
     children.push(comparableContent(child));
@@ -207,7 +207,7 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
         valid = false;
         break;
       }
-      edits.push({ from, to, insert: edit.insert.replaceAll('\n', eol) });
+      edits.push({ from, to, insert: edit.insert.replaceAll('\n', () => eol) });
     }
     if (!valid) continue;
     try {
