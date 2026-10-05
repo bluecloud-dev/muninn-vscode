@@ -20,4 +20,11 @@ describe('webview localization', () => {
   it('formats localized message templates', () => {
     expect(formatString('Run {0} in {1}', 'Source', 'Muninn')).to.equal('Run Source in Muninn');
   });
+
+  it('inserts dollar sequences as literal localized values', () => {
+    const value = "$& $$ $` $' $1 $<name>";
+    expect(formatString('Before {0}, again {0}, after', value)).to.equal(
+      `Before ${value}, again ${value}, after`,
+    );
+  });
 });
