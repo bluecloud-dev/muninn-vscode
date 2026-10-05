@@ -4,6 +4,24 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-05
+
+### Fixed
+
+- Preserve dollar sequences literally when inserting values into localized messages.
+
+### Changed
+
+- Update ProseMirror, Markdown synchronization, bundled DOMPurify, and test/build dependencies.
+- Upgrade CI linting to ESLint 10 and Unicorn 76 while retaining the project's existing code style.
+- Refresh bundled third-party notices and check their freshness in CI.
+- Extend edit regression coverage for LF/CRLF paragraph splits and untouched Markdown bytes.
+
+### Release
+
+- Version 1.0.1 retains the Marketplace Preview badge and is distributed on the pre-release channel.
+- Requires VS Code 1.85.2 or later. Existing preview limitations remain documented in [testing](https://github.com/bluecloud-dev/muninn-vscode/blob/v1.0.1/docs/TESTING.md).
+
 ## [1.0.0] - 2026-10-03
 
 ### Added
