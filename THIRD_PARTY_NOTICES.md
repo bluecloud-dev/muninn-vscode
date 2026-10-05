@@ -2314,7 +2314,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-history@1.5.0
+## prosemirror-history@1.5.1
 
 License: MIT
 
@@ -2496,7 +2496,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-view@1.42.5
+## prosemirror-view@1.42.6
 
 License: MIT
 
