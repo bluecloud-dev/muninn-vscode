@@ -1170,7 +1170,7 @@ THIS SOFTWARE.
 
 ---
 
-## diff@8.0.4
+## diff@9.0.0
 
 License: BSD-3-Clause
 
