@@ -1,5 +1,5 @@
 # Contributing
 
-Human and AI contributors use the same current guidance in [docs/README.md](docs/README.md). Read [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workflow and contribution rules, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for system boundaries, and [docs/TESTING.md](docs/TESTING.md) for verification. Editor changes also require [docs/ROUNDTRIP_CONTRACT.md](docs/ROUNDTRIP_CONTRACT.md).
+Start with [local setup](docs/GETTING_STARTED.md#development-setup), then read the [development rules](docs/DEVELOPMENT.md), [architecture](docs/ARCHITECTURE.md), and [testing guide](docs/TESTING.md). Editor changes also require the [source fidelity contract](docs/ROUNDTRIP_CONTRACT.md).
 
-Check the [live issues](https://github.com/bluecloud-dev/muninn-vscode/issues) for task status. This root file is an entrypoint, not a second policy source.
+Use your preferred editor and optional AI tools; all contributors follow the same guides in [docs/](docs/README.md). Check the [live issues](https://github.com/bluecloud-dev/muninn-vscode/issues) for task status, and sign commits with `git commit -s` for DCO.

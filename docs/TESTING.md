@@ -13,7 +13,7 @@ Use the gates below for changes to the editor. Unit coverage thresholds are enfo
 
 ## Regressions
 
-The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. `deviations.json` is empty after the September fixes. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes. The [source fidelity contract](ROUNDTRIP_CONTRACT.md) lists the required checks for codec and sync changes.
+The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. Read `deviations.json` for the current exceptions. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes. The [source fidelity contract](ROUNDTRIP_CONTRACT.md) lists the required checks for codec and sync changes.
 
 `host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, flush, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host; it is not a replacement for native UI checks.
 
@@ -23,7 +23,7 @@ The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixtu
 
 The extension-host runner and installed-VSIX runner resolve the executable declared by the downloaded macOS app bundle. Current VS Code bundles may call it `Code`; the library's older default path assumes `Electron`.
 
-The former quarantined WebDriver runner lost its VS Code renderer connection on the tested current build. Its core journeys now run through Electron: toolbar/focus, formatting, code languages, table operations, Mermaid, reading and source mode. Mock-only message injection is reserved for unit regressions.
+Core journeys run through Electron: toolbar/focus, formatting, code languages, table operations, Mermaid, reading and source mode. Mock-only message injection is reserved for unit regressions.
 
 Set `VSCODE_VERSION` to `1.85.2` or `stable`. CI runs extension-host tests on both, and packaged UI on Linux (both versions), Windows and macOS (stable). UI failures block CI. Traces/screenshots are saved to `artifacts/e2e/`; temporary profiles are retained in the OS temp directory for diagnosis.
 
@@ -37,13 +37,19 @@ Workspace Trust is disabled in the default integration configuration. Tests that
 - Exercise bold/italic toggles, link and code insertion, table row/column actions, and raw Source. Save and reopen; inspect exact Markdown bytes, including untouched surrounding text and terminal newline.
 - Edit a table through its raw-source panel and Apply control, including the keyboard shortcut. Confirm the grid updates and the saved file reflects the edit. Close/reopen during a pending apply and confirm draft recovery or an actionable error.
 - Render Mermaid in light, dark, and high-contrast themes; scroll while its preview is focused. Disable Mermaid and repeat in a restricted workspace to confirm the trust gate. Test the explicit application-scoped override separately if enabled.
-- Open an empty file, use keyboard-only toolbar/table/Source flows, and check that critical actions remain reachable without a mouse.
-- NVDA/VoiceOver reading, table labels, live-region verbosity and keyboard reachability.
+- Open an empty file and use keyboard-only toolbar/table/Source flows. Check the toolbar's single Tab entry point, arrow/Home/End navigation, and focus when More hides advanced controls. Confirm cell commits keep a usable table focus position.
+- Test NVDA/VoiceOver reading, a named editor surface, table and column-header labels, diagram text alternatives, and live-region verbosity. Errors must be distinguishable by text as well as color.
 - Narrow split editors, 200% zoom, light/dark/high contrast and visible focus.
+- Review Markdown changes from Source Control, including staged/unstaged diffs and read-only Git revisions. Confirm native review controls remain usable and unchanged source does not create unrelated diffs.
+- Click **Muninn: Report issue** while the custom editor is active. Confirm the native reporter selects Muninn, and the status-bar action disappears when switching to another editor.
 - Long-document cold-open/typing latency and many retained tabs' memory.
 - Actual Remote SSH/Codespaces filesystem providers and multi-root capture preferences.
 - Abrupt process termination versus normal save/close recovery; backups remain VS Code's responsibility.
 
-Record the VS Code version, OS, tested VSIX hash, outcome, and any remaining manual or provider limits. The old root `MANUAL_QA.md`, February QA/baseline/refactor reports, and draft preview design were retired; their dated claims remain available in Git history.
+Record the VS Code version, OS, tested VSIX hash, outcome, and any remaining manual or provider limits with the release or issue. CI results and local results are separate claims; link the relevant run for the commit under review.
 
-The CI matrix and local results are separate claims. See [implementation status](AUDIT_IMPLEMENTATION_2026-09.md) for what was executed locally.
+## Screenshots and assets
+
+Capture the editor overview, table grid and raw-source editing, Mermaid preview, Source action, feedback action, and keyboard focus in light and dark themes. Include a high-contrast focus check. Use the actual packaged extension and remove private document content from shared captures.
+
+Keep `assets/hero.png` aligned with the current editor and release positioning. Check that `assets/icon.png` is readable at small sizes and uses the same crow mark as `assets/muninn-rounded-logo.svg`. Replace screenshots when the depicted UI changes.

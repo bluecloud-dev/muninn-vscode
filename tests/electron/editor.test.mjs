@@ -220,6 +220,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('opens by default, preserves source on save, and supports immediate typing/save/undo', async () => {
     const source = '# Reading\n\nAlpha\n';
     let { editor, file } = await open('reading.md', source);
+    await page.getByText('Muninn: Report issue', { exact: true }).waitFor();
     assert.equal(await editor.locator('.muninn-toolbar').getAttribute('role'), 'toolbar');
     assert.equal(await editor.locator('.muninn-preview').count(), 0);
     editor = await save(editor, file, source);

@@ -90,6 +90,11 @@ const window = {
   showQuickPick: async () => undefined,
   showTextDocument: async () => undefined,
   setStatusBarMessage: () => undefined,
+  createStatusBarItem: () => ({
+    show: () => {},
+    hide: () => {},
+    dispose: () => {},
+  }),
   createOutputChannel: () => ({
     appendLine: () => {},
     trace: () => {},
@@ -174,6 +179,11 @@ const ConfigurationTarget = {
   WorkspaceFolder: 3,
 };
 
+const StatusBarAlignment = {
+  Left: 1,
+  Right: 2,
+};
+
 module.exports = {
   Uri,
   Position,
@@ -182,6 +192,7 @@ module.exports = {
   Selection,
   ViewColumn,
   ConfigurationTarget,
+  StatusBarAlignment,
   window,
   workspace,
   commands,

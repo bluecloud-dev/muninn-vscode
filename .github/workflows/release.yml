@@ -7,17 +7,35 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Version to rehearse (vMAJOR.MINOR.PATCH); no registry publish or GitHub release'
+        description: 'Release version (vMAJOR.MINOR.PATCH), matching package.json'
         required: true
         type: string
+      registry:
+        description: 'Registry destination'
+        required: true
+        default: both
+        type: choice
+        options:
+          - marketplace
+          - openvsx
+          - both
+      publish:
+        description: 'Publish the tested candidate and create the GitHub release; otherwise rehearse'
+        required: true
+        default: false
+        type: boolean
       verify_credentials:
-        description: 'Verify Marketplace and Open VSX publisher access without uploading'
+        description: 'Verify selected registry access during a rehearsal'
         required: true
         default: true
         type: boolean
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -39,6 +57,8 @@ jobs:
           cache: npm
 
       - name: Validate pre-release tag and manifest
+        env:
+          MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: |
           node <<'NODE'
           const { version, preview } = require('./package.json');
@@ -48,6 +68,9 @@ jobs:
           }
           if (preview !== true) {
             throw new Error('This workflow publishes Preview pre-releases; keep preview: true in package.json');
+          }
+          if (process.env.MANUAL_PUBLISH === 'true' && process.env.GITHUB_REF !== 'refs/heads/main') {
+            throw new Error('Manual publishing must run from main');
           }
           NODE
 
@@ -142,7 +165,9 @@ jobs:
 
   marketplace:
     needs: build
-    if: github.event_name == 'push' || inputs.verify_credentials
+    if: >-
+      (github.event_name == 'push' || inputs.publish || inputs.verify_credentials) &&
+      (github.event_name == 'push' || inputs.registry == 'marketplace' || inputs.registry == 'both')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: marketplace
@@ -181,12 +206,14 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
       - name: Publish to VS Code Marketplace
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.publish
         run: node scripts/vsce-wrapper.js publish --azure-credential --pre-release --packagePath "$VSIX_PATH"
 
   openvsx:
     needs: build
-    if: github.event_name == 'push' || inputs.verify_credentials
+    if: >-
+      (github.event_name == 'push' || inputs.publish || inputs.verify_credentials) &&
+      (github.event_name == 'push' || inputs.registry == 'openvsx' || inputs.registry == 'both')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -222,14 +249,20 @@ jobs:
           test -n "$OVSX_PAT" || { echo '::error::Missing OVSX_PAT repository secret'; exit 1; }
           npx --no-install ovsx verify-pat
       - name: Publish to Open VSX
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.publish
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: npx --no-install ovsx publish --packagePath "$VSIX_PATH" --pre-release
 
   github-release:
     needs: [build, marketplace, openvsx]
-    if: github.event_name == 'push'
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name == 'push' || inputs.publish) &&
+      needs.build.result == 'success' &&
+      (needs.marketplace.result == 'success' || needs.openvsx.result == 'success') &&
+      (needs.marketplace.result == 'success' || needs.marketplace.result == 'skipped') &&
+      (needs.openvsx.result == 'success' || needs.openvsx.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -263,4 +296,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG_NAME" "$VSIX_PATH" --title "Muninn for VS Code $TAG_NAME" --notes-file release-notes.md --prerelease
+        run: gh release create "$TAG_NAME" "$VSIX_PATH" --target "$GITHUB_SHA" --title "Muninn for VS Code $TAG_NAME Preview" --notes-file release-notes.md --prerelease

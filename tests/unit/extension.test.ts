@@ -48,6 +48,52 @@ describe('extension activation', () => {
   afterEach(() => {
     sinon.restore();
     vscode.window.activeTextEditor = undefined as unknown as vscode.TextEditor;
+    Object.assign(vscode.window.tabGroups.activeTabGroup, { activeTab: undefined });
+  });
+
+  it('shows the feedback action only for an active Muninn editor', () => {
+    const show = sinon.spy();
+    const hide = sinon.spy();
+    const statusBar = {
+      show,
+      hide,
+      dispose: sinon.spy(),
+    } as unknown as vscode.StatusBarItem;
+    sinon.stub(vscode.window, 'createStatusBarItem').returns(statusBar);
+    sinon.stub(vscode.window, 'createOutputChannel').returns(createOutputChannel());
+    sinon.stub(vscode.window, 'registerCustomEditorProvider').returns({ dispose: () => {} });
+    sinon.stub(vscode.commands, 'registerCommand').returns({ dispose: () => {} });
+    sinon.stub(vscode.workspace, 'onDidChangeConfiguration').returns({ dispose: () => {} });
+
+    let tabListener: ((event: vscode.TabChangeEvent) => unknown) | undefined;
+    sinon.stub(vscode.window.tabGroups, 'onDidChangeTabs').callsFake((listener) => {
+      tabListener = listener;
+      return { dispose: () => {} };
+    });
+
+    const context = {
+      subscriptions: [],
+      extensionUri: vscode.Uri.file('/extension'),
+    } as unknown as vscode.ExtensionContext;
+    activate(context);
+
+    expect(statusBar.command).to.equal('muninn.reportIssue');
+    expect(statusBar.text).to.equal('Muninn: Report issue');
+    expect(hide.calledOnce).to.equal(true);
+
+    Object.assign(vscode.window.tabGroups.activeTabGroup, {
+      activeTab: {
+        input: new vscode.TabInputCustom(vscode.Uri.file('/spec.md'), 'muninn.markdownEditor'),
+      },
+    });
+    tabListener?.({ opened: [], closed: [], changed: [] });
+    expect(show.calledOnce).to.equal(true);
+
+    Object.assign(vscode.window.tabGroups.activeTabGroup, {
+      activeTab: { input: new vscode.TabInputText(vscode.Uri.file('/spec.md')) },
+    });
+    tabListener?.({ opened: [], closed: [], changed: [] });
+    expect(hide.calledTwice).to.equal(true);
   });
 
   it('registers commands and updates configuration inspection output', async () => {

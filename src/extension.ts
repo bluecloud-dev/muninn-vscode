@@ -62,6 +62,27 @@ export function activate(context: vscode.ExtensionContext): void {
     configService,
     outputChannel,
   );
+  const feedbackStatusBar = vscode.window.createStatusBarItem(
+    'muninn.feedback',
+    vscode.StatusBarAlignment.Right,
+    10,
+  );
+  feedbackStatusBar.name = t('Muninn feedback');
+  feedbackStatusBar.text = t('Muninn: Report issue');
+  feedbackStatusBar.tooltip = t('Report a Muninn issue');
+  feedbackStatusBar.command = 'muninn.reportIssue';
+
+  const updateFeedbackStatusBar = (): void => {
+    const activeTab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+    if (
+      activeTab?.input instanceof vscode.TabInputCustom &&
+      activeTab.input.viewType === MUNINN_MARKDOWN_EDITOR_VIEW_TYPE
+    ) {
+      feedbackStatusBar.show();
+    } else {
+      feedbackStatusBar.hide();
+    }
+  };
 
   const logConfigInspection = (resource?: vscode.Uri): void => {
     const inspection = configService.inspect(resource);
@@ -190,6 +211,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const disposables: vscode.Disposable[] = [
     outputChannel,
     customEditorProvider,
+    feedbackStatusBar,
+    vscode.window.tabGroups.onDidChangeTabs(updateFeedbackStatusBar),
+    vscode.window.tabGroups.onDidChangeTabGroups(updateFeedbackStatusBar),
+    vscode.window.onDidChangeActiveTextEditor(updateFeedbackStatusBar),
     vscode.window.registerCustomEditorProvider(
       MUNINN_MARKDOWN_EDITOR_VIEW_TYPE,
       customEditorProvider,
@@ -211,6 +236,7 @@ export function activate(context: vscode.ExtensionContext): void {
   ];
 
   context.subscriptions.push(...disposables);
+  updateFeedbackStatusBar();
   outputChannel.info(t('Muninn custom markdown editor activated.'));
 }
 

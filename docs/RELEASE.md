@@ -19,17 +19,27 @@ Inspect `artifacts/build/package-report.json` for the SHA-256 and bytes. The arc
 
 ## Publish an authorized release
 
-A matching `vX.Y.Z` tag triggers the release workflow. The read-only build job checks the numeric tag and Preview badge, performs the quality gates, packages, and tests that exact archive in real VS Code. Registry jobs download that candidate and compare its SHA-256 with the build report before publication. They must never rebuild the VSIX.
+A matching `vX.Y.Z` tag triggers publication to both registries. The workflow can also run manually from `main` with a selected destination: `marketplace`, `openvsx`, or `both`. Manual runs rehearse by default; `publish=true` explicitly uploads the candidate and creates the GitHub release.
 
-The Marketplace job uses the protected `marketplace` environment and Microsoft Entra workload identity federation. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each registry verifies its own publishing access before uploading with `--pre-release`. The GitHub Release is created only after both registry jobs succeed; only that final job receives `contents: write`.
+The read-only build job checks the numeric version and Preview badge, performs the quality gates, packages, and tests that exact archive in real VS Code. Registry jobs download that candidate and compare its SHA-256 with the build report before publication. They must never rebuild the VSIX. Runs for the same version are serialized.
+
+The Marketplace job uses the protected `marketplace` environment and Microsoft Entra workload identity federation. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each selected registry verifies its own publishing access before uploading with `--pre-release`. The GitHub release is created after all selected registry jobs succeed; only that final job receives `contents: write`. A manual publication creates its tag at the tested workflow commit.
 
 Run a complete rehearsal without uploading an extension or creating a GitHub release:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=v1.0.0 -f verify_credentials=true
+gh workflow run release.yml --ref main -f tag=v1.0.0 -f registry=both -f publish=false -f verify_credentials=true
 ```
 
-The `verify_credentials` input defaults to true. Set it to false only for a build rehearsal that does not establish credential readiness. The two registry checks run independently, so an Open VSX setup failure does not hide the Marketplace result. The tested VSIX, hash report and release notes are retained as a workflow artifact for 14 days even if a registry check fails.
+The `verify_credentials` input defaults to true. Set it to false only for a build rehearsal that does not establish credential readiness; publishing always verifies access. The two registry checks run independently, so an Open VSX setup failure does not hide the Marketplace result. The tested VSIX, hash report and release notes are retained as a workflow artifact for 14 days even if a registry check fails.
+
+For an authorized Marketplace-only release:
+
+```bash
+gh workflow run release.yml --ref main -f tag=v1.0.0 -f registry=marketplace -f publish=true
+```
+
+The unselected registry is skipped. The GitHub release is a pre-release and includes the tested VSIX. A tag created by the workflow's `GITHUB_TOKEN` does not trigger another publishing run.
 
 Registry publishes cannot be rolled back together. If one registry publishes and another fails, complete the missing upload using the retained, tested VSIX before announcing the release; do not blindly rerun successful uploads. Credential checks do not establish that the registries will accept the package itself.
 

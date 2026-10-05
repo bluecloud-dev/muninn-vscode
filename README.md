@@ -6,7 +6,7 @@ A reading-first Markdown editor for specifications, documentation and notes. Rea
 
 ## Help shape the preview
 
-Trying Muninn 1.0.0 Preview? Tell us where reading or editing Markdown feels awkward, or what would make it more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). For bugs, you can also choose **Help: Report Issue…** in VS Code, select Muninn, or run **Muninn for VS Code: Report an Issue** from the Command Palette.
+Trying Muninn 1.0.0 Preview? Tell us where reading or editing Markdown feels awkward, or what would make it more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). When a Muninn editor is active, click **Muninn: Report issue** in VS Code's status bar to open the native issue reporter. You can also use **Help: Report Issue…** or **Muninn for VS Code: Report an Issue** from the Command Palette.
 
 Please describe the task you were doing and the result you expected. Include steps to reproduce a bug when possible; remove private content from any sample Markdown or screenshots. Muninn does not collect feedback or usage data automatically.
 
@@ -38,7 +38,7 @@ Remote images do not load automatically. Imported images are limited to 10 MiB. 
 
 ## Development
 
-Use Node 24. The [contributor documentation](docs/README.md) is the current source of guidance for humans and AI agents. Start with [Getting started](docs/GETTING_STARTED.md), [Architecture](docs/ARCHITECTURE.md), [Development](docs/DEVELOPMENT.md), and [Testing](docs/TESTING.md). The [audit implementation](docs/AUDIT_IMPLEMENTATION_2026-09.md) records an earlier validation snapshot.
+Use Node 24 and your preferred editor or AI development environment. The [contributor documentation](docs/README.md) contains the shared [setup](docs/GETTING_STARTED.md#development-setup), [architecture](docs/ARCHITECTURE.md), [development rules](docs/DEVELOPMENT.md), and [testing guide](docs/TESTING.md).
 
 ```bash
 npm ci

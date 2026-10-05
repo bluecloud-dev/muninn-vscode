@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide covers common issues for the current Muninn v2 custom editor workflow.
+This guide covers common issues with the Muninn custom editor.
 
 ## 1) Markdown does not open with Muninn
 
@@ -116,7 +116,7 @@ VS Code:
 
 ## Need More Help
 
-- File an issue: https://github.com/bluecloud-dev/muninn-vscode/issues
+- Click **Muninn: Report issue** in the status bar while a Muninn editor is active, or use the [issue forms](https://github.com/bluecloud-dev/muninn-vscode/issues/new/choose).
 - Include:
   - VS Code version
   - Extension version
