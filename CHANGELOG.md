@@ -4,6 +4,36 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- Native **Block style** and **Add to table** pickers that retain the original selection or table, reject stale results, and cancel without editing.
+- Local Codicon controls with accessible names and keyboard-focus or hover help.
+
+### Fixed
+
+- Continue bullet, numbered, and task lists while preserving Markdown markers, indentation, line endings, and the final newline; exit empty items correctly.
+- Preserve indentation when ordered lists cross 9/10 or 99/100, and keep new unchecked task markers outside surrounding bold, italic, or code formatting.
+- Route native Undo/Redo shortcuts through the editor once and retain later typing when an earlier operation is acknowledged.
+- Activate focused Markdown links with Enter once and restore focus after native heading navigation.
+- Keep native and grid table edits consistent, including one-column tables, aligned or escaped cells, focused-table targeting, and rejected or detached edits.
+- Retain unapplied raw table source through preview, Save, and reload; preserve it separately on Source or normal close instead of implicitly applying it.
+- Explain invalid table source with associated error text and keep the draft available for correction.
+
+### Changed
+
+- Replace separate heading and table-add controls with compact native pickers; keep More available to expand or collapse advanced actions.
+- Adapt toolbar and table controls to narrow panes, enlarged fonts, native zoom, long labels, and reduced motion, with local scrolling for wide table grids.
+- Remove obsolete editor UI plumbing, unused localization entries, and empty directory placeholders while retaining validated messages and source-fidelity guards.
+- Expand the existing bundled-editor regressions and installed-VSIX journeys for keyboard editing, pickers, focus, draft retention, and responsive geometry across Linux, Windows, and macOS.
+
+### Release
+
+- Version 1.1.0 is a prepared Preview candidate; publication and the release date remain pending.
+- Retains the Marketplace Preview badge and pre-release channel. Requires VS Code 1.85.2 or later; contributor tooling uses Node 24.
+- Manual screen-reader, real Remote SSH/Codespaces, abrupt-shutdown recovery, and long-document performance acceptance remain outside the automated evidence; see [testing](https://github.com/bluecloud-dev/muninn-vscode/blob/v1.1.0/docs/TESTING.md).
+
 ## [1.0.1] - 2026-10-05
 
 ### Fixed
