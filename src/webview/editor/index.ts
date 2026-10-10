@@ -912,7 +912,8 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
 };
 
 const onHostMessage = (event: MessageEvent<unknown>): void => {
-  if (event.origin !== globalThis.origin || event.source !== window.parent) return;
+  // VS Code relays from this origin without preserving the parent-window identity.
+  if (event.origin !== globalThis.origin) return;
   const message = event.data;
   if (!isHostToViewMessage(message)) return;
   switch (message.type) {

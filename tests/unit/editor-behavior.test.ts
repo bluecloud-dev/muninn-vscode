@@ -377,27 +377,30 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(dom.window.document.querySelectorAll('tbody tr').length, 1);
   });
 
-  it('accepts host messages only from the same-origin parent window', () => {
+  it('accepts host messages only from the webview origin without relying on source identity', () => {
     const editor = open('Alpha\n');
-    for (const sender of [
-      { origin: 'https://untrusted.invalid', source: dom.window as unknown as Window },
-      { origin: dom.window.origin },
-    ]) {
+    for (const origin of ['https://untrusted.invalid', 'null', '']) {
       dom.window.dispatchEvent(
         new dom.window.MessageEvent('message', {
           data: {
             type: 'host.documentChanged',
             payload: { markdown: 'Untrusted\n', revision: 1, imageSources: {} },
           },
-          ...sender,
+          origin,
+          source: dom.window as unknown as Window,
         }),
       );
       assert.equal(editor.textContent, 'Alpha');
     }
-    send({
-      type: 'host.documentChanged',
-      payload: { markdown: 'Trusted\n', revision: 1, imageSources: {} },
-    });
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: {
+          type: 'host.documentChanged',
+          payload: { markdown: 'Trusted\n', revision: 1, imageSources: {} },
+        },
+        origin: dom.window.origin,
+      }),
+    );
     assert.equal(editor.textContent, 'Trusted');
   });
 
