@@ -32,33 +32,37 @@ export const editTable = (
     transaction.deleteRange(position, position + node.nodeSize).scrollIntoView();
   } else {
     let source: string;
-    if (edit.type === 'source') {
-      source = normalizeTableSource(edit.source);
-    } else {
-      const table = parseMarkdownTable(getTableSource(node));
-      switch (edit.type) {
-        case 'addRow': {
-          table.rows.push(Array.from({ length: table.headers.length }, () => ''));
-          transaction.scrollIntoView();
-          break;
+    try {
+      if (edit.type === 'source') {
+        source = normalizeTableSource(edit.source);
+      } else {
+        const table = parseMarkdownTable(getTableSource(node));
+        switch (edit.type) {
+          case 'addRow': {
+            table.rows.push(Array.from({ length: table.headers.length }, () => ''));
+            transaction.scrollIntoView();
+            break;
+          }
+          case 'addColumn': {
+            table.headers.push(
+              formatString(getString('tableNewColumnHeaderTemplate'), table.headers.length + 1),
+            );
+            for (const row of table.rows) row.push('');
+            transaction.scrollIntoView();
+            break;
+          }
+          case 'cell': {
+            const row = edit.row < 0 ? table.headers : table.rows[edit.row];
+            if (!row) return 'rejected';
+            if (row[edit.column] === edit.value) return 'unchanged';
+            row[edit.column] = edit.value;
+            break;
+          }
         }
-        case 'addColumn': {
-          table.headers.push(
-            formatString(getString('tableNewColumnHeaderTemplate'), table.headers.length + 1),
-          );
-          for (const row of table.rows) row.push('');
-          transaction.scrollIntoView();
-          break;
-        }
-        case 'cell': {
-          const row = edit.row < 0 ? table.headers : table.rows[edit.row];
-          if (!row) return 'rejected';
-          if (row[edit.column] === edit.value) return 'unchanged';
-          row[edit.column] = edit.value;
-          break;
-        }
+        source = serializeMarkdownTable(table);
       }
-      source = serializeMarkdownTable(table);
+    } catch {
+      return 'rejected';
     }
     transaction.setNodeMarkup(position, undefined, { ...node.attrs, source });
   }
