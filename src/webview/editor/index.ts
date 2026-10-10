@@ -9,10 +9,11 @@ import type { Node as ProseMirrorNode, MarkType, NodeType } from 'prosemirror-mo
 import { liftListItem, wrapInList } from 'prosemirror-schema-list';
 import { type Command, EditorState, Plugin, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import type {
-  ToolbarMode,
-  ViewEditorCommand,
-  ViewToHostMessage,
+import {
+  isHostToViewMessage,
+  type ToolbarMode,
+  type ViewEditorCommand,
+  type ViewToHostMessage,
 } from '../../custom-editor/protocol';
 import { mergeIndependentChanges } from '../../shared/text-edits';
 import { createDocumentNavigation, toggleTask } from './document-navigation';
@@ -28,23 +29,15 @@ import {
   setDocumentSource,
 } from './markdown-codec';
 import { applyRemoteDocument } from './remote-document';
-import { attachHostMessageListener } from './messages';
 import { getEditorViewAttributes } from './editor-accessibility';
 import { createFrontMatterNodeViewConstructor } from './nodes/front-matter-node-view';
-import {
-  createTableNodeViewConstructor,
-  isTableNode,
-  getTableSource,
-} from './nodes/table-node-view';
+import { createTableNodeViewConstructor } from './nodes/table-node-view';
+import { editTable, isTableNode } from './tables/table-edit';
 import { setMermaidRenderingEnabled } from './renderers/mermaid-renderer';
 import { initializeTableDrafts } from './table-drafts';
 import { createCodeBlockNodeViewConstructor } from './nodes/code-block-node-view';
 import { HostSyncController } from './sync';
-import {
-  DEFAULT_TABLE_SOURCE,
-  parseMarkdownTable,
-  serializeMarkdownTable,
-} from './tables/markdown-table-utilities';
+import { DEFAULT_TABLE_SOURCE } from './tables/markdown-table-utilities';
 import { attachToolbarRovingFocus } from './toolbar-roving-focus';
 
 declare function acquireVsCodeApi(): {
@@ -130,6 +123,11 @@ const COMMAND_LABELS = new Map<string, string>([
 ]);
 
 const formatCommandFailure = (command: string): string => {
+  if (
+    (command === 'addTableRow' || command === 'addTableColumn') &&
+    findSelectedTablePosition() !== undefined
+  )
+    return getString('statusTableSourceApplyFailed');
   if (command === 'addTableRow') {
     return getString('commandFailureAddRowNoTable');
   }
@@ -516,52 +514,24 @@ const createToggleListCommand = (listType: NodeType): Command => {
 const toggleBulletListCommand = createToggleListCommand(schema.nodes.bullet_list);
 const toggleNumberedListCommand = createToggleListCommand(schema.nodes.ordered_list);
 
-type SelectedCodeBlock = {
-  node: ProseMirrorNode;
-  position: number;
-};
-
-const findSelectedCodeBlock = (
-  matcher: (node: ProseMirrorNode) => boolean,
-): SelectedCodeBlock | undefined => {
+const findSelectedTablePosition = (): number | undefined => {
   if (!view) {
     return undefined;
   }
 
   const atSelection = view.state.doc.nodeAt(view.state.selection.from);
-  if (atSelection && matcher(atSelection))
-    return { node: atSelection, position: view.state.selection.from };
+  if (atSelection && isTableNode(atSelection)) return view.state.selection.from;
   const { $from } = view.state.selection;
   for (let depth = $from.depth; depth >= 0; depth -= 1) {
     const node = $from.node(depth);
-    if (!matcher(node)) {
+    if (!isTableNode(node)) {
       continue;
     }
 
-    const position = depth === 0 ? 0 : $from.before(depth);
-    return { node, position };
+    return depth === 0 ? 0 : $from.before(depth);
   }
 
   return undefined;
-};
-
-const replaceCodeBlock = (selectedBlock: SelectedCodeBlock, source: string): boolean => {
-  if (!view) {
-    return false;
-  }
-
-  const normalizedSource = source.trimEnd();
-  const replacementNode = schema.nodes.table.create({ source: normalizedSource });
-
-  const transaction = view.state.tr
-    .replaceWith(
-      selectedBlock.position,
-      selectedBlock.position + selectedBlock.node.nodeSize,
-      replacementNode,
-    )
-    .scrollIntoView();
-  view.dispatch(transaction);
-  return true;
 };
 
 const insertBlockAfterSelection = (node: ProseMirrorNode): void => {
@@ -612,35 +582,6 @@ const insertCodeBlock = (): boolean => {
 
   announce(getString('statusInsertedCodeBlock'), { kind: 'status' });
   return true;
-};
-
-const addTableRow = (): boolean => {
-  const selectedTable = findSelectedCodeBlock(isTableNode);
-  if (!selectedTable) {
-    announce(getString('commandFailureAddRowNoTable'), { kind: 'error' });
-    return false;
-  }
-
-  const table = parseMarkdownTable(getTableSource(selectedTable.node));
-  const columnCount = Math.max(2, table.headers.length);
-  table.rows.push(Array.from({ length: columnCount }, () => ''));
-  return replaceCodeBlock(selectedTable, serializeMarkdownTable(table));
-};
-
-const addTableColumn = (): boolean => {
-  const selectedTable = findSelectedCodeBlock(isTableNode);
-  if (!selectedTable) {
-    announce(getString('commandFailureAddColumnNoTable'), { kind: 'error' });
-    return false;
-  }
-
-  const table = parseMarkdownTable(getTableSource(selectedTable.node));
-  const nextColumnIndex = table.headers.length + 1;
-  table.headers.push(formatString(getString('tableNewColumnHeaderTemplate'), nextColumnIndex));
-  for (const row of table.rows) {
-    row.push('');
-  }
-  return replaceCodeBlock(selectedTable, serializeMarkdownTable(table));
 };
 
 const requestLinkInput = (): boolean => {
@@ -797,10 +738,10 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
       return insertCodeBlock();
     }
     case 'addTableRow': {
-      return addTableRow();
+      return editTable(view, findSelectedTablePosition(), { type: 'addRow' }) !== 'rejected';
     }
     case 'addTableColumn': {
-      return addTableColumn();
+      return editTable(view, findSelectedTablePosition(), { type: 'addColumn' }) !== 'rejected';
     }
     default: {
       return false;
@@ -811,9 +752,7 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
 const requestHostCommand = async (
   command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading',
 ): Promise<void> => {
-  document.dispatchEvent(new Event('muninn-flush'));
-  syncController.flushApply(serializeMarkdownForHost);
-  if (await syncController.whenIdle()) {
+  if (await syncController.flush(serializeMarkdownForHost)) {
     vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
   } else {
     announce(getString('statusSyncPending'), { kind: 'error' });
@@ -972,113 +911,145 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
   updateToolbarState();
 };
 
-const detachHostMessageListener = attachHostMessageListener({
-  onInit: (payload) => {
-    syncController.initialize(payload.markdown, payload.revision);
-    setMermaidRenderingEnabled(payload.mermaidEnabled);
-    applyContentWidth(editorShell, payload.contentWidth);
-    setImageSources(payload.imageSources);
-    setToolbarMode(payload.toolbarMode);
-    applyHostMarkdown(payload.markdown, payload.fileName);
-    announce(getString('statusConnected'), { kind: 'status' });
-    if (savedDraft && savedDraft.markdown !== payload.markdown) {
-      const merged = mergeIndependentChanges(
-        savedDraft.baseMarkdown,
-        savedDraft.markdown,
-        payload.markdown,
-      );
-      if (merged === undefined) {
-        recovering = true;
-        view?.setProps({ editable: () => false });
-        vscode.postMessage({
-          type: 'view.recoverDraft',
-          payload: { markdown: savedDraft.markdown },
-        });
-      } else {
-        applyHostMarkdown(merged);
-        syncController.queueApply(() => merged);
+const onHostMessage = (event: MessageEvent<unknown>): void => {
+  // VS Code relays from this origin without preserving the parent-window identity.
+  if (event.origin !== globalThis.origin) return;
+  const message = event.data;
+  if (!isHostToViewMessage(message)) return;
+  switch (message.type) {
+    case 'host.init': {
+      const payload = message.payload;
+      syncController.initialize(payload.markdown, payload.revision);
+      setMermaidRenderingEnabled(payload.mermaidEnabled);
+      applyContentWidth(editorShell, payload.contentWidth);
+      setImageSources(payload.imageSources);
+      setToolbarMode(payload.toolbarMode);
+      applyHostMarkdown(payload.markdown, payload.fileName);
+      announce(getString('statusConnected'), { kind: 'status' });
+      if (savedDraft && savedDraft.markdown !== payload.markdown) {
+        const merged = mergeIndependentChanges(
+          savedDraft.baseMarkdown,
+          savedDraft.markdown,
+          payload.markdown,
+        );
+        if (merged === undefined) {
+          recovering = true;
+          view?.setProps({ editable: () => false });
+          vscode.postMessage({
+            type: 'view.recoverDraft',
+            payload: { markdown: savedDraft.markdown },
+          });
+        } else {
+          applyHostMarkdown(merged);
+          syncController.queueApply(() => merged);
+        }
       }
+      if (typeof retained.scrollTop === 'number') editorShell.scrollTop = retained.scrollTop;
+      return;
     }
-    if (typeof retained.scrollTop === 'number') editorShell.scrollTop = retained.scrollTop;
-  },
-  onDocumentChanged: (payload) => {
-    setImageSources(payload.imageSources);
-    syncController.handleHostDocumentChanged(payload);
-  },
-  onApplyResult: (payload) => {
-    setImageSources(payload.imageSources);
-    syncController.handleApplyResult(payload);
-  },
-  onRequestFlush: (payload) => {
-    document.dispatchEvent(new Event('muninn-flush'));
-    syncController.flushApply(serializeMarkdownForHost);
-    void syncController.whenIdle().then((ok) => {
-      vscode.postMessage({
-        type: 'view.flushComplete',
-        payload: { requestId: payload.requestId, ok },
+    case 'host.documentChanged': {
+      const payload = message.payload;
+      setImageSources(payload.imageSources);
+      syncController.handleHostDocumentChanged(payload);
+      return;
+    }
+    case 'host.applyResult': {
+      const payload = message.payload;
+      setImageSources(payload.imageSources);
+      syncController.handleApplyResult(payload);
+      return;
+    }
+    case 'host.requestFlush': {
+      const payload = message.payload;
+      void syncController.flush(serializeMarkdownForHost).then((ok) => {
+        vscode.postMessage({
+          type: 'view.flushComplete',
+          payload: { requestId: payload.requestId, ok },
+        });
       });
-    });
-  },
-  onDraftRecovered: (payload) => {
-    recovering = false;
-    view?.setProps({ editable: () => true });
-    retained.draft = undefined;
-    preserveState();
-    syncController.initialize(payload.markdown, payload.revision);
-    applyHostMarkdown(payload.markdown);
-  },
-  onLinkInputCanceled: () => {
-    announce('', { kind: 'status' });
-    view?.focus();
-  },
-  onRevealAnchor: ({ anchor }) => {
-    const heading = [...editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')].find(
-      (element) => element.id === anchor,
-    );
-    heading?.scrollIntoView({ block: 'center' });
-    heading?.focus();
-  },
-  onRevealHeading: ({ index }) => {
-    const heading = editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')[index];
-    heading?.scrollIntoView({ block: 'center' });
-    heading?.focus();
-  },
-  onExecuteCommand: (command) => {
-    const executed = executeEditorCommand(command);
-    if (!executed) {
-      announce(formatCommandFailure(command), { kind: 'error' });
+      return;
     }
-  },
-  onSettingsChanged: (payload) => {
-    setMermaidRenderingEnabled(payload.mermaidEnabled);
-    applyContentWidth(editorShell, payload.contentWidth);
-    setToolbarMode(payload.toolbarMode);
-  },
-  onInsertLink: (payload) => {
-    const inserted = insertLinkFromHost(payload.href, payload.text);
-    if (!inserted) {
-      announce(getString('statusInsertLinkFailed'), { kind: 'error' });
+    case 'host.draftRecovered': {
+      const payload = message.payload;
+      recovering = false;
+      view?.setProps({ editable: () => true });
+      retained.draft = undefined;
+      preserveState();
+      syncController.initialize(payload.markdown, payload.revision);
+      applyHostMarkdown(payload.markdown);
+      return;
     }
-  },
-  onImageInserted: (payload) => {
-    const inserted = insertImageFromHost(payload.path, payload.webviewUri, payload.filename);
-    if (!inserted && !view) announce(getString('statusInsertImageFailed'), { kind: 'error' });
-    vscode.postMessage({
-      type: 'view.imageInsertResult',
-      payload: { requestId: payload.requestId, ok: inserted },
-    });
-  },
-  onImageRejected: (payload) => {
-    announce(payload.reason, { kind: 'error' });
-  },
-  onError: (payload) => {
-    announce(payload.message, { kind: 'error' });
-  },
-});
+    case 'host.linkInputCanceled': {
+      announce('', { kind: 'status' });
+      view?.focus();
+      return;
+    }
+    case 'host.revealAnchor': {
+      const { anchor } = message.payload;
+      const heading = [...editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')].find(
+        (element) => element.id === anchor,
+      );
+      heading?.scrollIntoView({ block: 'center' });
+      heading?.focus();
+      return;
+    }
+    case 'host.revealHeading': {
+      const { index } = message.payload;
+      const heading = editorContainer.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')[index];
+      heading?.scrollIntoView({ block: 'center' });
+      heading?.focus();
+      return;
+    }
+    case 'host.executeCommand': {
+      const command = message.payload.command;
+      const executed = executeEditorCommand(command);
+      if (!executed) {
+        announce(formatCommandFailure(command), { kind: 'error' });
+      }
+      return;
+    }
+    case 'host.settingsChanged': {
+      const payload = message.payload;
+      setMermaidRenderingEnabled(payload.mermaidEnabled);
+      applyContentWidth(editorShell, payload.contentWidth);
+      setToolbarMode(payload.toolbarMode);
+      return;
+    }
+    case 'host.insertLink': {
+      const payload = message.payload;
+      const inserted = insertLinkFromHost(payload.href, payload.text);
+      if (!inserted) {
+        announce(getString('statusInsertLinkFailed'), { kind: 'error' });
+      }
+      return;
+    }
+    case 'host.imageInserted': {
+      const payload = message.payload;
+      const inserted = insertImageFromHost(payload.path, payload.webviewUri, payload.filename);
+      if (!inserted && !view) announce(getString('statusInsertImageFailed'), { kind: 'error' });
+      vscode.postMessage({
+        type: 'view.imageInsertResult',
+        payload: { requestId: payload.requestId, ok: inserted },
+      });
+      return;
+    }
+    case 'host.imageRejected': {
+      const payload = message.payload;
+      announce(payload.reason, { kind: 'error' });
+      return;
+    }
+    case 'host.error': {
+      const payload = message.payload;
+      announce(payload.message, { kind: 'error' });
+      return;
+    }
+  }
+};
+window.addEventListener('message', onHostMessage);
 
 window.addEventListener('beforeunload', () => {
-  syncController.flushApply(serializeMarkdownForHost);
-  detachHostMessageListener();
+  syncController.queueApply(serializeMarkdownForHost);
+  window.removeEventListener('message', onHostMessage);
   syncController.dispose();
 });
 

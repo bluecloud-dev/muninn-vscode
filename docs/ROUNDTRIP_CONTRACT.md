@@ -6,7 +6,7 @@ Muninn edits ordinary CommonMark and GFM files through a ProseMirror custom text
 
 - Preserve existing line endings, terminal newline, indentation, list markers and numbers, hard wraps, heading style, emphasis markers, escapes, entities, reference definitions, and table source outside the intended edit.
 - Apply the smallest safe source edit. Reparse the candidate Markdown and compare its structure with the intended ProseMirror document. If the mapping is ambiguous or changes protected source, reject the rich edit and direct the user to Source.
-- Keep raw table source as a separate draft until Apply. Save, Source, and normal panel close must flush or recover pending rich edits and table drafts.
+- Keep raw table source as a separate draft until Apply. Save flushes rich edits and retains unapplied table drafts; Source and normal panel close must preserve those buffers separately. Neither a flush nor a save may implicitly Apply raw source.
 - Treat the VS Code `TextDocument` as the persistence authority. Delay acknowledgments and external changes must not overwrite later local typing. Merge only independent edits; preserve overlapping drafts in a separate unsaved Markdown document.
 - Preserve a sensible selection and undo history when applying external content. Do not run both host and ProseMirror undo for one shortcut.
 

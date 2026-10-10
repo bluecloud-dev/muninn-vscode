@@ -294,6 +294,43 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     );
   });
 
+  it('saves accepted table edits, retains raw drafts, and recovers them on Source', async () => {
+    const { editor, file } = await open('table-draft.md', '| Name |\n| --- |\n| Alpha |\n');
+    await editor.locator('tbody input').fill('Beta');
+    await editor.locator('[data-testid="muninn-table-toggle-source"]').click();
+    const textarea = editor.locator('[data-testid="muninn-table-source-text"]');
+    await textarea.fill('| Name |\n| --- |\n| Gamma |');
+    await textarea.press(`${modifier}+s`);
+    await eventually(
+      () => fs.readFileSync(file, 'utf8') === '| Name |\n| --- |\n| Beta |\n',
+      'Native Save applied or lost the raw table draft',
+    );
+    assert.equal(await textarea.inputValue(), '| Name |\n| --- |\n| Gamma |');
+    await command('Muninn for VS Code: Open Source Editor');
+    await page
+      .getByRole('tab', { name: /Untitled/ })
+      .first()
+      .click();
+    await eventually(
+      async () =>
+        (await page.locator('.monaco-editor .view-lines').allTextContents())
+          .join('\n')
+          .includes('Gamma'),
+      'Source did not preserve the unapplied table draft in a recovery document',
+    );
+    assert.equal(fs.readFileSync(file, 'utf8'), '| Name |\n| --- |\n| Beta |\n');
+  });
+
+  it('adds a row to the focused one-column table through the native command', async () => {
+    const { editor, file } = await open(
+      'native-table.md',
+      '| First |\n| --- |\n| A |\n\n| Second |\n| --- |\n| B |\n',
+    );
+    await editor.locator('tbody input').nth(1).focus();
+    await command('Muninn for VS Code: Add Table Row');
+    await save(editor, file, '| First |\n| --- |\n| A |\n\n| Second |\n| --- |\n| B |\n|  |\n');
+  });
+
   it('renders lazy Mermaid chunks under the production CSP with accessible SVG', async () => {
     const source =
       '# Diagram\n\n```mermaid\nflowchart TD\n  accTitle: Review flow\n  accDescr: Read before editing\n  A[Read] --> B[Edit]\n```\n';

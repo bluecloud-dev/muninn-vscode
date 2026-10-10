@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { DecorationSet, type EditorView } from 'prosemirror-view';
+import { EditorState } from 'prosemirror-state';
+import { EditorView } from 'prosemirror-view';
 import { DEFAULT_WEBVIEW_STRINGS } from '../../src/shared/webview-strings';
 import { schema } from '../../src/webview/editor/markdown-codec';
 import {
-  DEFAULT_TABLE_SOURCE,
   createTableNodeViewConstructor,
   getTableGridAriaLabel,
   getTableNodeDocumentIndex,
   formatTableSourceFeedback,
   shouldDeferTableCellKeyboardNavigation,
   shouldNavigateTableCellHorizontally,
-  type MarkdownTable,
 } from '../../src/webview/editor/nodes/table-node-view';
+import {
+  DEFAULT_TABLE_SOURCE,
+  type MarkdownTable,
+} from '../../src/webview/editor/tables/markdown-table-utilities';
+import { editTable, type TableEdit } from '../../src/webview/editor/tables/table-edit';
 
 let expect: Chai.ExpectStatic;
 
@@ -111,25 +115,41 @@ describe('table cell keyboard helpers', () => {
     );
   });
 });
-it('protects malformed table source without preventing the document from opening', () => {
+it('protects malformed table source and rejects edits without changing the document', () => {
   const dom = new JSDOM('');
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.window.document });
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperties(globalThis, {
+    document: { configurable: true, value: dom.window.document },
+    window: { configurable: true, value: dom.window },
+  });
+  let view: EditorView | undefined;
   try {
     const source = '<script>invalid table</script>';
-    const create = createTableNodeViewConstructor({ announce: () => {} });
-    const nodeView = create(
-      schema.nodes.table.create({ source }),
-      {} as EditorView,
-      () => 0,
-      [],
-      DecorationSet.empty,
-    );
-    assert.equal((nodeView.dom as HTMLElement).querySelector('pre')!.textContent, source);
-    assert.ok(!(nodeView.dom as HTMLElement).querySelector('script'));
+    const doc = schema.nodes.doc.create(undefined, [schema.nodes.table.create({ source })]);
+    view = new EditorView(dom.window.document.body, {
+      state: EditorState.create({ doc }),
+      nodeViews: { table: createTableNodeViewConstructor({ announce: () => {} }) },
+    });
+    assert.equal(view.dom.querySelector('pre')!.textContent, source);
+    assert.ok(!view.dom.querySelector('script'));
+    const edits: TableEdit[] = [
+      { type: 'addRow' },
+      { type: 'addColumn' },
+      { type: 'cell', row: 0, column: 0, value: 'changed' },
+      { type: 'source', source: '| unfinished draft' },
+    ];
+    for (const edit of edits) {
+      assert.equal(editTable(view, 0, edit), 'rejected');
+      assert.ok(view.state.doc.eq(doc));
+      assert.equal(view.dom.querySelector('pre')!.textContent, source);
+    }
   } finally {
+    view?.destroy();
     if (previous) Object.defineProperty(globalThis, 'document', previous);
     else Reflect.deleteProperty(globalThis, 'document');
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
     dom.window.close();
   }
 });

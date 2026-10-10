@@ -27,7 +27,13 @@ describe('bundled editor behavior with a delayed host', function () {
   let messages: ViewToHostMessage[];
   let savedState: unknown;
   const send = (message: HostToViewMessage) =>
-    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: message }));
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: message,
+        origin: dom.window.origin,
+        source: dom.window as unknown as Window,
+      }),
+    );
   const applies = () =>
     messages.filter(
       (m): m is Extract<ViewToHostMessage, { type: 'view.applyDocument' }> =>
@@ -46,9 +52,10 @@ describe('bundled editor behavior with a delayed host', function () {
   });
   afterEach(() => dom?.window.close());
 
-  const open = (markdown: string): HTMLElement => {
+  const open = (markdown: string, retainedState?: unknown): HTMLElement => {
+    dom?.window.close();
     messages = [];
-    savedState = undefined;
+    savedState = retainedState;
     dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
       runScripts: 'outside-only',
       pretendToBeVisual: true,
@@ -168,6 +175,81 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.doesNotMatch(JSON.stringify(savedState), /AlphaX/);
   });
 
+  it('adds a one-cell row to a one-column table through the native command', async () => {
+    open('| Name |\n| :--- |\n| Alpha\\|Beta |\n');
+    send({ type: 'host.executeCommand', payload: { command: 'addTableRow' } });
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '| Name |\n| :--- |\n| Alpha\\|Beta |\n|  |\n',
+    );
+  });
+
+  it('targets the focused table when a native command follows cell editing', async () => {
+    open('| First |\n| --- |\n| A |\n\n| Second |\n| --- |\n| B |\n');
+    const input = dom.window.document.querySelectorAll<HTMLInputElement>('tbody input')[1];
+    input.focus();
+    send({ type: 'host.executeCommand', payload: { command: 'addTableRow' } });
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '| First |\n| --- |\n| A |\n\n| Second |\n| --- |\n| B |\n|  |\n',
+    );
+  });
+
+  for (const action of ['native', 'grid']) {
+    it(
+      'preserves alignment, escaped pipes and undo when adding a column via ' + action,
+      async () => {
+        open('| A | B |\n| :--- | ---: |\n| x\\|y | z |\n');
+        if (action === 'native')
+          send({ type: 'host.executeCommand', payload: { command: 'addTableColumn' } });
+        else
+          dom.window.document
+            .querySelectorAll<HTMLButtonElement>('.muninn-table-node-actions button')[1]
+            .click();
+        await tick();
+        assert.equal(
+          applies().at(-1)?.payload.markdown,
+          '| A | B | Column 3 |\n| :--- | ---: | --- |\n| x\\|y | z |  |\n',
+        );
+        ack(0, 1);
+        send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+        await tick();
+        assert.equal(
+          applies().at(-1)?.payload.markdown,
+          '| A | B |\n| :--- | ---: |\n| x\\|y | z |\n',
+        );
+      },
+    );
+  }
+
+  it('reports a rejected native table edit while draft recovery is pending', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+    input.value = 'Beta';
+    input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: 'Beta' }));
+    send({
+      type: 'host.applyResult',
+      payload: {
+        operationId: applies()[0].payload.operationId,
+        revision: 0,
+        ok: false,
+        markdown: '| Name |\n| --- |\n| Alpha |\n',
+        imageSources: {},
+      },
+    });
+
+    send({ type: 'host.executeCommand', payload: { command: 'addTableRow' } });
+    await tick();
+    assert.equal(applies().length, 1);
+    assert.equal(dom.window.document.querySelectorAll('tbody tr').length, 1);
+    assert.match(
+      dom.window.document.querySelector('#status-alert')!.textContent!,
+      /Could not apply table source/,
+    );
+  });
+
   it('commits active table input immediately while preserving its DOM and caret', async () => {
     open('| Name | State |\n| :--- | ---: |\n| Alpha | Todo |\n');
     const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
@@ -202,6 +284,144 @@ describe('bundled editor behavior with a delayed host', function () {
         (m) => m.type === 'view.tableDraft' && m.payload.markdown === '| unfinished draft',
       ),
     );
+  });
+
+  it('flushes the document without applying or discarding a valid raw table draft', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = '| Name |\n| --- |\n| Beta |';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+
+    send({ type: 'host.requestFlush', payload: { requestId: 7 } });
+    await tick();
+
+    assert.equal(applies().length, 0);
+    assert.deepEqual(structuredClone(messages.at(-1)), {
+      type: 'view.flushComplete',
+      payload: { requestId: 7, ok: true },
+    });
+    assert.match(JSON.stringify(savedState), /Beta/);
+    assert.equal(textarea.value, '| Name |\n| --- |\n| Beta |');
+  });
+
+  it('keeps the Source guidance and raw draft when a table edit cannot preserve structure', () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = '| Name |\n| --- |\n| Beta |\n\nParagraph';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+      .click();
+    assert.equal(applies().length, 0);
+    assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, /Use Source/);
+    assert.match(JSON.stringify(savedState), /Paragraph/);
+    assert.equal(
+      dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+      'Alpha',
+    );
+  });
+
+  for (const draft of ['| Name |\n| --- |\n| Beta |', '| unfinished draft']) {
+    it(
+      'retains unapplied raw source through Source and reload: ' + JSON.stringify(draft),
+      async () => {
+        open('| Name |\n| --- |\n| Alpha |\n');
+        dom.window.document
+          .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+          .click();
+        const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+        textarea.value = draft;
+        textarea.dispatchEvent(new dom.window.Event('input'));
+        dom.window.document
+          .querySelector<HTMLButtonElement>('[data-command="openRawMarkdown"]')!
+          .click();
+        await tick();
+        assert.equal(applies().length, 0);
+        assert.ok(messages.some((m) => m.type === 'view.executeCommand'));
+
+        open('| Name |\n| --- |\n| Alpha |\n', savedState);
+        assert.equal(dom.window.document.querySelector('textarea')!.value, draft);
+        assert.equal(
+          dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+          'Alpha',
+        );
+        assert.ok(
+          messages.some((m) => m.type === 'view.tableDraft' && m.payload.markdown === draft),
+        );
+      },
+    );
+  }
+
+  it('does not redirect a detached table action to an identical replacement table', () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    const button = dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-table-node-actions button',
+    )!;
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'Gone\n', revision: 1, imageSources: {} },
+    });
+    assert.equal(button.isConnected, false);
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: '| Name |\n| --- |\n| Alpha |\n', revision: 2, imageSources: {} },
+    });
+    button.click();
+    assert.equal(applies().length, 0);
+    assert.equal(dom.window.document.querySelectorAll('tbody tr').length, 1);
+  });
+
+  it('accepts host messages only from the webview origin without relying on source identity', () => {
+    const editor = open('Alpha\n');
+    for (const origin of ['https://untrusted.invalid', 'null', '']) {
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent('message', {
+          data: {
+            type: 'host.documentChanged',
+            payload: { markdown: 'Untrusted\n', revision: 1, imageSources: {} },
+          },
+          origin,
+          source: dom.window as unknown as Window,
+        }),
+      );
+      assert.equal(editor.textContent, 'Alpha');
+    }
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: {
+          type: 'host.documentChanged',
+          payload: { markdown: 'Trusted\n', revision: 1, imageSources: {} },
+        },
+        origin: dom.window.origin,
+      }),
+    );
+    assert.equal(editor.textContent, 'Trusted');
+  });
+
+  it('ignores malformed host messages and removes the listener on unload', async () => {
+    const editor = open('Alpha\n');
+    for (const data of [undefined, { type: 'host.documentChanged', payload: { markdown: 42 } }])
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent('message', {
+          data,
+          origin: dom.window.origin,
+          source: dom.window as unknown as Window,
+        }),
+      );
+    assert.equal(editor.textContent, 'Alpha');
+    dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'After unload\n', revision: 1, imageSources: {} },
+    });
+    await tick();
+    assert.equal(editor.textContent, 'Alpha');
   });
 
   it('keeps diagrams disabled and removes the duplicate preview surface', async () => {

@@ -62,6 +62,7 @@ type EditorSession = {
   sync: DocumentSync;
   ready: boolean;
   pendingCommands: ViewEditorCommand[];
+  pendingFlushes: Map<number, (ok: boolean) => void>;
   applyingText?: string;
   lastAppliedText?: string;
   draft?: { markdown: string; baseMarkdown: string };
@@ -106,10 +107,6 @@ export class MuninnCustomEditorProvider
   private nextFlushId = 1;
   private nextImageInsertId = 1;
   private readonly pendingAnchors = new Map<string, string>();
-  private readonly pendingFlushes = new Map<
-    number,
-    { session: EditorSession; finish: (ok: boolean) => void }
-  >();
   private readonly pendingImageInsertions = new Map<number, PendingImageInsert>();
 
   constructor(
@@ -136,11 +133,12 @@ export class MuninnCustomEditorProvider
       disposable.dispose();
     }
     for (const session of this.sessions.values()) {
+      session.ready = false;
+      for (const finish of session.pendingFlushes.values()) finish(false);
       for (const disposable of session.disposables) {
         disposable.dispose();
       }
     }
-    for (const pending of this.pendingFlushes.values()) pending.finish(false);
     this.pendingImageInsertions.clear();
     this.pendingAnchors.clear();
     this.sessions.clear();
@@ -166,6 +164,7 @@ export class MuninnCustomEditorProvider
       sync,
       ready: false,
       pendingCommands: [],
+      pendingFlushes: new Map(),
       applyQueue: Promise.resolve(),
       recovering: false,
       tableDrafts: new Map(),
@@ -196,8 +195,6 @@ export class MuninnCustomEditorProvider
   async openRawMarkdownForActiveEditor(): Promise<void> {
     const uri = this.getActiveCustomEditorUri();
     if (uri) {
-      const session = this.getFirstSessionForUri(uri);
-      if (session && !(await this.flushSession(session))) return;
       await this.openRawMarkdown(uri);
       return;
     }
@@ -288,8 +285,7 @@ export class MuninnCustomEditorProvider
         return;
       }
       case 'view.flushComplete': {
-        const pending = this.pendingFlushes.get(message.payload.requestId);
-        if (pending?.session === session) pending.finish(message.payload.ok);
+        session.pendingFlushes.get(message.payload.requestId)?.(message.payload.ok);
         return;
       }
       case 'view.imageInsertResult': {
@@ -339,7 +335,7 @@ export class MuninnCustomEditorProvider
         return;
       }
       case 'view.executeCommand': {
-        if (message.payload.command === 'openRawMarkdown' && (await this.flushSession(session)))
+        if (message.payload.command === 'openRawMarkdown')
           await this.openRawMarkdown(session.document.uri);
         if (message.payload.command === 'save' && (await this.flushSession(session)))
           await session.document.save();
@@ -459,19 +455,10 @@ export class MuninnCustomEditorProvider
       return;
     }
     session.ready = false;
+    for (const finish of session.pendingFlushes.values()) finish(false);
     void session.applyQueue
       .then(async () => {
-        for (const markdown of session.tableDrafts.values()) {
-          const copy = await vscode.workspace.openTextDocument({
-            language: 'markdown',
-            content: markdown,
-          });
-          await vscode.window.showTextDocument(copy, { preview: false });
-          await vscode.window.showWarningMessage(
-            t('Unapplied table source was preserved in a separate unsaved Markdown document.'),
-          );
-        }
-        session.tableDrafts.clear();
+        await this.preserveTableDrafts(session);
         const draft = session.draft;
         const snapshot = session.sync.getSnapshot();
         if (!draft || draft.markdown === snapshot.markdown) return;
@@ -503,6 +490,11 @@ export class MuninnCustomEditorProvider
   }
 
   private async openRawMarkdown(uri: vscode.Uri): Promise<void> {
+    const session = this.getFirstSessionForUri(uri);
+    if (session) {
+      if (!(await this.flushSession(session))) return;
+      await this.preserveTableDrafts(session);
+    }
     try {
       await vscode.commands.executeCommand('vscode.openWith', uri, 'default', {
         preview: false,
@@ -517,21 +509,48 @@ export class MuninnCustomEditorProvider
     }
   }
 
+  private async preserveTableDrafts(session: EditorSession): Promise<void> {
+    for (const [key, markdown] of session.tableDrafts) {
+      const copy = await vscode.workspace.openTextDocument({
+        language: 'markdown',
+        content: markdown,
+      });
+      await vscode.window.showTextDocument(copy, { preview: false, preserveFocus: true });
+      if (session.tableDrafts.get(key) === markdown) session.tableDrafts.delete(key);
+      void vscode.window.showWarningMessage(
+        t('Unapplied table source was preserved in a separate unsaved Markdown document.'),
+      );
+    }
+  }
+
   private flushSession(session: EditorSession): Promise<boolean> {
     if (!session.ready) return Promise.resolve(true);
     const requestId = this.nextFlushId++;
     return new Promise((resolve) => {
       const finish = (ok: boolean): void => {
+        if (!session.pendingFlushes.has(requestId)) return;
         clearTimeout(timer);
-        this.pendingFlushes.delete(requestId);
+        session.pendingFlushes.delete(requestId);
+        if (!ok && session.ready)
+          void vscode.window.showWarningMessage(
+            t('Edits are still synchronizing. Retry once synchronization finishes.'),
+          );
         resolve(ok);
       };
       const timer = setTimeout(() => finish(false), 1200);
-      this.pendingFlushes.set(requestId, { session, finish });
+      session.pendingFlushes.set(requestId, finish);
       void this.postMessage(session.panel.webview, {
         type: 'host.requestFlush',
         payload: { requestId },
-      });
+      }).then(
+        (sent) => {
+          if (!sent) finish(false);
+        },
+        (error: unknown) => {
+          this.logger.error(t('Could not synchronize the document.'), error);
+          finish(false);
+        },
+      );
     });
   }
 
