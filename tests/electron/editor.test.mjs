@@ -240,6 +240,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
   beforeEach(async () => {
     for (const key of ['Meta', 'Control', 'Alt', 'Shift']) await page.keyboard.up(key);
+    await (await app.browserWindow(page)).evaluate((window) => window.focus());
     await page.bringToFront();
     await page.keyboard.press('Escape');
   });
@@ -293,8 +294,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     it('continues a list with keyboard, save, undo, redo and reopen: ' + name, async () => {
       let { editor, file } = await open(name, source);
       await editor.locator('.ProseMirror li p').last().click();
-      await page.keyboard.press(lineEnd);
-      await page.keyboard.press('Enter');
+      await editor.locator('.ProseMirror').press(lineEnd);
+      await editor.locator('.ProseMirror').press('Enter');
+      await eventually(
+        async () => (await editor.locator('.ProseMirror li').count()) === 2,
+        'Enter did not create a sibling list item',
+      );
       await page.keyboard.type('Next');
       editor = await save(editor, file, continued);
       await command('Muninn for VS Code: Undo');
@@ -551,8 +556,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('uses the native block-style picker without losing its original selection', async () => {
     let { editor, file } = await open('block-style.md', 'Alpha\n\nBeta\n');
     await editor.locator('.ProseMirror p').last().click();
-    await page.keyboard.press(lineStart);
-    await page.keyboard.press(selectLineEnd);
+    await editor.locator('.ProseMirror').press(lineStart);
+    await editor.locator('.ProseMirror').press(selectLineEnd);
+    await eventually(
+      async () => (await editor.evaluate(() => getSelection().toString())) === 'Beta',
+      'Native text selection did not reach Beta',
+    );
     const style = editor.getByRole('button', { name: 'Block style', exact: true });
     await style.click();
     await page.getByText('Paragraph', { exact: true }).first().waitFor();
