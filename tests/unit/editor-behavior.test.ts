@@ -381,7 +381,7 @@ describe('bundled editor behavior with a delayed host', function () {
     const editor = open('Alpha\n');
     for (const sender of [
       { origin: 'https://untrusted.invalid', source: dom.window as unknown as Window },
-      { origin: dom.window.origin, source: null },
+      { origin: dom.window.origin },
     ]) {
       dom.window.dispatchEvent(
         new dom.window.MessageEvent('message', {
