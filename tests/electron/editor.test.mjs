@@ -356,7 +356,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         );
       };
       const measure = () =>
-        editor.evaluate(() => {
+        editor.evaluate(async () => {
+          // Native zoom/resizing also schedules webview layout and ResizeObserver callbacks.
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
           const grid = document.querySelector('.muninn-table-node-grid');
           const cells = [...document.querySelectorAll('tbody input')].map((input) => {
             const style = getComputedStyle(input);
@@ -418,8 +422,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       evidence.zoom200.factor = await nativeWindow.evaluate((window) =>
         window.webContents.getZoomFactor(),
       );
+      writeEvidence();
       assert.equal(evidence.zoom200.factor, 2);
-      assert.equal(evidence.zoom200.bodyOverflow, false);
+      assert.equal(evidence.zoom200.bodyOverflow, false, JSON.stringify(evidence.zoom200));
       assert.equal(evidence.zoom200.toolbarOverflow, false);
       await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(1));
       await resize(320);
