@@ -551,13 +551,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
 
   it('uses the native block-style picker without losing its original selection', async () => {
     let { editor, file } = await open('block-style.md', 'Alpha\n\nBeta\n');
-    await editor.locator('.ProseMirror p').last().click();
-    await editor.locator('.ProseMirror').press(lineStart);
-    await editor.locator('.ProseMirror').press(selectLineEnd);
-    await eventually(
-      async () => (await editor.evaluate(() => getSelection().toString())) === 'Beta',
-      'Native text selection did not reach Beta',
-    );
+    await eventually(async () => {
+      await editor.locator('.ProseMirror p').last().click();
+      await editor.locator('.ProseMirror').press(lineStart);
+      await editor.locator('.ProseMirror').press(selectLineEnd);
+      return (await editor.evaluate(() => getSelection().toString())) === 'Beta';
+    }, 'Native text selection did not reach Beta');
     const style = editor.getByRole('button', { name: 'Block style', exact: true });
     await style.click();
     await page.getByText('Paragraph', { exact: true }).first().waitFor();
@@ -857,6 +856,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     assert.equal(await editor.locator('h1').getAttribute('id'), 'résumé');
     await editor.locator('[data-command="goToHeading"]').click();
     await page.getByText('Résumé', { exact: true }).first().click();
+    await eventually(
+      async () =>
+        await editor.locator('h1').evaluate((heading) => heading === document.activeElement),
+      'Heading picker did not restore focus to its destination',
+    );
     await editor.locator('a').click();
     await eventually(async () => {
       for (const frame of page.frames()) {
