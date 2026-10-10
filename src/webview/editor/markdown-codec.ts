@@ -26,6 +26,20 @@ export const schema = new Schema({
       ...defaultSchema.spec.nodes.get('doc'),
       attrs: { source: { default: undefined } },
     })
+    .update('bullet_list', {
+      ...defaultSchema.spec.nodes.get('bullet_list'),
+      attrs: {
+        ...defaultSchema.spec.nodes.get('bullet_list')!.attrs,
+        bullet: { default: '*' },
+      },
+    })
+    .update('ordered_list', {
+      ...defaultSchema.spec.nodes.get('ordered_list'),
+      attrs: {
+        ...defaultSchema.spec.nodes.get('ordered_list')!.attrs,
+        delimiter: { default: '.' },
+      },
+    })
     .addToEnd('table', { attrs: { source: {} }, group: 'block', atom: true, selectable: true })
     .addToEnd('front_matter', {
       attrs: { raw: {} },
@@ -34,10 +48,15 @@ export const schema = new Schema({
       selectable: true,
       draggable: false,
     }),
-  marks: defaultSchema.spec.marks.addToEnd('strike', {
-    parseDOM: [{ tag: 's' }, { tag: 'del' }],
-    toDOM: () => ['s', 0],
-  }),
+  marks: defaultSchema.spec.marks
+    .update('link', {
+      ...defaultSchema.spec.marks.get('link'),
+      toDOM: (mark) => ['a', { ...mark.attrs, tabindex: '0' }, 0],
+    })
+    .addToEnd('strike', {
+      parseDOM: [{ tag: 's' }, { tag: 'del' }],
+      toDOM: () => ['s', 0],
+    }),
 });
 
 // Tables carry their own source; real fences never become editable tables.
@@ -68,8 +87,25 @@ markdownItParser.block.ruler.at(
   { alt: ['paragraph', 'reference'] },
 );
 
+const defaultParserTokens = (
+  defaultMarkdownParser as unknown as { tokens: Record<string, ParseSpec> }
+).tokens;
 const parserTokens = {
-  ...(defaultMarkdownParser as unknown as { tokens: Record<string, ParseSpec> }).tokens,
+  ...defaultParserTokens,
+  bullet_list: {
+    ...defaultParserTokens.bullet_list,
+    getAttrs: (token, tokens, index) => ({
+      ...defaultParserTokens.bullet_list.getAttrs!(token, tokens, index),
+      bullet: token.markup,
+    }),
+  },
+  ordered_list: {
+    ...defaultParserTokens.ordered_list,
+    getAttrs: (token, tokens, index) => ({
+      ...defaultParserTokens.ordered_list.getAttrs!(token, tokens, index),
+      delimiter: token.markup,
+    }),
+  },
   fence: {
     block: 'code_block',
     noCloseToken: true,
@@ -88,6 +124,14 @@ export const markdownParser = new MarkdownParser(schema, markdownItParser, parse
 export const markdownSerializer = new MarkdownSerializer(
   {
     ...defaultMarkdownSerializer.nodes,
+    ordered_list: (state, node) => {
+      const start = node.attrs.order as number;
+      const width = String(start + node.childCount - 1).length;
+      state.renderList(node, ' '.repeat(width + 2), (index) => {
+        const number = String(start + index);
+        return number + node.attrs.delimiter + ' ';
+      });
+    },
     paragraph: (state, node, parent, index) => {
       const marker =
         parent.type.name === 'list_item' && index === 0
@@ -211,7 +255,9 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
     }
     if (!valid) continue;
     try {
-      const candidate = applyTextChanges(source, edits);
+      let candidate = applyTextChanges(source, edits);
+      // Removing the last list marker must not remove the document's final newline.
+      if (source.endsWith('\n') && !candidate.endsWith('\n')) candidate += eol;
       const parsed = markdownParser.parse(candidate);
       if (
         parsed.content.eq(document.content) ||

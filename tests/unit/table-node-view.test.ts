@@ -129,7 +129,9 @@ it('protects malformed table source and rejects edits without changing the docum
     const doc = schema.nodes.doc.create(undefined, [schema.nodes.table.create({ source })]);
     view = new EditorView(dom.window.document.body, {
       state: EditorState.create({ doc }),
-      nodeViews: { table: createTableNodeViewConstructor({ announce: () => {} }) },
+      nodeViews: {
+        table: createTableNodeViewConstructor({ announce: () => {}, pickAdd: () => {} }),
+      },
     });
     assert.equal(view.dom.querySelector('pre')!.textContent, source);
     assert.ok(!view.dom.querySelector('script'));

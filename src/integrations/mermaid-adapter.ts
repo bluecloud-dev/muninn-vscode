@@ -16,9 +16,5 @@ export const isMermaidIntegrationActive = (
     return true;
   }
 
-  if (!vscode.workspace.isTrusted) {
-    return false;
-  }
-
-  return true;
+  return vscode.workspace.isTrusted;
 };

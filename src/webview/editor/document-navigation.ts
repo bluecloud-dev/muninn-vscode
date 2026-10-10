@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
+import { liftListItem, splitListItem } from 'prosemirror-schema-list';
 import { Plugin, TextSelection, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { getString } from './localization';
@@ -81,6 +82,18 @@ export const createDocumentNavigation = (openLink: (href: string) => void): Plug
         return this.getState(state);
       },
       handleDOMEvents: {
+        keydown: (view, event) => {
+          const target = event.target;
+          if (
+            event.key !== 'Enter' ||
+            !(target instanceof HTMLAnchorElement) ||
+            target !== document.activeElement
+          )
+            return false;
+          event.preventDefault();
+          target.click();
+          return true;
+        },
         click: (view, event) => {
           const target = event.target instanceof Element ? event.target.closest('a') : undefined;
           const href = target?.getAttribute('href');
@@ -106,6 +119,33 @@ export const createDocumentNavigation = (openLink: (href: string) => void): Plug
   });
 
 /** Task syntax stays ordinary GFM text, so checkboxes never require a private node format. */
+export const continueList: Command = (state, dispatch) => {
+  const { $from } = state.selection;
+  const task =
+    $from.depth > 1 &&
+    $from.node($from.depth - 1).type.name === 'list_item' &&
+    $from.index($from.depth - 1) === 0 &&
+    /^\[[ xX]\](?: |$)/.test($from.parent.textContent);
+  if (task && !$from.parent.textContent.slice(3).trim()) {
+    return liftListItem(state.schema.nodes.list_item)(
+      state,
+      dispatch &&
+        ((tr) => {
+          tr.delete(tr.mapping.map($from.start()), tr.mapping.map($from.end()));
+          dispatch(tr);
+        }),
+    );
+  }
+  return splitListItem(state.schema.nodes.list_item)(
+    state,
+    dispatch &&
+      ((tr) => {
+        if (task) tr.replaceSelectionWith(state.schema.text('[ ] '), false);
+        dispatch(tr);
+      }),
+  );
+};
+
 export const toggleTask: Command = (state, dispatch) => {
   const { $from } = state.selection;
   if ($from.parent.type.name !== 'paragraph') return false;

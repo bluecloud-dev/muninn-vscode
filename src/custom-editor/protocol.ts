@@ -28,7 +28,13 @@ export type ViewEditorCommand =
   | 'addTableRow'
   | 'addTableColumn';
 
+export type PickerCommand = Extract<
+  ViewEditorCommand,
+  'setParagraph' | 'setHeading1' | 'setHeading2' | 'setHeading3' | 'addTableRow' | 'addTableColumn'
+>;
+
 export type HostToViewMessage =
+  | { type: 'host.pickerResult'; payload: { requestId: number; command?: PickerCommand } }
   | { type: 'host.revealAnchor'; payload: { anchor: string } }
   | {
       type: 'host.applyResult';
@@ -103,6 +109,10 @@ export type HostToViewMessage =
     };
 
 export type ViewToHostMessage =
+  | {
+      type: 'view.requestPicker';
+      payload: { requestId: number; kind: 'blockStyle' | 'tableAdd'; current?: number };
+    }
   | { type: 'view.tableDraft'; payload: { key: string; markdown?: string } }
   | {
       type: 'view.ready';
@@ -187,6 +197,16 @@ const isViewEditorCommand = (value: unknown): value is ViewEditorCommand =>
   value === 'addTableRow' ||
   value === 'addTableColumn';
 
+const isPickerCommand = (value: unknown): value is PickerCommand =>
+  [
+    'setParagraph',
+    'setHeading1',
+    'setHeading2',
+    'setHeading3',
+    'addTableRow',
+    'addTableColumn',
+  ].includes(value as string);
+
 const isToolbarMode = (value: unknown): value is ToolbarMode =>
   value === 'basic' || value === 'advanced';
 
@@ -199,6 +219,15 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
   if (!isObject(value) || !isString(value.type)) {
     return false;
   }
+
+  if (value.type === 'view.requestPicker')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
+      (value.payload.kind === 'blockStyle' || value.payload.kind === 'tableAdd') &&
+      (value.payload.current === undefined ||
+        (isRevision(value.payload.current) && value.payload.current <= 6))
+    );
 
   if (value.type === 'view.tableDraft')
     return (
@@ -277,6 +306,13 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
     return false;
   }
 
+  if (value.type === 'host.pickerResult')
+    return (
+      isObject(value.payload) &&
+      isRevision(value.payload.requestId) &&
+      (value.payload.command === undefined || isPickerCommand(value.payload.command))
+    );
+
   if (value.type === 'host.revealAnchor')
     return isObject(value.payload) && isString(value.payload.anchor);
   if (value.type === 'host.linkInputCanceled') return true;
@@ -297,22 +333,22 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (value.type === 'host.init') {
     const payload = value.payload;
     return (
-      isSerializedMarkdownPayload(payload) &&
       isObject(payload) &&
-      isString((payload as { fileName?: unknown }).fileName) &&
-      typeof (payload as { mermaidEnabled?: unknown }).mermaidEnabled === 'boolean' &&
-      isToolbarMode((payload as { toolbarMode?: unknown }).toolbarMode) &&
-      isContentWidthSetting((payload as { contentWidth?: unknown }).contentWidth) &&
-      isImageUriMap((payload as { imageSources?: unknown }).imageSources)
+      isString(payload.fileName) &&
+      typeof payload.mermaidEnabled === 'boolean' &&
+      isToolbarMode(payload.toolbarMode) &&
+      isContentWidthSetting(payload.contentWidth) &&
+      isImageUriMap(payload.imageSources) &&
+      isSerializedMarkdownPayload(payload)
     );
   }
 
   if (value.type === 'host.documentChanged') {
     const payload = value.payload;
     return (
-      isSerializedMarkdownPayload(payload) &&
       isObject(payload) &&
-      isImageUriMap((payload as { imageSources?: unknown }).imageSources)
+      isImageUriMap(payload.imageSources) &&
+      isSerializedMarkdownPayload(payload)
     );
   }
 

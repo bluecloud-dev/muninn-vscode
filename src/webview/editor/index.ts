@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Muninn contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 import { baseKeymap, setBlockType, toggleMark } from 'prosemirror-commands';
 import { history, redo, undo } from 'prosemirror-history';
@@ -12,13 +13,15 @@ import { EditorView } from 'prosemirror-view';
 import {
   isHostToViewMessage,
   type ToolbarMode,
+  type PickerCommand,
   type ViewEditorCommand,
   type ViewToHostMessage,
 } from '../../custom-editor/protocol';
 import { mergeIndependentChanges } from '../../shared/text-edits';
-import { createDocumentNavigation, toggleTask } from './document-navigation';
+import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
+import { setIconButton } from './icon-button';
 import { applyContentWidth } from './content-width';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
@@ -71,36 +74,14 @@ initializeTableDrafts(retained.tableDrafts, (drafts, key, markdown) => {
 let recovering = false;
 
 const ADVANCED_TOOLBAR_COMMANDS = new Set<string>([
-  'setHeading1',
-  'setHeading2',
   'toggleStrike',
   'toggleTask',
   'insertFileLink',
-  'setHeading3',
-  'setParagraph',
   'insertCodeBlock',
   'insertMermaidBlock',
 ]);
 
-const PRESSABLE_TOOLBAR_COMMANDS = new Set<string>([
-  'toggleBold',
-  'toggleItalic',
-  'insertLink',
-  'setHeading1',
-  'setHeading2',
-  'setHeading3',
-  'setParagraph',
-  'toggleBulletList',
-  'toggleNumberedList',
-  'toggleStrike',
-]);
-
-const TRANSIENT_ACTIVE_COMMANDS = new Set<string>([
-  'insertLink',
-  'insertTable',
-  'insertCodeBlock',
-  'openRawMarkdown',
-]);
+const TRANSIENT_ACTIVE_COMMANDS = new Set<string>(['insertLink', 'insertTable', 'insertCodeBlock']);
 
 const COMMAND_LABELS = new Map<string, string>([
   ['toggleBold', getString('commandLabelBold')],
@@ -144,7 +125,6 @@ const moreButton = document.querySelector<HTMLButtonElement>('[data-testid="muni
 const toolbarRovingFocus = attachToolbarRovingFocus(toolbar);
 
 let view: EditorView | undefined;
-let toolbarMode: ToolbarMode = 'basic';
 let advancedActionsVisible = false;
 let lastMermaidInsertAt = 0;
 let imageSources = new Map<string, string>();
@@ -159,17 +139,16 @@ const setImageSources = (sources: Record<string, string>): void => {
 const getRenderedImageSource = (source: string): string | undefined => imageSources.get(source);
 
 const updateAdvancedToolbarVisibility = (): void => {
-  const showAdvancedActions = toolbarMode === 'advanced' || advancedActionsVisible;
   for (const command of ADVANCED_TOOLBAR_COMMANDS) {
     const button = toolbarButtons.get(command);
     if (!button) {
       continue;
     }
-    button.hidden = !showAdvancedActions;
+    button.hidden = !advancedActionsVisible;
   }
 
   if (moreButton) {
-    moreButton.hidden = toolbarMode === 'advanced';
+    moreButton.hidden = false;
     moreButton.setAttribute('aria-expanded', advancedActionsVisible ? 'true' : 'false');
   }
 
@@ -200,8 +179,7 @@ const isFocusedAdvancedToolbarAction = (): boolean => {
 
 const setToolbarMode = (mode: ToolbarMode): void => {
   const needsFocusFallback = mode === 'basic' && isFocusedAdvancedToolbarAction();
-  toolbarMode = mode;
-  advancedActionsVisible = false;
+  advancedActionsVisible = mode === 'advanced';
   updateAdvancedToolbarVisibility();
   if (!needsFocusFallback) {
     return;
@@ -251,8 +229,22 @@ const parseMarkdown = (markdown: string): EditorState =>
       ),
       history(),
       keymap({
+        Enter: continueList,
+        'Shift-Enter': baseKeymap.Enter,
         'Mod-b': () => executeEditorCommand('toggleBold'),
         'Mod-i': () => executeEditorCommand('toggleItalic'),
+        'Mod-z': (state, dispatch) => {
+          undo(state, dispatch);
+          return true;
+        },
+        'Mod-Shift-z': (state, dispatch) => {
+          redo(state, dispatch);
+          return true;
+        },
+        'Mod-y': (state, dispatch) => {
+          redo(state, dispatch);
+          return true;
+        },
         'Mod-s': () => {
           void requestHostCommand('save');
           return true;
@@ -320,14 +312,11 @@ const getFirstImageFile = (fileList?: FileList | null): File | undefined => {
   );
 };
 
-const hasImageFile = (fileList?: FileList | null): boolean =>
-  getFirstImageFile(fileList) !== undefined;
-
 const hasImageTransfer = (dataTransfer?: DataTransfer | null): boolean => {
   if (!dataTransfer) {
     return false;
   }
-  if (hasImageFile(dataTransfer.files)) {
+  if (getFirstImageFile(dataTransfer.files)) {
     return true;
   }
   return [...dataTransfer.items].some(
@@ -428,7 +417,7 @@ const withExpandedWordSelection = (): EditorState | undefined => {
     return undefined;
   }
 
-  let state = view.state;
+  const state = view.state;
   if (!state.selection.empty) {
     return state;
   }
@@ -440,8 +429,7 @@ const withExpandedWordSelection = (): EditorState | undefined => {
 
   const transaction = state.tr.setSelection(wordSelection);
   view.dispatch(transaction);
-  state = view.state;
-  return state;
+  return view.state;
 };
 
 const runInlineMarkCommand = (markCommand: Command): boolean => {
@@ -676,6 +664,77 @@ const createImageNodeView = (
   };
 };
 
+let pickerRequestId = 0;
+let pendingPicker:
+  | {
+      requestId: number;
+      kind: 'blockStyle' | 'tableAdd';
+      state: EditorState;
+      tablePosition?: number;
+      focusTarget?: HTMLElement;
+    }
+  | undefined;
+const requestPicker = (kind: 'blockStyle' | 'tableAdd', tablePosition?: number): void => {
+  if (!view) return;
+  const requestId = ++pickerRequestId;
+  pendingPicker = {
+    requestId,
+    kind,
+    state: view.state,
+    tablePosition,
+    focusTarget:
+      kind === 'tableAdd' && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : undefined,
+  };
+  vscode.postMessage({
+    type: 'view.requestPicker',
+    payload: {
+      requestId,
+      kind,
+      current:
+        kind === 'blockStyle'
+          ? (getActiveHeadingLevel() ?? (isParagraphActive() ? 0 : undefined))
+          : undefined,
+    },
+  });
+};
+const applyPickerResult = (requestId: number, command?: PickerCommand): void => {
+  const pending = pendingPicker;
+  if (!view || !pending || requestId !== pending.requestId) return;
+  pendingPicker = undefined;
+  if (view.state.doc !== pending.state.doc) {
+    announce(getString('pickerStaleMessage'), { kind: 'error' });
+    view.focus();
+    return;
+  }
+  view.dispatch(view.state.tr.setSelection(pending.state.selection));
+  if (command) {
+    let applied = false;
+    if (pending.kind === 'blockStyle' && command.startsWith('set')) {
+      const level = Number(command.at(-1));
+      runViewCommand(
+        command === 'setParagraph'
+          ? setBlockType(schema.nodes.paragraph)
+          : setBlockType(schema.nodes.heading, { level }),
+      );
+      applied = true;
+    } else if (
+      pending.kind === 'tableAdd' &&
+      pending.tablePosition !== undefined &&
+      (command === 'addTableRow' || command === 'addTableColumn')
+    ) {
+      applied =
+        editTable(view, pending.tablePosition, {
+          type: command === 'addTableRow' ? 'addRow' : 'addColumn',
+        }) !== 'rejected';
+    }
+    if (!applied) announce(formatCommandFailure(command), { kind: 'error' });
+  }
+  if (pending.focusTarget?.isConnected) pending.focusTarget.focus();
+  else view.focus();
+};
+
 const executeEditorCommand = (command: ViewEditorCommand): boolean => {
   if (!view) {
     return false;
@@ -761,15 +820,16 @@ const requestHostCommand = async (
 
 for (const [command, button] of toolbarButtons.entries()) {
   button.addEventListener('click', () => {
+    if (command === 'chooseBlockStyle') {
+      requestPicker('blockStyle');
+      return;
+    }
     if (command === 'goToHeading' || command === 'insertFileLink') {
       void requestHostCommand(command);
       return;
     }
     if (command === 'openRawMarkdown') {
       void requestHostCommand('openRawMarkdown');
-      globalThis.setTimeout(() => {
-        updateToolbarPressedState('openRawMarkdown', false);
-      }, 600);
       return;
     }
 
@@ -790,7 +850,7 @@ for (const [command, button] of toolbarButtons.entries()) {
 moreButton?.addEventListener('click', () => {
   advancedActionsVisible = !advancedActionsVisible;
   updateAdvancedToolbarVisibility();
-  if (toolbarMode === 'basic' && advancedActionsVisible) {
+  if (advancedActionsVisible) {
     getFirstAdvancedToolbarButton()?.focus();
     return;
   }
@@ -799,7 +859,7 @@ moreButton?.addEventListener('click', () => {
 
 const updateToolbarPressedState = (command: string, pressed: boolean): void => {
   const button = toolbarButtons.get(command);
-  if (!button || !PRESSABLE_TOOLBAR_COMMANDS.has(command)) {
+  if (!button) {
     return;
   }
 
@@ -842,11 +902,13 @@ const updateToolbarState = (): void => {
   updateToolbarPressedState('insertLink', isMarkActive(schema.marks.link));
 
   const headingLevel = getActiveHeadingLevel();
-  updateToolbarPressedState('setHeading1', headingLevel === 1);
-  updateToolbarPressedState('setHeading2', headingLevel === 2);
-  updateToolbarPressedState('setHeading3', headingLevel === 3);
-  updateToolbarPressedState('setParagraph', isParagraphActive() && headingLevel === undefined);
-
+  const blockStyleButton = toolbarButtons.get('chooseBlockStyle');
+  if (blockStyleButton) {
+    const style =
+      headingLevel === undefined ? getString('commandLabelParagraph') : 'H' + headingLevel;
+    const help = formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
+    setIconButton(blockStyleButton, 'text-size', getString('toolbarBlockStyleLabel'), help);
+  }
   updateToolbarPressedState('toggleBulletList', isListActive(schema.nodes.bullet_list));
   updateToolbarPressedState('toggleNumberedList', isListActive(schema.nodes.ordered_list));
 };
@@ -854,15 +916,17 @@ const updateToolbarState = (): void => {
 const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): void => {
   documentFileName = fileName;
   const editorViewAttributes = getEditorViewAttributes(documentFileName);
-  const editorMarkdown = hostMarkdown;
 
   if (!view) {
     view = new EditorView(editorContainer, {
-      state: parseMarkdown(editorMarkdown),
+      state: parseMarkdown(hostMarkdown),
       attributes: editorViewAttributes,
       nodeViews: {
         code_block: createCodeBlockNodeViewConstructor({ announce }),
-        table: createTableNodeViewConstructor({ announce }),
+        table: createTableNodeViewConstructor({
+          announce,
+          pickAdd: (position) => requestPicker('tableAdd', position),
+        }),
         front_matter: createFrontMatterNodeViewConstructor(),
         image: createImageNodeView,
       },
@@ -906,7 +970,7 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
   }
 
   syncController.withSuppressedSync(() => {
-    if (view) applyRemoteDocument(view, editorMarkdown);
+    if (view) applyRemoteDocument(view, hostMarkdown);
   });
   updateToolbarState();
 };
@@ -917,6 +981,10 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
   const message = event.data;
   if (!isHostToViewMessage(message)) return;
   switch (message.type) {
+    case 'host.pickerResult': {
+      applyPickerResult(message.payload.requestId, message.payload.command);
+      break;
+    }
     case 'host.init': {
       const payload = message.payload;
       syncController.initialize(payload.markdown, payload.revision);
@@ -1003,6 +1071,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     case 'host.executeCommand': {
       const command = message.payload.command;
       const executed = executeEditorCommand(command);
+      if (executed && (command === 'undo' || command === 'redo')) view?.focus();
       if (!executed) {
         announce(formatCommandFailure(command), { kind: 'error' });
       }

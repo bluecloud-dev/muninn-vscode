@@ -51,7 +51,9 @@ Table cell input commits immediately. Save and Source use the sync controller's 
 
 Each host session owns its pending flush requests and settles them on completion, delivery failure, timeout or disposal. Failed completion warns the user and leaves drafts available for recovery. The native save listener cannot guarantee cancellation of a VS Code save; the warning means the document may not yet contain the pending edits. Retained webview state and normal-close recovery do not establish abrupt-shutdown recovery.
 
-The editor accepts host messages only from its own webview origin, validates their payloads, and removes its window listener on unload. VS Code's relay uses that origin without preserving the parent-window identity. Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
+The editor accepts host messages only from its own webview origin, validates their payloads, and removes its window listener on unload. VS Code's relay uses that origin without preserving the parent-window identity. Native block-style and table Add pickers round-trip validated request IDs and a bounded command set. The webview retains the original selection and table position, ignores unrelated responses, and rejects results after a document change. Canceling makes no document edit.
+
+Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
 `supportsMultipleEditorsPerDocument: false` matches the provider's one-session-per-URI index. The old `muninn.editorAssociations` setting is deprecated and inert; VS Code's native editor picker owns the user's default choice.
 
@@ -68,7 +70,7 @@ The golden corpus and exact-edit tests are the executable contract. Add regressi
 - Markdown HTML is disabled; link handling allows local document paths, HTTP(S) and mailto. Other executable schemes are rejected.
 - Remote images do not load automatically. Local images are rewritten to webview resource URIs; roots cover generated media, the document folder and explicitly referenced image directories.
 - Imported images are limited to 10 MiB before reading or base64 decoding.
-- CSP uses nonced module entry scripts; local Mermaid chunks load lazily. No eval, remote script or inline handler.
+- CSP uses nonced module entry scripts and local Codicons fonts; local Mermaid chunks load lazily. No eval, remote script or inline handler.
 - Mermaid requires the effective enabled setting and workspace trust, or the explicit application-scoped untrusted-workspace override. Workspace settings cannot grant that override.
 - URI-based file operations preserve remote schemes. Desktop extension hosts are supported; browser/vscode.dev support is not advertised.
 - No telemetry is collected; the repository guard checks for known telemetry patterns. This is a product policy, not a proof about every dependency's network behavior.

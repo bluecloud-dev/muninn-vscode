@@ -26,7 +26,7 @@ Untouched files round-trip byte for byte in the regression corpus. Edits preserv
 
 | Setting                                                  | Purpose                                                                    |
 | -------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `muninn.toolbar.mode`                                    | Compact `basic` (default) or always-expanded `advanced`                    |
+| `muninn.toolbar.mode`                                    | Compact `basic` (default) or initially expanded `advanced`                 |
 | `muninn.appearance.contentWidth`                         | `comfortable`, `full`, or 40–120 characters                                |
 | `muninn.images.destination`                              | Image import folder relative to the document; default `images/`            |
 | `muninn.integrations.mermaid.enabled`                    | Enable diagram previews                                                    |
