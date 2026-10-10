@@ -40,7 +40,11 @@ export const attachIconHelp = (container: HTMLElement): void => {
       event.target instanceof Element
         ? event.target.closest<HTMLButtonElement>('button[data-help]')
         : undefined;
-    if (!button || button === current) return;
+    if (!button) {
+      if (event.type === 'focusin') hide();
+      return;
+    }
+    if (button === current) return;
     hide();
     current = button;
     tooltip.textContent = button.dataset.help!;

@@ -791,6 +791,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     editor = await save(editor, file, '| Item |\n| --- |\n| Done |\n');
     await editor.locator('[data-testid="muninn-table-delete"]').click();
     assert.equal(await editor.locator('[data-testid="muninn-table-node"]').count(), 0);
+    assert.equal(await editor.locator('[role="tooltip"]').isVisible(), false);
     await page.keyboard.press(`${modifier}+z`);
     await eventually(
       () => editor.locator('[data-testid="muninn-table-node"]').count(),

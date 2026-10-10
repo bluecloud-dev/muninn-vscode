@@ -902,6 +902,7 @@ describe('bundled editor behavior with a delayed host', function () {
     remove.focus();
     remove.click();
     assert.equal(dom.window.document.activeElement === editor, true);
+    assert.equal(dom.window.document.querySelector<HTMLElement>('[role="tooltip"]')!.hidden, true);
   });
 
   it('renders a named icon button with keyboard help in the main toolbar', () => {
