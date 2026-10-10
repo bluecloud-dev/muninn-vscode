@@ -140,7 +140,7 @@ export const continueList: Command = (state, dispatch) => {
     state,
     dispatch &&
       ((tr) => {
-        if (task) tr.insertText('[ ] ');
+        if (task) tr.replaceSelectionWith(state.schema.text('[ ] '), false);
         dispatch(tr);
       }),
   );

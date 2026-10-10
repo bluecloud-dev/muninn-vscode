@@ -151,6 +151,29 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)?.payload.markdown, '- [X] Done\n- [ ] Next\n');
   });
 
+  it('splits formatted task text without formatting its new checkbox marker', async () => {
+    for (const [source, selector, expected] of [
+      ['- [X] **AlphaBeta**\n', 'strong', '- [X] **Alpha**\n- [ ] **Beta**\n'],
+      ['- [X] *AlphaBeta*\n', 'em', '- [X] *Alpha*\n- [ ] *Beta*\n'],
+      ['- [X] `AlphaBeta`\n', 'code', '- [X] `Alpha`\n- [ ] `Beta`\n'],
+    ]) {
+      const editor = open(source);
+      editor.focus();
+      const range = dom.window.document.createRange();
+      range.setStart(editor.querySelector(selector)!.firstChild!, 5);
+      range.collapse(true);
+      dom.window.getSelection()!.removeAllRanges();
+      dom.window.getSelection()!.addRange(range);
+      dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+      await tick();
+      editor.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }),
+      );
+      await tick();
+      assert.equal(applies().at(-1)?.payload.markdown, expected);
+    }
+  });
+
   it('continues a non-one ordered list with its parenthesis delimiter', async () => {
     const editor = open('7) First\n8) Second\n');
     await enterAtEnd(editor, editor.querySelector('li:last-child p')!);
@@ -160,6 +183,25 @@ describe('bundled editor behavior with a delayed host', function () {
       [...editor.querySelectorAll<HTMLParagraphElement>('li p')].at(-1)!,
     );
     assert.equal(applies().at(-1)?.payload.markdown, '7) First\n8) Second\n9) Next\n');
+  });
+
+  it('preserves existing indentation when an ordered list grows by a digit', async () => {
+    for (const [source, expected] of [
+      ['9. First\n', '9. First\n10. Next\n'],
+      ['9) First\n', '9) First\n10) Next\n'],
+      ['99. First\n', '99. First\n100. Next\n'],
+      ['99) First\n', '99) First\n100) Next\n'],
+      ['9) First\n   wrapped\n', '9) First\n   wrapped\n10) Next\n'],
+    ]) {
+      const editor = open(source);
+      await enterAtEnd(editor, editor.querySelector('li p')!);
+      await append(
+        editor,
+        'Next',
+        [...editor.querySelectorAll<HTMLParagraphElement>('li p')].at(-1)!,
+      );
+      assert.equal(applies().at(-1)?.payload.markdown, expected);
+    }
   });
 
   for (const marker of ['-', '+', '*', '7.', '7)', '- [ ]', '- [x]', '- [X]']) {

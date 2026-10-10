@@ -129,7 +129,7 @@ export const markdownSerializer = new MarkdownSerializer(
       const width = String(start + node.childCount - 1).length;
       state.renderList(node, ' '.repeat(width + 2), (index) => {
         const number = String(start + index);
-        return number.padStart(width, ' ') + node.attrs.delimiter + ' ';
+        return number + node.attrs.delimiter + ' ';
       });
     },
     paragraph: (state, node, parent, index) => {
