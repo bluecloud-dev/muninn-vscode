@@ -308,11 +308,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       editor = await save(editor, file, continued);
       await page.keyboard.type('!');
       editor = await save(editor, file, continued.replace('Next', 'Next!'));
-      await page
-        .locator('.tab')
-        .filter({ hasText: name })
-        .getByRole('button', { name: /^Close \(/ })
-        .click();
+      await command('View: Close Editor');
       await eventually(
         async () => (await page.locator('.tab').filter({ hasText: name }).count()) === 0,
         'Editor tab did not close: ' + name,
