@@ -4,15 +4,17 @@ import { DecorationSet, type EditorView } from 'prosemirror-view';
 import { DEFAULT_WEBVIEW_STRINGS } from '../../src/shared/webview-strings';
 import { schema } from '../../src/webview/editor/markdown-codec';
 import {
-  DEFAULT_TABLE_SOURCE,
   createTableNodeViewConstructor,
   getTableGridAriaLabel,
   getTableNodeDocumentIndex,
   formatTableSourceFeedback,
   shouldDeferTableCellKeyboardNavigation,
   shouldNavigateTableCellHorizontally,
-  type MarkdownTable,
 } from '../../src/webview/editor/nodes/table-node-view';
+import {
+  DEFAULT_TABLE_SOURCE,
+  type MarkdownTable,
+} from '../../src/webview/editor/tables/markdown-table-utilities';
 
 let expect: Chai.ExpectStatic;
 

@@ -40,13 +40,18 @@ Larger features need a concise proposal under the [development workflow](DEVELOP
 | `src/webview/editor/remote-document.ts`              | Apply external content without resetting the EditorState, selection or history wholesale.                                                                                                    |
 | `src/webview/editor/document-navigation.ts`          | Task checkboxes, stable Unicode heading IDs and link dispatch.                                                                                                                               |
 | `src/webview/editor/nodes/`                          | Table, code, image/front-matter presentation and editing.                                                                                                                                    |
+| `src/webview/editor/tables/table-edit.ts`            | Shared table mutations and transaction acceptance for native commands and node views. Selection, focus and raw-draft UI stay in their adapters.                                              |
 | `src/webview/editor/table-drafts.ts`                 | Retain unapplied raw table buffers across webview reload; the host preserves them separately when a panel closes.                                                                            |
 | `src/webview/editor/renderers/mermaid-renderer.ts`   | Lazy local Mermaid import, serialized renders and trust checks before/after asynchronous work.                                                                                               |
 | `src/shared/webview-strings.ts`                      | Typed default strings, localized automatically by the host and injected safely.                                                                                                              |
 
 A webview sends an operation ID, source and base revision. The host acknowledges success, no-op or failure with its authoritative snapshot. Later local edits stay queued. Independent host changes are merged; overlapping edits open an unsaved Markdown recovery document rather than choosing a winner.
 
-Save and Source flush table cells and wait for outstanding acknowledgments. Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race. Raw table source has its own explicit Apply control; unapplied buffers are retained separately.
+Table cell input commits immediately. Save and Source use the sync controller's flush operation to queue the current document and wait for outstanding acknowledgments. Raw table source changes only through its explicit Apply control; Save retains unapplied buffers. Source and normal panel close share recovery into separate unsaved documents. Source performs recovery explicitly because opening a text-editor tab need not dispose the custom editor.
+
+Each host session owns its pending flush requests and settles them on completion, delivery failure, timeout or disposal. Failed completion warns the user and leaves drafts available for recovery. The native save listener cannot guarantee cancellation of a VS Code save; the warning means the document may not yet contain the pending edits. Retained webview state and normal-close recovery do not establish abrupt-shutdown recovery.
+
+Validated host messages are handled directly by the editor that owns their behavior; its window listener is removed on unload. Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
 `supportsMultipleEditorsPerDocument: false` matches the provider's one-session-per-URI index. The old `muninn.editorAssociations` setting is deprecated and inert; VS Code's native editor picker owns the user's default choice.
 

@@ -15,7 +15,7 @@ Use the gates below for changes to the editor. Unit coverage thresholds are enfo
 
 The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixture bytes to make a regression pass. Read `deviations.json` for the current exceptions. Generate reports with `npm run test:roundtrip`; CI compares generated reports with Git. No-op round trips alone are insufficient: `source-fidelity.test.ts` edits actual ProseMirror documents and asserts exact surrounding bytes. The [source fidelity contract](ROUNDTRIP_CONTRACT.md) lists the required checks for codec and sync changes.
 
-`host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, flush, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host; it is not a replacement for native UI checks.
+`host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, false/delayed/timed-out flushes, delivery failure, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host, covering table command/grid parity, rejected and detached edits, focused-table targeting, raw-draft retention/reload and message validation/cleanup. It is not a replacement for native UI checks.
 
 ## Native tests
 

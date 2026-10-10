@@ -25,6 +25,7 @@ describe('custom editor host lifecycle', () => {
     let changed: (event: vscode.TextDocumentChangeEvent) => unknown = noop;
     let trusted: () => unknown = noop;
     let willSave: (event: vscode.TextDocumentWillSaveEvent) => unknown = noop;
+    let flushResult: boolean | undefined = true;
     const messages: HostToViewMessage[] = [];
     const uri = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace/spec.md');
     const document = {
@@ -93,11 +94,11 @@ describe('custom editor host lifecycle', () => {
         },
         postMessage: async (message: HostToViewMessage) => {
           messages.push(message);
-          if (message.type === 'host.requestFlush')
+          if (message.type === 'host.requestFlush' && flushResult !== undefined)
             queueMicrotask(() => {
               void receive({
                 type: 'view.flushComplete',
-                payload: { requestId: message.payload.requestId, ok: true },
+                payload: { requestId: message.payload.requestId, ok: flushResult },
               });
             });
           return true;
@@ -130,6 +131,9 @@ describe('custom editor host lifecycle', () => {
       },
       trust: () => trusted(),
       save: (event: vscode.TextDocumentWillSaveEvent) => willSave(event),
+      replyToFlush: (result: boolean | undefined) => {
+        flushResult = result;
+      },
     };
   };
 
@@ -143,6 +147,23 @@ describe('custom editor host lifecycle', () => {
     f.close();
     await tick();
     assert.ok(open.calledWith({ language: 'markdown', content: '| unfinished' }));
+  });
+
+  it('preserves raw drafts when Source opens without disposing the custom editor', async () => {
+    const f = await fixture();
+    const open = sinon.spy(vscode.workspace, 'openTextDocument');
+    const execute = sinon.stub(vscode.commands, 'executeCommand').resolves();
+    await f.send({
+      type: 'view.tableDraft',
+      payload: { key: 'table-1', markdown: '| unfinished' },
+    });
+    await provider.openRawMarkdownForActiveEditor();
+    assert.ok(open.calledWith({ language: 'markdown', content: '| unfinished' }));
+    assert.ok(open.calledBefore(execute));
+    assert.equal(f.document.getText(), 'Alpha\n');
+    f.close();
+    await tick();
+    assert.equal(open.callCount, 1);
   });
 
   it('uses CSP-safe local modules and URI-preserving roots', async () => {
@@ -226,6 +247,110 @@ describe('custom editor host lifecycle', () => {
     assert.equal(waitUntil.calledOnce, true);
     await waitUntil.firstCall.args[0];
     assert.equal(f.messages.filter((message) => message.type === 'host.requestFlush').length, 3);
+  });
+
+  it('warns when native save cannot flush and retains the draft for close recovery', async () => {
+    const f = await fixture();
+    const warning = sinon.spy(vscode.window, 'showWarningMessage');
+    f.replyToFlush(false);
+    await f.send({
+      type: 'view.draft',
+      payload: { markdown: 'AlphaX\n', baseMarkdown: 'Alpha\n' },
+    });
+    const waitUntil = sinon.stub();
+    f.save({ document: f.document, waitUntil } as unknown as vscode.TextDocumentWillSaveEvent);
+    await waitUntil.firstCall.args[0];
+
+    assert.equal(f.document.getText(), 'Alpha\n');
+    assert.ok(
+      warning.calledWith('Edits are still synchronizing. Retry once synchronization finishes.'),
+    );
+    f.close();
+    await tick();
+    assert.equal(f.document.getText(), 'AlphaX\n');
+  });
+
+  for (const delivery of ['refused', 'rejected']) {
+    it(
+      'reports an undeliverable flush immediately and keeps Source closed: ' + delivery,
+      async () => {
+        const f = await fixture();
+        const post = sinon.stub(f.panel.webview, 'postMessage');
+        if (delivery === 'refused') post.resolves(false);
+        else post.rejects(new Error('Webview unavailable'));
+        const execute = sinon.stub(vscode.commands, 'executeCommand').resolves();
+        const warning = sinon.spy(vscode.window, 'showWarningMessage');
+        let completed = false;
+        const completion = provider.openRawMarkdownForActiveEditor().then(() => {
+          completed = true;
+        });
+        await tick();
+        assert.equal(completed, true);
+        await completion;
+        assert.equal(execute.called, false);
+        assert.ok(
+          warning.calledWith('Edits are still synchronizing. Retry once synchronization finishes.'),
+        );
+      },
+    );
+  }
+
+  it('settles a pending Source request on close without reopening the disposed panel', async () => {
+    const f = await fixture();
+    f.replyToFlush(undefined);
+    const execute = sinon.stub(vscode.commands, 'executeCommand').resolves();
+    let completed = false;
+    const completion = provider.openRawMarkdownForActiveEditor().then(() => {
+      completed = true;
+    });
+    f.close();
+    await tick();
+    assert.equal(completed, true);
+    await completion;
+    assert.equal(execute.called, false);
+  });
+
+  it('waits for the matching delayed flush before opening the current document in Source', async () => {
+    const f = await fixture();
+    f.replyToFlush(undefined);
+    const execute = sinon.stub(vscode.commands, 'executeCommand').resolves();
+    const completion = provider.openRawMarkdownForActiveEditor();
+    const request = f.messages.at(-1)!;
+    assert.equal(request.type, 'host.requestFlush');
+    if (request.type !== 'host.requestFlush') throw new Error('Missing flush request');
+    await f.send({
+      type: 'view.flushComplete',
+      payload: { requestId: request.payload.requestId + 1, ok: true },
+    });
+    assert.equal(execute.called, false);
+    f.external('Remote\n');
+    await f.send({
+      type: 'view.flushComplete',
+      payload: { requestId: request.payload.requestId, ok: true },
+    });
+    await completion;
+    assert.equal(execute.firstCall.args[0], 'vscode.openWith');
+    assert.equal(execute.firstCall.args[1].toString(), f.document.uri.toString());
+    assert.equal(f.document.getText(), 'Remote\n');
+  });
+
+  it('times out a silent editor without saving and ignores its late completion', async () => {
+    const f = await fixture();
+    f.replyToFlush(undefined);
+    const warning = sinon.spy(vscode.window, 'showWarningMessage');
+    const clock = sinon.useFakeTimers();
+    const completion = f.send({ type: 'view.executeCommand', payload: { command: 'save' } });
+    const request = f.messages.at(-1)!;
+    assert.equal(request.type, 'host.requestFlush');
+    if (request.type !== 'host.requestFlush') throw new Error('Missing flush request');
+    await clock.tickAsync(1500);
+    await completion;
+    await f.send({
+      type: 'view.flushComplete',
+      payload: { requestId: request.payload.requestId, ok: true },
+    });
+    assert.equal((f.document.save as sinon.SinonStub).called, false);
+    assert.equal(warning.callCount, 1);
   });
 
   it('drains the latest draft when the panel closes before its next apply message', async () => {

@@ -3,27 +3,13 @@
 
 import { readTableDraft, writeTableDraft } from '../table-drafts';
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
+import { NodeSelection } from 'prosemirror-state';
 import type { EditorView, NodeView, NodeViewConstructor } from 'prosemirror-view';
 import { formatErrorAnnouncement, type Announce } from '../announcements';
 import { formatString, getString } from '../localization';
-import {
-  normalizeTableSource,
-  parseMarkdownTable,
-  serializeMarkdownTable,
-} from '../tables/markdown-table-utilities';
+import { normalizeTableSource, parseMarkdownTable } from '../tables/markdown-table-utilities';
 import type { MarkdownTable } from '../tables/markdown-table-utilities';
-
-export {
-  DEFAULT_TABLE_SOURCE,
-  normalizeTableSource,
-  parseMarkdownTable,
-  serializeMarkdownTable,
-  TABLE_FENCE_LANGUAGE,
-} from '../tables/markdown-table-utilities';
-export type { MarkdownTable } from '../tables/markdown-table-utilities';
-
-export const isTableNode = (node: ProseMirrorNode): boolean => node.type.name === 'table';
-export const getTableSource = (node: ProseMirrorNode): string => node.attrs.source as string;
+import { editTable, getTableSource, isTableNode, type TableEdit } from '../tables/table-edit';
 
 type TableNodeViewOptions = {
   announce: Announce;
@@ -107,9 +93,6 @@ export const getTableNodeDocumentIndex = (
 
 class TableNodeView implements NodeView {
   private updatingCell = false;
-  private readonly flushDraft = (): void => {
-    if (this.sourceDirty) this.applySourceFromTextarea();
-  };
   readonly dom: HTMLDivElement;
 
   private readonly header = document.createElement('div');
@@ -207,6 +190,16 @@ class TableNodeView implements NodeView {
 
     this.dom.append(this.header, this.gridContainer, this.sourceContainer);
 
+    this.dom.addEventListener('focusin', () => {
+      const position = this.resolveCurrentNodePosition();
+      const { state } = this.view;
+      if (
+        position !== undefined &&
+        (!(state.selection instanceof NodeSelection) || state.selection.from !== position)
+      )
+        this.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc, position)));
+    });
+
     this.addRowButton.addEventListener('click', () => {
       this.addRow();
     });
@@ -240,7 +233,6 @@ class TableNodeView implements NodeView {
       this.applySourceFromTextarea();
     });
 
-    document.addEventListener('muninn-flush', this.flushDraft);
     this.updateApplySourceButtonState();
     this.render();
     if (this.sourceDirty) this.setSourceVisibility(true);
@@ -264,10 +256,6 @@ class TableNodeView implements NodeView {
       this.render();
     }
     return true;
-  }
-
-  destroy(): void {
-    document.removeEventListener('muninn-flush', this.flushDraft);
   }
 
   ignoreMutation(): boolean {
@@ -430,54 +418,24 @@ class TableNodeView implements NodeView {
   }
 
   private updateCell(rowIndex: number, columnIndex: number, value: string): boolean {
-    const table = parseMarkdownTable(getTableSource(this.node));
-    if (rowIndex < 0) {
-      if (table.headers[columnIndex] === value) {
-        return false;
-      }
-      table.headers[columnIndex] = value;
-    } else {
-      if (!table.rows[rowIndex]) {
-        return false;
-      }
-      if (table.rows[rowIndex][columnIndex] === value) {
-        return false;
-      }
-      table.rows[rowIndex][columnIndex] = value;
-    }
-    this.applyTable(table, getString('statusTableUpdated'));
-    return true;
+    return this.applyEdit(
+      { type: 'cell', row: rowIndex, column: columnIndex, value },
+      getString('statusTableUpdated'),
+    );
   }
 
   private addRow(): void {
     this.pendingFocus ??= this.getFocusedCellCoordinates();
-    const table = parseMarkdownTable(getTableSource(this.node));
-    const columnCount = table.headers.length;
-    table.rows.push(Array.from({ length: columnCount }, () => ''));
-    this.applyTable(table, getString('statusTableRowAdded'));
+    this.applyEdit({ type: 'addRow' }, getString('statusTableRowAdded'));
   }
 
   private addColumn(): void {
     this.pendingFocus ??= this.getFocusedCellCoordinates();
-    const table = parseMarkdownTable(getTableSource(this.node));
-    const nextColumn = table.headers.length + 1;
-    table.headers.push(formatString(getString('tableNewColumnHeaderTemplate'), nextColumn));
-    for (const row of table.rows) {
-      row.push('');
-    }
-    this.applyTable(table, getString('statusTableColumnAdded'));
+    this.applyEdit({ type: 'addColumn' }, getString('statusTableColumnAdded'));
   }
 
   private deleteTable(): void {
-    const position = this.resolveNodePosition();
-    if (position === undefined) {
-      this.options.announce(getString('statusTableDeleteFailed'), { kind: 'error' });
-      return;
-    }
-
-    const transaction = this.view.state.tr.deleteRange(position, position + this.node.nodeSize);
-    this.view.dispatch(transaction.scrollIntoView());
-    this.options.announce(getString('statusTableDeleted'), { kind: 'status' });
+    this.applyEdit({ type: 'delete' }, getString('statusTableDeleted'));
   }
 
   private toggleSourceVisibility(): void {
@@ -515,7 +473,10 @@ class TableNodeView implements NodeView {
     }
     if (normalized !== this.normalizedCurrentSource) {
       this.pendingFocus = { row: 0, col: 0 };
-      const applied = this.applySource(normalized, getString('statusTableSourceApplied'));
+      const applied = this.applyEdit(
+        { type: 'source', source: normalized },
+        getString('statusTableSourceApplied'),
+      );
       if (!applied) {
         this.setSourceFeedback('error', getString('statusTableSourceApplyFailed'));
         return;
@@ -531,10 +492,6 @@ class TableNodeView implements NodeView {
     this.setSourceVisibility(false);
   }
 
-  private applyTable(table: MarkdownTable, statusMessage: string): void {
-    this.applySource(serializeMarkdownTable(table), statusMessage);
-  }
-
   private commitCellAndFocus(
     input: HTMLInputElement,
     rowIndex: number,
@@ -542,12 +499,9 @@ class TableNodeView implements NodeView {
     target: TableCellCoordinates,
   ): void {
     this.pendingFocus = target;
-    if (this.updateCell(rowIndex, columnIndex, input.value)) {
-      return;
-    }
-
+    const accepted = this.updateCell(rowIndex, columnIndex, input.value);
+    if (accepted && this.pendingFocus) this.focusCell(target);
     this.pendingFocus = undefined;
-    this.focusCell(target);
   }
 
   private moveFocusToCell(target: TableCellCoordinates): void {
@@ -667,19 +621,21 @@ class TableNodeView implements NodeView {
     return true;
   }
 
-  private applySource(source: string, statusMessage: string): boolean {
-    const nextSource = normalizeTableSource(source);
-    const position = this.resolveNodePosition();
-    if (position === undefined) {
-      this.options.announce(getString('statusTableSourceApplyFailed'), { kind: 'error' });
+  private applyEdit(edit: TableEdit, statusMessage: string): boolean {
+    const position = this.resolveCurrentNodePosition();
+    const result = editTable(this.view, position, edit);
+    if (result === 'rejected') {
+      this.pendingFocus = undefined;
+      if (position === undefined)
+        this.options.announce(
+          getString(
+            edit.type === 'delete' ? 'statusTableDeleteFailed' : 'statusTableSourceApplyFailed',
+          ),
+          { kind: 'error' },
+        );
       return false;
     }
-
-    const replacement = this.node.type.create({ source: nextSource });
-    const transaction = this.view.state.tr.setNodeMarkup(position, undefined, replacement.attrs);
-    this.view.dispatch(transaction);
-    if (!this.view.state.doc.nodeAt(position)?.eq(replacement)) return false;
-    this.options.announce(statusMessage, { kind: 'status' });
+    if (result === 'applied') this.options.announce(statusMessage, { kind: 'status' });
     return true;
   }
 
@@ -703,10 +659,6 @@ class TableNodeView implements NodeView {
     }
 
     return undefined;
-  }
-
-  private resolveNodePosition(): number | undefined {
-    return this.resolveCurrentNodePosition();
   }
 
   private updateApplySourceButtonState(): void {

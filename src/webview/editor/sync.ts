@@ -64,8 +64,9 @@ export class HostSyncController {
     this.sendPending();
   }
 
-  flushApply(getMarkdown: () => string): void {
+  flush(getMarkdown: () => string): Promise<boolean> {
     this.queueApply(getMarkdown);
+    return this.whenIdle();
   }
 
   whenIdle(): Promise<boolean> {

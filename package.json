@@ -615,7 +615,6 @@
       "out/src/webview/editor/nodes/**",
       "out/src/webview/editor/document-navigation.js",
       "out/src/webview/editor/remote-document.js",
-      "out/src/webview/editor/messages.js",
       "out/src/webview/editor/renderers/**"
     ],
     "reporter": [
