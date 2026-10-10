@@ -37,6 +37,11 @@ export type WebviewStrings = {
   toolbarButtonSourceTitle: string;
   toolbarButtonMermaidLabel: string;
   toolbarButtonSourceLabel: string;
+  toolbarBlockStyleLabel: string;
+  toolbarBlockStyleCurrentTemplate: string;
+  toolbarGroupUtilitiesLabel: string;
+  pickerStaleMessage: string;
+  tableAddButton: string;
   toolbarMoreLabel: string;
   toolbarMoreTitle: string;
   editorAriaLabel: string;
@@ -104,6 +109,7 @@ export type WebviewStrings = {
   tableSourceFeedbackAppliedTemplate: string;
   statusTableSourceApplied: string;
   statusTableSourceApplyFailed: string;
+  statusTableSourceInvalid: string;
   mermaidDisabledMessage: string;
   mermaidNoSvgOutput: string;
   mermaidDiagramAriaLabel: string;
@@ -150,6 +156,12 @@ export const DEFAULT_WEBVIEW_STRINGS: WebviewStrings = {
   toolbarButtonSourceTitle: 'Open raw Markdown source in VS Code',
   toolbarButtonMermaidLabel: 'Mermaid',
   toolbarButtonSourceLabel: 'Source',
+  toolbarBlockStyleLabel: 'Block style',
+  toolbarBlockStyleCurrentTemplate: 'Block style: {0}',
+  toolbarGroupUtilitiesLabel: 'Document',
+  pickerStaleMessage:
+    'The document changed while the picker was open. Select the block again and retry.',
+  tableAddButton: 'Add to table',
   toolbarMoreLabel: 'More',
   toolbarMoreTitle: 'Show advanced toolbar actions',
   editorAriaLabel: 'Markdown editor',
@@ -217,7 +229,10 @@ export const DEFAULT_WEBVIEW_STRINGS: WebviewStrings = {
   tableBackToPreviewButton: 'Back to Preview',
   tableSourceFeedbackAppliedTemplate: 'Applied: {0}',
   statusTableSourceApplied: 'Table source applied.',
-  statusTableSourceApplyFailed: 'Could not apply table source. Please retry.',
+  statusTableSourceApplyFailed:
+    'Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.',
+  statusTableSourceInvalid:
+    'Use a Markdown header row followed by a separator row, such as | --- |.',
   mermaidDisabledMessage:
     'Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.',
   mermaidNoSvgOutput: 'Mermaid rendered no SVG output.',

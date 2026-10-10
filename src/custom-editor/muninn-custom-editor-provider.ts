@@ -32,6 +32,7 @@ import {
   SerializedMarkdownPayload,
   ToolbarMode,
   ViewEditorCommand,
+  PickerCommand,
   ViewToHostMessage,
 } from './protocol';
 
@@ -278,6 +279,33 @@ export class MuninnCustomEditorProvider
     }
 
     switch (message.type) {
+      case 'view.requestPicker': {
+        const { requestId, kind, current } = message.payload;
+        const items: (vscode.QuickPickItem & { command: PickerCommand })[] =
+          kind === 'blockStyle'
+            ? [
+                { label: t('Heading 1'), command: 'setHeading1' as const, level: 1 },
+                { label: t('Heading 2'), command: 'setHeading2' as const, level: 2 },
+                { label: t('Heading 3'), command: 'setHeading3' as const, level: 3 },
+                { label: t('Paragraph'), command: 'setParagraph' as const, level: 0 },
+              ].map((item) => ({
+                ...item,
+                description: current === item.level ? t('Current') : undefined,
+              }))
+            : [
+                { label: t('Add Row'), command: 'addTableRow' as const },
+                { label: t('Add Column'), command: 'addTableColumn' as const },
+              ];
+        let placeholder = t(kind === 'blockStyle' ? 'Block style' : 'Add to table');
+        if (kind === 'blockStyle' && current !== undefined)
+          placeholder = t('Block style: {0}', current === 0 ? t('Paragraph') : 'H' + current);
+        const selected = await vscode.window.showQuickPick(items, { placeHolder: placeholder });
+        await this.postMessage(session.panel.webview, {
+          type: 'host.pickerResult',
+          payload: { requestId, command: selected?.command },
+        });
+        return;
+      }
       case 'view.tableDraft': {
         const { key, markdown } = message.payload;
         if (markdown === undefined) session.tableDrafts.delete(key);
@@ -911,7 +939,7 @@ export class MuninnCustomEditorProvider
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'strict-dynamic';"
+    content="default-src 'none'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'strict-dynamic';"
   />
   <link rel="stylesheet" href="${styleUri}" />
   <title>Muninn</title>

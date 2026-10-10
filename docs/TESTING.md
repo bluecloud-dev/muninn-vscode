@@ -23,7 +23,11 @@ The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixtu
 
 The extension-host runner and installed-VSIX runner resolve the executable declared by the downloaded macOS app bundle. Current VS Code bundles may call it `Code`; the library's older default path assumes `Electron`.
 
-Core journeys run through Electron: toolbar/focus, formatting, code languages, table operations, Mermaid, reading and source mode. Mock-only message injection is reserved for unit regressions.
+Core journeys run through Electron: list continuation/save/undo/redo/reopen, keyboard links, native block-style and table Add pickers, invalid-to-valid table source, formatting, code languages, Mermaid and Source. Mock-only message injection is reserved for unit regressions. Native external-link tests observe one DOM activation without launching a system browser; bundled-editor and provider tests separately verify the host message and allowed URI routing. A real system-browser launch remains manual acceptance.
+
+The default packaged journey runs with browser networking offline. `candidate.json` records the archive hash, source commit, Node/VS Code/platform identity and measured native pane widths, target sizes, zoom and theme contrast. Geometry tests include 320–1440 CSS pixels, continuous resizing, short panes, 200% native zoom, a 24px font-token fixture, doubled names/help, reduced motion and raw-draft/caret retention. These controlled stress fixtures supplement real theme and native picker checks. Theme contrast is computed from rendered foregrounds and composited backgrounds, including a visible keyboard focus outline. They do not establish screen-reader acceptance.
+
+CI builds one `tested-vsix` archive in the quality job and installs that download in every packaged UI matrix cell. Compare each cell's `candidate.json` hash; local archives and CI archives are separate candidates unless their hashes match.
 
 Set `VSCODE_VERSION` to `1.85.2` or `stable`. CI runs extension-host tests on both, and packaged UI on Linux (both versions), Windows and macOS (stable). UI failures block CI. Traces/screenshots are saved to `artifacts/e2e/`; temporary profiles are retained in the OS temp directory for diagnosis.
 
@@ -39,7 +43,7 @@ Workspace Trust is disabled in the default integration configuration. Tests that
 - Render Mermaid in light, dark, and high-contrast themes; scroll while its preview is focused. Disable Mermaid and repeat in a restricted workspace to confirm the trust gate. Test the explicit application-scoped override separately if enabled.
 - Open an empty file and use keyboard-only toolbar/table/Source flows. Check the toolbar's single Tab entry point, arrow/Home/End navigation, and focus when More hides advanced controls. Confirm cell commits keep a usable table focus position.
 - Test NVDA/VoiceOver reading, a named editor surface, table and column-header labels, diagram text alternatives, and live-region verbosity. Errors must be distinguishable by text as well as color.
-- Narrow split editors, 200% zoom, light/dark/high contrast and visible focus.
+- Narrow split editors, 200% zoom, light/dark/high contrast and visible focus. Follow external HTTP/mail links in the configured system application; verify one activation and return to the editor.
 - Review Markdown changes from Source Control, including staged/unstaged diffs and read-only Git revisions. Confirm native review controls remain usable and unchanged source does not create unrelated diffs.
 - Click **Muninn: Report issue** while the custom editor is active. Confirm the native reporter selects Muninn, and the status-bar action disappears when switching to another editor.
 - Long-document cold-open/typing latency and many retained tabs' memory.

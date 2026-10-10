@@ -27,6 +27,7 @@ export function writeNotices(metafiles) {
             .map((name) =>
               fs
                 .readFileSync(path.join(folder, name), 'utf8')
+                .replaceAll('\r\n', '\n')
                 .replaceAll(/[ \t]+$/gm, '')
                 .trim(),
             )

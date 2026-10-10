@@ -52,6 +52,27 @@ for (const required of [
 ]) {
   assert.ok(entries.has('extension/' + required), 'Missing packaged asset: ' + required);
 }
+const fonts = [...entries.keys()].filter((name) => /\/codicon-[^/]+\.ttf$/.test(name));
+assert.equal(fonts.length, 1, 'Package must contain the local Codicons font');
+const font = fonts[0];
+assert.ok(
+  entries
+    .get('extension/media/generated/editor-webview.css')
+    .toString()
+    .includes(font.split('/').at(-1)),
+  'CSS must reference the packaged font',
+);
+assert.deepEqual(
+  entries.get(font),
+  fs.readFileSync('node_modules/@vscode/codicons/dist/codicon.ttf'),
+  'Keep the licensed font unmodified',
+);
+const notices = entries.get('extension/THIRD_PARTY_NOTICES.md').toString();
+assert.ok(notices.includes('@vscode/codicons@' + manifest.dependencies['@vscode/codicons']));
+assert.ok(
+  notices.includes('Attribution 4.0 International') &&
+    notices.includes('Copyright (c) Microsoft Corporation.'),
+);
 for (const name of entries.keys()) {
   assert.doesNotMatch(
     name,

@@ -144,10 +144,17 @@
   "Could not delete table. Please retry.": "Could not delete table. Please retry.",
   "Deleted table.": "Deleted table.",
   "Back to Preview": "Back to Preview",
-  "Could not apply table source. Please retry.": "Could not apply table source. Please retry.",
+  "Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.": "Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.",
+  "Use a Markdown header row followed by a separator row, such as | --- |.": "Use a Markdown header row followed by a separator row, such as | --- |.",
   "Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.": "Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.",
   "Mermaid rendered no SVG output.": "Mermaid rendered no SVG output.",
   "appearance.contentWidth: {0}": "appearance.contentWidth: {0}",
   "Unapplied table source was preserved in a separate unsaved Markdown document.": "Unapplied table source was preserved in a separate unsaved Markdown document.",
-  "Workspace trusted: {0}": "Workspace trusted: {0}"
+  "Workspace trusted: {0}": "Workspace trusted: {0}",
+  "Block style": "Block style",
+  "Block style: {0}": "Block style: {0}",
+  "Document": "Document",
+  "Current": "Current",
+  "The document changed while the picker was open. Select the block again and retry.": "The document changed while the picker was open. Select the block again and retry.",
+  "Add to table": "Add to table"
 }

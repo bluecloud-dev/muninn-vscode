@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getHtmlString } from './localization';
+import { attachIconHelp, setIconButton } from './icon-button';
 
 export type EditorBootstrap = {
   app: HTMLDivElement;
@@ -21,33 +22,34 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
 
   app.innerHTML = `
   <div class="muninn-toolbar" role="toolbar" aria-label="${getHtmlString('toolbarAriaLabel')}">
+    <div class="muninn-toolbar-formatting">
     <div class="muninn-toolbar-group" data-group="text" role="group" aria-labelledby="muninn-toolbar-group-text-label">
       <span id="muninn-toolbar-group-text-label" class="muninn-toolbar-group-label">${getHtmlString('toolbarGroupTextLabel')}</span>
-      <button type="button" data-command="toggleBold" aria-pressed="false" tabindex="0" title="${getHtmlString('toolbarButtonBoldTitle')}">${getHtmlString('commandLabelBold')}</button>
-      <button type="button" data-command="toggleItalic" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonItalicTitle')}">${getHtmlString('commandLabelItalic')}</button>
-      <button type="button" data-command="insertLink" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonLinkTitle')}">${getHtmlString('commandLabelLink')}</button>
+      <button type="button" data-command="toggleBold" data-icon="bold" aria-pressed="false" tabindex="0" title="${getHtmlString('toolbarButtonBoldTitle')}">${getHtmlString('commandLabelBold')}</button>
+      <button type="button" data-command="toggleItalic" data-icon="italic" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonItalicTitle')}">${getHtmlString('commandLabelItalic')}</button>
+      <button type="button" data-command="insertLink" data-icon="link" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonLinkTitle')}">${getHtmlString('commandLabelLink')}</button>
+      <button type="button" id="muninn-toolbar-strike" data-command="toggleStrike" data-icon="strikethrough" hidden aria-pressed="false" tabindex="-1" title="${getHtmlString('commandLabelStrike')}">${getHtmlString('commandLabelStrike')}</button>
     </div>
-      <button type="button" id="muninn-toolbar-strike" data-command="toggleStrike" hidden aria-pressed="false" tabindex="-1" title="${getHtmlString('commandLabelStrike')}">${getHtmlString('commandLabelStrike')}</button>
     <div class="muninn-toolbar-group" data-group="structure" role="group" aria-labelledby="muninn-toolbar-group-structure-label">
       <span id="muninn-toolbar-group-structure-label" class="muninn-toolbar-group-label">${getHtmlString('toolbarGroupStructureLabel')}</span>
-      <button type="button" id="muninn-toolbar-heading-1" hidden data-command="setHeading1" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonHeading1Title')}">${getHtmlString('toolbarButtonHeading1Label')}</button>
-      <button type="button" id="muninn-toolbar-heading-2" hidden data-command="setHeading2" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonHeading2Title')}">${getHtmlString('toolbarButtonHeading2Label')}</button>
-      <button type="button" id="muninn-toolbar-heading-3" data-command="setHeading3" aria-pressed="false" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonHeading3Title')}">${getHtmlString('toolbarButtonHeading3Label')}</button>
-      <button type="button" id="muninn-toolbar-paragraph" data-command="setParagraph" aria-pressed="false" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonParagraphTitle')}">${getHtmlString('commandLabelParagraph')}</button>
-      <button type="button" data-command="toggleBulletList" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonBulletTitle')}">${getHtmlString('toolbarButtonBulletLabel')}</button>
-      <button type="button" data-command="toggleNumberedList" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonNumberedTitle')}">${getHtmlString('toolbarButtonNumberedLabel')}</button>
+      <button type="button" data-command="chooseBlockStyle" data-icon="text-size" tabindex="-1" aria-haspopup="listbox" title="${getHtmlString('toolbarBlockStyleLabel')}">${getHtmlString('toolbarBlockStyleLabel')}</button>
+      <button type="button" data-command="toggleBulletList" data-icon="list-unordered" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonBulletTitle')}">${getHtmlString('toolbarButtonBulletLabel')}</button>
+      <button type="button" data-command="toggleNumberedList" data-icon="list-ordered" aria-pressed="false" tabindex="-1" title="${getHtmlString('toolbarButtonNumberedTitle')}">${getHtmlString('toolbarButtonNumberedLabel')}</button>
     </div>
     <div class="muninn-toolbar-group" data-group="insert" role="group" aria-labelledby="muninn-toolbar-group-insert-label">
       <span id="muninn-toolbar-group-insert-label" class="muninn-toolbar-group-label">${getHtmlString('toolbarGroupInsertLabel')}</span>
-      <button type="button" id="muninn-toolbar-task" data-command="toggleTask" hidden tabindex="-1" title="${getHtmlString('commandLabelTask')}">${getHtmlString('commandLabelTask')}</button>
-      <button type="button" data-command="insertTable" tabindex="-1" title="${getHtmlString('toolbarButtonTableTitle')}">${getHtmlString('commandLabelTable')}</button>
-      <button type="button" id="muninn-toolbar-code-block" data-command="insertCodeBlock" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonCodeTitle')}">${getHtmlString('commandLabelCodeBlock')}</button>
-      <button type="button" id="muninn-toolbar-mermaid" data-command="insertMermaidBlock" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonMermaidTitle')}">${getHtmlString('toolbarButtonMermaidLabel')}</button>
-      <button type="button" data-command="openRawMarkdown" tabindex="-1" title="${getHtmlString('toolbarButtonSourceTitle')}">${getHtmlString('toolbarButtonSourceLabel')}</button>
+      <button type="button" id="muninn-toolbar-task" data-command="toggleTask" data-icon="checklist" hidden tabindex="-1" title="${getHtmlString('commandLabelTask')}">${getHtmlString('commandLabelTask')}</button>
+      <button type="button" data-command="insertTable" data-icon="table" tabindex="-1" title="${getHtmlString('toolbarButtonTableTitle')}">${getHtmlString('commandLabelTable')}</button>
+      <button type="button" id="muninn-toolbar-code-block" data-command="insertCodeBlock" data-icon="code" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonCodeTitle')}">${getHtmlString('commandLabelCodeBlock')}</button>
+      <button type="button" id="muninn-toolbar-mermaid" data-command="insertMermaidBlock" data-icon="symbol-structure" data-advanced="true" tabindex="-1" hidden title="${getHtmlString('toolbarButtonMermaidTitle')}">${getHtmlString('toolbarButtonMermaidLabel')}</button>
+    <button type="button" id="muninn-toolbar-file-link" data-command="insertFileLink" data-icon="file-symlink-file" hidden tabindex="-1" title="${getHtmlString('commandLabelFileLink')}">${getHtmlString('commandLabelFileLink')}</button>
     </div>
-    <button type="button" data-command="goToHeading" tabindex="-1" title="${getHtmlString('commandLabelHeadings')}">${getHtmlString('commandLabelHeadings')}</button>
-    <button type="button" id="muninn-toolbar-file-link" data-command="insertFileLink" hidden tabindex="-1" title="${getHtmlString('commandLabelFileLink')}">${getHtmlString('commandLabelFileLink')}</button>
-    <button type="button" class="muninn-toolbar-more" data-testid="muninn-toolbar-more" aria-controls="muninn-toolbar-heading-1 muninn-toolbar-heading-2 muninn-toolbar-task muninn-toolbar-strike muninn-toolbar-file-link muninn-toolbar-heading-3 muninn-toolbar-paragraph muninn-toolbar-code-block muninn-toolbar-mermaid" aria-expanded="false" tabindex="-1" title="${getHtmlString('toolbarMoreTitle')}">${getHtmlString('toolbarMoreLabel')}</button>
+    </div>
+    <div class="muninn-toolbar-group" data-group="utilities" role="group" aria-label="${getHtmlString('toolbarGroupUtilitiesLabel')}">
+      <button type="button" data-command="openRawMarkdown" data-icon="go-to-file" tabindex="-1" title="${getHtmlString('toolbarButtonSourceTitle')}">${getHtmlString('toolbarButtonSourceLabel')}</button>
+    <button type="button" data-command="goToHeading" data-icon="list-tree" tabindex="-1" title="${getHtmlString('commandLabelHeadings')}">${getHtmlString('commandLabelHeadings')}</button>
+    <button type="button" class="muninn-toolbar-more" data-icon="ellipsis" data-testid="muninn-toolbar-more" aria-controls="muninn-toolbar-task muninn-toolbar-strike muninn-toolbar-file-link muninn-toolbar-code-block muninn-toolbar-mermaid" aria-expanded="false" tabindex="-1" title="${getHtmlString('toolbarMoreTitle')}">${getHtmlString('toolbarMoreLabel')}</button>
+    </div>
   </div>
   <div class="muninn-editor-shell" id="editor-shell">
     <div id="editor"></div>
@@ -66,7 +68,10 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
   }
 
   const toolbarButtons = new Map<string, HTMLButtonElement>();
-  for (const button of app.querySelectorAll<HTMLButtonElement>('button[data-command]')) {
+  attachIconHelp(app);
+  for (const button of app.querySelectorAll<HTMLButtonElement>('button')) {
+    if (button.dataset.icon)
+      setIconButton(button, button.dataset.icon, button.textContent!, button.title);
     const command = button.dataset.command;
     if (!command) {
       continue;
