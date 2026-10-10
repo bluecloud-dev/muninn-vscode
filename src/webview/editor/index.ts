@@ -912,6 +912,7 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
 };
 
 const onHostMessage = (event: MessageEvent<unknown>): void => {
+  if (event.origin !== window.origin || event.source !== window.parent) return;
   const message = event.data;
   if (!isHostToViewMessage(message)) return;
   switch (message.type) {

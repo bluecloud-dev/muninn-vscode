@@ -27,7 +27,13 @@ describe('bundled editor behavior with a delayed host', function () {
   let messages: ViewToHostMessage[];
   let savedState: unknown;
   const send = (message: HostToViewMessage) =>
-    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: message }));
+    dom.window.dispatchEvent(
+      new dom.window.MessageEvent('message', {
+        data: message,
+        origin: dom.window.origin,
+        source: dom.window as unknown as Window,
+      }),
+    );
   const applies = () =>
     messages.filter(
       (m): m is Extract<ViewToHostMessage, { type: 'view.applyDocument' }> =>
@@ -371,10 +377,40 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(dom.window.document.querySelectorAll('tbody tr').length, 1);
   });
 
+  it('accepts host messages only from the same-origin parent window', () => {
+    const editor = open('Alpha\n');
+    for (const sender of [
+      { origin: 'https://untrusted.invalid', source: dom.window as unknown as Window },
+      { origin: dom.window.origin, source: null },
+    ]) {
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent('message', {
+          data: {
+            type: 'host.documentChanged',
+            payload: { markdown: 'Untrusted\n', revision: 1, imageSources: {} },
+          },
+          ...sender,
+        }),
+      );
+      assert.equal(editor.textContent, 'Alpha');
+    }
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'Trusted\n', revision: 1, imageSources: {} },
+    });
+    assert.equal(editor.textContent, 'Trusted');
+  });
+
   it('ignores malformed host messages and removes the listener on unload', async () => {
     const editor = open('Alpha\n');
     for (const data of [undefined, { type: 'host.documentChanged', payload: { markdown: 42 } }])
-      dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data }));
+      dom.window.dispatchEvent(
+        new dom.window.MessageEvent('message', {
+          data,
+          origin: dom.window.origin,
+          source: dom.window as unknown as Window,
+        }),
+      );
     assert.equal(editor.textContent, 'Alpha');
     dom.window.dispatchEvent(new dom.window.Event('beforeunload'));
     send({

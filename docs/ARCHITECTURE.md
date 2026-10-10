@@ -51,7 +51,7 @@ Table cell input commits immediately. Save and Source use the sync controller's 
 
 Each host session owns its pending flush requests and settles them on completion, delivery failure, timeout or disposal. Failed completion warns the user and leaves drafts available for recovery. The native save listener cannot guarantee cancellation of a VS Code save; the warning means the document may not yet contain the pending edits. Retained webview state and normal-close recovery do not establish abrupt-shutdown recovery.
 
-Validated host messages are handled directly by the editor that owns their behavior; its window listener is removed on unload. Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
+The editor accepts host messages only from its same-origin VS Code parent frame, validates their payloads, and removes its window listener on unload. Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
 `supportsMultipleEditorsPerDocument: false` matches the provider's one-session-per-URI index. The old `muninn.editorAssociations` setting is deprecated and inert; VS Code's native editor picker owns the user's default choice.
 
