@@ -306,7 +306,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await page
         .locator('.tab')
         .filter({ hasText: name })
-        .locator('.action-label.codicon-close')
+        .getByRole('button', { name: /^Close \(/ })
         .click();
       await eventually(
         async () => (await page.locator('.tab').filter({ hasText: name }).count()) === 0,
