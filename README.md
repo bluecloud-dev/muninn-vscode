@@ -1,18 +1,18 @@
 # Muninn for VS Code
 
-![Muninn for VS Code: a reading-first Markdown editor for specs, documentation, and notes. Version 1.0.0 Preview.](assets/hero.png)
+<img src="assets/icon.png" alt="Muninn for VS Code" width="96" />
 
 A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
 ## Help shape the preview
 
-Trying Muninn 1.0.1 Preview? Tell us where reading or editing Markdown feels awkward, or what would make it more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). When a Muninn editor is active, click **Muninn: Report issue** in VS Code's status bar to open the native issue reporter. You can also use **Help: Report Issue…** or **Muninn for VS Code: Report an Issue** from the Command Palette.
+Trying Muninn 1.1.0 Preview? Tell us where reading or editing Markdown feels awkward, or what would make it more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). When a Muninn editor is active, click **Muninn: Report issue** in VS Code's status bar to open the native issue reporter. You can also use **Help: Report Issue…** or **Muninn for VS Code: Report an Issue** from the Command Palette.
 
 Please describe the task you were doing and the result you expected. Include steps to reproduce a bug when possible; remove private content from any sample Markdown or screenshots. Muninn does not collect feedback or usage data automatically.
 
 ## Start reading
 
-The current release candidate is **1.0.1 Preview**, distributed on the pre-release channel. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+The current release candidate is **1.1.0 Preview**, prepared for the pre-release channel. See the [changelog](CHANGELOG.md) for changes since 1.0.1. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a compact toolbar with additional actions under More; standard GFM tasks and strikethrough; editable table cells with raw-source access.
