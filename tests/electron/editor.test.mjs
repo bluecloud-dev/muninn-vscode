@@ -333,7 +333,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       const resize = async (target) => {
         await eventually(
           async () => {
-            const width = await editor.evaluate(() => innerWidth);
+            const width = await editor.evaluate(async () => {
+              await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve)),
+              );
+              return innerWidth;
+            });
             if (Math.abs(width - target) <= 1) return true;
             const current = await nativeWindow.evaluate((window) => ({
               width: window.getSize()[0],
@@ -393,6 +398,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       for (const target of [320, 375, 480, 768, 1024, 1440]) {
         await resize(target);
         const geometry = await measure();
+        assert.ok(Math.abs(geometry.width - target) <= 1, JSON.stringify(geometry));
         assert.equal(geometry.bodyOverflow, false);
         assert.equal(geometry.toolbarOverflow, false);
         if (target <= 375) assert.equal(geometry.overflow, true);
@@ -424,6 +430,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       );
       writeEvidence();
       assert.equal(evidence.zoom200.factor, 2);
+      assert.ok(Math.abs(evidence.zoom200.width - 320) <= 1, JSON.stringify(evidence.zoom200));
       assert.equal(evidence.zoom200.bodyOverflow, false, JSON.stringify(evidence.zoom200));
       assert.equal(evidence.zoom200.toolbarOverflow, false);
       await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(1));
