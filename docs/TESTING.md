@@ -25,6 +25,8 @@ The extension-host runner and installed-VSIX runner resolve the executable decla
 
 Core journeys run through Electron: list continuation/save/undo/redo/reopen, keyboard links, native block-style and table Add pickers, invalid-to-valid table source, formatting, code languages, Mermaid and Source. Mock-only message injection is reserved for unit regressions. Native external-link tests observe one DOM activation without launching a system browser; bundled-editor and provider tests separately verify the host message and allowed URI routing. A real system-browser launch remains manual acceptance.
 
+The packaged profile enables VS Code's built-in simple file dialog for real image selection and note creation. OS-specific file dialogs remain a manual check.
+
 The default packaged journey runs with browser networking offline. `candidate.json` records the archive hash, source commit, Node/VS Code/platform identity and measured native pane widths, target sizes, zoom and theme contrast. Geometry tests include 320–1440 CSS pixels, continuous resizing, short panes, 200% native zoom, a 24px font-token fixture, doubled names/help, reduced motion and raw-draft/caret retention. These controlled stress fixtures supplement real theme and native picker checks. Theme contrast is computed from rendered foregrounds and composited backgrounds, including a visible keyboard focus outline. They do not establish screen-reader acceptance.
 
 CI builds one `tested-vsix` archive in the quality job and installs that download in every packaged UI matrix cell. Compare each cell's `candidate.json` hash; local archives and CI archives are separate candidates unless their hashes match.

@@ -39,11 +39,18 @@ fs.writeFileSync(
     'security.workspace.trust.enabled': false,
     'extensions.ignoreRecommendations': true,
     'chat.disableAIFeatures': true,
+    'files.simpleDialog.enable': true,
     'update.mode': 'none',
     'telemetry.telemetryLevel': 'off',
   }),
 );
-let app, page, defaultThemes;
+let app, page;
+const defaultThemes = [
+  { id: version === '1.85.2' ? 'Default Light Modern' : 'Light Modern', uiTheme: 'vs' },
+  { id: version === '1.85.2' ? 'Default Dark Modern' : 'Dark Modern', uiTheme: 'vs-dark' },
+  { id: 'Default High Contrast', uiTheme: 'hc-black' },
+  { id: 'Default High Contrast Light', uiTheme: 'hc-light' },
+];
 const evidence = {
   sha256: fs.existsSync(vsix)
     ? crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex')
@@ -186,18 +193,6 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   before(async () => {
     assert.ok(fs.existsSync(vsix), 'Run npm run package before this suite');
     const executablePath = await vscodeExecutable();
-    const resources =
-      process.platform === 'darwin'
-        ? path.resolve(path.dirname(executablePath), '../Resources/app')
-        : path.join(path.dirname(executablePath), 'resources/app');
-    const themes = JSON.parse(
-      fs.readFileSync(path.join(resources, 'extensions/theme-defaults/package.json'), 'utf8'),
-    ).contributes.themes;
-    defaultThemes = ['vs', 'vs-dark', 'hc-black', 'hc-light'].map(
-      (kind) =>
-        themes.find((theme) => theme.uiTheme === kind && theme.path.includes('modern')) ??
-        themes.find((theme) => theme.uiTheme === kind),
-    );
     const installation = await runVSCodeCommand(
       [
         '--install-extension',
@@ -308,7 +303,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       editor = await save(editor, file, continued);
       await page.keyboard.type('!');
       editor = await save(editor, file, continued.replace('Next', 'Next!'));
-      await command('View: Close Editor');
+      await page
+        .locator('.tab')
+        .filter({ hasText: name })
+        .locator('.action-label.codicon-close')
+        .click();
       await eventually(
         async () => (await page.locator('.tab').filter({ hasText: name }).count()) === 0,
         'Editor tab did not close: ' + name,
@@ -468,8 +467,13 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         }
       });
       await editor.locator('[data-command="toggleBold"]').focus();
-      const helpBounds = await editor.locator('[role="tooltip"]').boundingBox();
-      assert.ok(helpBounds && helpBounds.x >= 0 && helpBounds.x + helpBounds.width <= 480);
+      assert.equal(
+        await editor.locator('[role="tooltip"]').evaluate((help) => {
+          const rect = help.getBoundingClientRect();
+          return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth;
+        }),
+        true,
+      );
       await page.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(
         await editor.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
@@ -918,10 +922,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await editor.locator('.ProseMirror p').first().click();
     await page.keyboard.press(lineEnd);
     const selectedImage = path.join(root, 'assets', 'icon.png');
-    await app.evaluate(({ dialog }, selected) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
-    }, selectedImage);
     await command('Muninn for VS Code: Insert Image');
+    await page.locator('.quick-input-widget input[type="text"]').fill(selectedImage);
+    await page.keyboard.press('Enter');
 
     let currentEditor;
     await eventually(async () => {
@@ -961,10 +964,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       'Source switch lost edits',
     );
     const notePath = path.join(workspace, 'new-note.md');
-    await app.evaluate(({ dialog }, selected) => {
-      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selected });
-    }, notePath);
     await command('Muninn for VS Code: New Markdown Note');
+    await page.locator('.quick-input-widget input[type="text"]').fill(notePath);
+    await page.keyboard.press('Enter');
     await eventually(() => fs.existsSync(notePath), 'New Note did not create a Markdown file');
   });
 });
