@@ -276,7 +276,6 @@ class TableNodeView implements NodeView {
     if (!this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
-      this.sourceDirty = false;
       this.updateApplySourceButtonState();
     }
   }
@@ -441,10 +440,6 @@ class TableNodeView implements NodeView {
     if (visible && !this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
-      this.sourceDirty = false;
-      this.clearSourceFeedback();
-      this.updateApplySourceButtonState();
-      return;
     }
 
     this.clearSourceFeedback();
@@ -662,9 +657,8 @@ class TableNodeView implements NodeView {
   }
 
   private updateApplySourceButtonState(): void {
-    const normalizedDraft = this.sourceDraft;
     this.applySourceButton.disabled =
-      !this.sourceVisible || normalizedDraft === this.normalizedCurrentSource;
+      !this.sourceVisible || this.sourceDraft === this.normalizedCurrentSource;
   }
 
   private clearSourceFeedback(): void {

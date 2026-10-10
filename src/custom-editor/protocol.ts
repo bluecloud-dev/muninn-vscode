@@ -333,22 +333,22 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (value.type === 'host.init') {
     const payload = value.payload;
     return (
-      isSerializedMarkdownPayload(payload) &&
       isObject(payload) &&
-      isString((payload as { fileName?: unknown }).fileName) &&
-      typeof (payload as { mermaidEnabled?: unknown }).mermaidEnabled === 'boolean' &&
-      isToolbarMode((payload as { toolbarMode?: unknown }).toolbarMode) &&
-      isContentWidthSetting((payload as { contentWidth?: unknown }).contentWidth) &&
-      isImageUriMap((payload as { imageSources?: unknown }).imageSources)
+      isString(payload.fileName) &&
+      typeof payload.mermaidEnabled === 'boolean' &&
+      isToolbarMode(payload.toolbarMode) &&
+      isContentWidthSetting(payload.contentWidth) &&
+      isImageUriMap(payload.imageSources) &&
+      isSerializedMarkdownPayload(payload)
     );
   }
 
   if (value.type === 'host.documentChanged') {
     const payload = value.payload;
     return (
-      isSerializedMarkdownPayload(payload) &&
       isObject(payload) &&
-      isImageUriMap((payload as { imageSources?: unknown }).imageSources)
+      isImageUriMap(payload.imageSources) &&
+      isSerializedMarkdownPayload(payload)
     );
   }
 

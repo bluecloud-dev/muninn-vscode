@@ -81,25 +81,7 @@ const ADVANCED_TOOLBAR_COMMANDS = new Set<string>([
   'insertMermaidBlock',
 ]);
 
-const PRESSABLE_TOOLBAR_COMMANDS = new Set<string>([
-  'toggleBold',
-  'toggleItalic',
-  'insertLink',
-  'setHeading1',
-  'setHeading2',
-  'setHeading3',
-  'setParagraph',
-  'toggleBulletList',
-  'toggleNumberedList',
-  'toggleStrike',
-]);
-
-const TRANSIENT_ACTIVE_COMMANDS = new Set<string>([
-  'insertLink',
-  'insertTable',
-  'insertCodeBlock',
-  'openRawMarkdown',
-]);
+const TRANSIENT_ACTIVE_COMMANDS = new Set<string>(['insertLink', 'insertTable', 'insertCodeBlock']);
 
 const COMMAND_LABELS = new Map<string, string>([
   ['toggleBold', getString('commandLabelBold')],
@@ -157,13 +139,12 @@ const setImageSources = (sources: Record<string, string>): void => {
 const getRenderedImageSource = (source: string): string | undefined => imageSources.get(source);
 
 const updateAdvancedToolbarVisibility = (): void => {
-  const showAdvancedActions = advancedActionsVisible;
   for (const command of ADVANCED_TOOLBAR_COMMANDS) {
     const button = toolbarButtons.get(command);
     if (!button) {
       continue;
     }
-    button.hidden = !showAdvancedActions;
+    button.hidden = !advancedActionsVisible;
   }
 
   if (moreButton) {
@@ -331,14 +312,11 @@ const getFirstImageFile = (fileList?: FileList | null): File | undefined => {
   );
 };
 
-const hasImageFile = (fileList?: FileList | null): boolean =>
-  getFirstImageFile(fileList) !== undefined;
-
 const hasImageTransfer = (dataTransfer?: DataTransfer | null): boolean => {
   if (!dataTransfer) {
     return false;
   }
-  if (hasImageFile(dataTransfer.files)) {
+  if (getFirstImageFile(dataTransfer.files)) {
     return true;
   }
   return [...dataTransfer.items].some(
@@ -439,7 +417,7 @@ const withExpandedWordSelection = (): EditorState | undefined => {
     return undefined;
   }
 
-  let state = view.state;
+  const state = view.state;
   if (!state.selection.empty) {
     return state;
   }
@@ -451,8 +429,7 @@ const withExpandedWordSelection = (): EditorState | undefined => {
 
   const transaction = state.tr.setSelection(wordSelection);
   view.dispatch(transaction);
-  state = view.state;
-  return state;
+  return view.state;
 };
 
 const runInlineMarkCommand = (markCommand: Command): boolean => {
@@ -853,9 +830,6 @@ for (const [command, button] of toolbarButtons.entries()) {
     }
     if (command === 'openRawMarkdown') {
       void requestHostCommand('openRawMarkdown');
-      globalThis.setTimeout(() => {
-        updateToolbarPressedState('openRawMarkdown', false);
-      }, 600);
       return;
     }
 
@@ -885,7 +859,7 @@ moreButton?.addEventListener('click', () => {
 
 const updateToolbarPressedState = (command: string, pressed: boolean): void => {
   const button = toolbarButtons.get(command);
-  if (!button || !PRESSABLE_TOOLBAR_COMMANDS.has(command)) {
+  if (!button) {
     return;
   }
 
@@ -935,11 +909,6 @@ const updateToolbarState = (): void => {
     const help = formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
     setIconButton(blockStyleButton, 'text-size', getString('toolbarBlockStyleLabel'), help);
   }
-  updateToolbarPressedState('setHeading1', headingLevel === 1);
-  updateToolbarPressedState('setHeading2', headingLevel === 2);
-  updateToolbarPressedState('setHeading3', headingLevel === 3);
-  updateToolbarPressedState('setParagraph', isParagraphActive() && headingLevel === undefined);
-
   updateToolbarPressedState('toggleBulletList', isListActive(schema.nodes.bullet_list));
   updateToolbarPressedState('toggleNumberedList', isListActive(schema.nodes.ordered_list));
 };
@@ -947,11 +916,10 @@ const updateToolbarState = (): void => {
 const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): void => {
   documentFileName = fileName;
   const editorViewAttributes = getEditorViewAttributes(documentFileName);
-  const editorMarkdown = hostMarkdown;
 
   if (!view) {
     view = new EditorView(editorContainer, {
-      state: parseMarkdown(editorMarkdown),
+      state: parseMarkdown(hostMarkdown),
       attributes: editorViewAttributes,
       nodeViews: {
         code_block: createCodeBlockNodeViewConstructor({ announce }),
@@ -1002,7 +970,7 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
   }
 
   syncController.withSuppressedSync(() => {
-    if (view) applyRemoteDocument(view, editorMarkdown);
+    if (view) applyRemoteDocument(view, hostMarkdown);
   });
   updateToolbarState();
 };

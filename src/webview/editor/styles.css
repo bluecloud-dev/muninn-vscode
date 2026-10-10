@@ -106,8 +106,7 @@ body {
   clip-path: inset(50%);
 }
 
-.muninn-toolbar button,
-.muninn-toolbar .muninn-toolbar-select {
+.muninn-toolbar button {
   min-height: 32px;
   border-radius: 6px;
   border: 1px solid var(--vscode-button-border, transparent);
@@ -133,29 +132,11 @@ body {
   border-color: var(--vscode-focusBorder);
 }
 
-.muninn-toolbar .muninn-toolbar-accent {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.muninn-toolbar .muninn-toolbar-accent:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
 .muninn-toolbar .muninn-toolbar-more {
   border-style: dashed;
 }
 
-.muninn-toolbar .muninn-toolbar-select {
-  background: var(--vscode-dropdown-background);
-  color: var(--vscode-dropdown-foreground);
-  line-height: 1.2;
-  padding: 5px 8px;
-  min-width: 140px;
-}
-
-.muninn-toolbar button:focus-visible,
-.muninn-toolbar .muninn-toolbar-select:focus-visible {
+.muninn-toolbar button:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
@@ -209,29 +190,6 @@ body {
 .ProseMirror img {
   max-width: 100%;
   height: auto;
-}
-
-.muninn-mermaid-preview-panel {
-  box-sizing: border-box;
-  width: calc(100% - (var(--muninn-content-gutter) * 2));
-  max-width: var(--muninn-content-width);
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 8px;
-  margin: 10px auto;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background) 86%, transparent);
-  overflow: hidden;
-}
-
-.muninn-mermaid-preview-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border);
-}
-
-.muninn-mermaid-preview-header strong {
-  font-size: 1rem;
 }
 
 .muninn-mermaid-preview-body {

@@ -42,13 +42,6 @@ const getActiveMarkdownResource = (): vscode.Uri | undefined => {
   return vscode.window.activeTextEditor?.document.uri;
 };
 
-const dispatchEditorCommand = async (
-  provider: MuninnCustomEditorProvider,
-  command: ViewEditorCommand,
-): Promise<void> => {
-  await provider.executeCommandInActiveEditor(command);
-};
-
 const registerCommands = (
   entries: ReadonlyArray<Readonly<{ id: string; run: () => unknown }>>,
 ): vscode.Disposable[] =>
@@ -135,7 +128,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    await dispatchEditorCommand(provider, selected.command);
+    await provider.executeCommandInActiveEditor(selected.command);
   };
 
   const editorCommandEntries: ReadonlyArray<Readonly<{ id: string; command: ViewEditorCommand }>> =
@@ -185,7 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
     {
       id: 'muninn.insertCodeBlock',
       run: async () => {
-        await dispatchEditorCommand(customEditorProvider, 'insertCodeBlock');
+        await customEditorProvider.executeCommandInActiveEditor('insertCodeBlock');
       },
     },
     {
@@ -203,7 +196,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ...editorCommandEntries.map((entry) => ({
       id: entry.id,
       run: async () => {
-        await dispatchEditorCommand(customEditorProvider, entry.command);
+        await customEditorProvider.executeCommandInActiveEditor(entry.command);
       },
     })),
   ]);
