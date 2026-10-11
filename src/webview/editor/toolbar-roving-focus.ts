@@ -7,7 +7,8 @@ export type ToolbarRovingFocusController = {
 
 const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
 
-const isVisibleButton = (button: HTMLButtonElement): boolean => !button.hidden;
+const isVisibleButton = (button: HTMLButtonElement): boolean =>
+  !button.disabled && !button.closest('[hidden]');
 
 const resolveFallback = (
   visibleButtons: HTMLButtonElement[],
@@ -73,7 +74,12 @@ export const attachToolbarRovingFocus = (toolbar: HTMLElement): ToolbarRovingFoc
 
   toolbar.addEventListener('focusin', (event) => {
     const target = event.target as HTMLButtonElement | null;
-    if (!target || !toolbar.contains(target) || !getButtons().includes(target) || target.hidden) {
+    if (
+      !target ||
+      !toolbar.contains(target) ||
+      !getButtons().includes(target) ||
+      !isVisibleButton(target)
+    ) {
       return;
     }
     setCurrentStop(target);

@@ -364,6 +364,39 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.document.getText(), 'AlphaXY\n');
   });
 
+  it('returns bounded native picker choices and cancellation to the requesting editor', async () => {
+    const f = await fixture();
+    const pick = sinon.stub(vscode.window, 'showQuickPick');
+    for (const current of [undefined, 0, 2, 4]) {
+      pick.resolves({ label: 'Heading 2', command: 'setHeading2' } as vscode.QuickPickItem);
+      await f.send({
+        type: 'view.requestPicker',
+        payload: { requestId: 1, kind: 'blockStyle', current },
+      });
+      const [items, options] = pick.lastCall.args;
+      assert.deepEqual(
+        (items as vscode.QuickPickItem[]).map((item) => item.label),
+        ['Heading 1', 'Heading 2', 'Heading 3', 'Paragraph'],
+      );
+      assert.match(options!.placeHolder!, /Block style/);
+      if (current === 2) assert.equal((items as vscode.QuickPickItem[])[1].description, 'Current');
+      assert.deepEqual(f.messages.at(-1), {
+        type: 'host.pickerResult',
+        payload: { requestId: 1, command: 'setHeading2' },
+      });
+    }
+    pick.resolves();
+    await f.send({ type: 'view.requestPicker', payload: { requestId: 2, kind: 'tableAdd' } });
+    assert.deepEqual(
+      (pick.lastCall.args[0] as vscode.QuickPickItem[]).map((item) => item.label),
+      ['Add Row', 'Add Column'],
+    );
+    assert.deepEqual(f.messages.at(-1), {
+      type: 'host.pickerResult',
+      payload: { requestId: 2, command: undefined },
+    });
+  });
+
   it('keeps link cancellation explicit and routes only permitted schemes', async () => {
     const f = await fixture();
     sinon.stub(vscode.window, 'showInputBox').resolves();
@@ -372,10 +405,20 @@ describe('custom editor host lifecycle', () => {
     const execute = sinon.stub(vscode.commands, 'executeCommand').resolves();
     const external = sinon.stub(vscode.env, 'openExternal').resolves(true);
     sinon.stub(vscode.workspace.fs, 'stat').resolves({ size: 5 } as vscode.FileStat);
-    await f.send({ type: 'view.openLink', payload: { href: 'command:malicious' } });
+    for (const href of [
+      'command:malicious',
+      'javascript:alert(1)',
+      'data:text/plain,example',
+      '//example.com',
+    ]) {
+      await f.send({ type: 'view.openLink', payload: { href } });
+    }
     assert.equal(execute.called, false);
+    assert.equal(external.called, false);
     await f.send({ type: 'view.openLink', payload: { href: 'https://example.com' } });
     assert.equal(external.calledOnce, true);
+    await f.send({ type: 'view.openLink', payload: { href: 'mailto:writer@example.com' } });
+    assert.equal(external.callCount, 2);
     await f.send({ type: 'view.openLink', payload: { href: 'related%20spec.md' } });
     const target = execute.lastCall.args[1] as vscode.Uri;
     assert.equal(target.scheme, 'vscode-remote');

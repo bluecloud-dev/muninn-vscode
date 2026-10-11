@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Muninn contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { setIconButton } from '../icon-button';
 import { readTableDraft, writeTableDraft } from '../table-drafts';
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import { NodeSelection } from 'prosemirror-state';
@@ -13,6 +14,7 @@ import { editTable, getTableSource, isTableNode, type TableEdit } from '../table
 
 type TableNodeViewOptions = {
   announce: Announce;
+  pickAdd: (position: number) => void;
 };
 
 type TableCellCoordinates = {
@@ -98,14 +100,22 @@ class TableNodeView implements NodeView {
   private readonly header = document.createElement('div');
   private readonly actions = document.createElement('div');
   private readonly gridContainer = document.createElement('div');
+  private readonly textMeasure = document.createElement('canvas').getContext('2d');
+  private cellResizeFrame = 0;
+  private readonly cellResizeObserver = new ResizeObserver(() => {
+    cancelAnimationFrame(this.cellResizeFrame);
+    this.cellResizeFrame = requestAnimationFrame(() => {
+      for (const input of this.gridContainer.querySelectorAll<HTMLInputElement>('input'))
+        this.resizeCellInput(input);
+    });
+  });
   private readonly sourceContainer = document.createElement('div');
   private readonly sourceTextarea = document.createElement('textarea');
   private readonly applySourceButton = document.createElement('button');
   private readonly sourceShortcutHint = document.createElement('p');
   private readonly sourceFeedback = document.createElement('div');
   private readonly sourceToggleButton = document.createElement('button');
-  private readonly addRowButton = document.createElement('button');
-  private readonly addColumnButton = document.createElement('button');
+  private readonly addButton = document.createElement('button');
   private readonly deleteTableButton = document.createElement('button');
   private readonly sourceShortcutHintId = createSourceShortcutHintId();
 
@@ -131,25 +141,17 @@ class TableNodeView implements NodeView {
     title.textContent = getString('tableTitle');
 
     this.actions.className = 'muninn-table-node-actions';
-    this.addRowButton.type = 'button';
-    this.addRowButton.textContent = getString('tableAddRowButton');
-    this.addColumnButton.type = 'button';
-    this.addColumnButton.textContent = getString('tableAddColumnButton');
+    this.addButton.type = 'button';
+    setIconButton(this.addButton, 'add', getString('tableAddButton'));
     this.deleteTableButton.type = 'button';
-    this.deleteTableButton.textContent = getString('tableDeleteButton');
+    setIconButton(this.deleteTableButton, 'trash', getString('tableDeleteAriaLabel'));
     this.deleteTableButton.dataset.testid = 'muninn-table-delete';
-    this.deleteTableButton.setAttribute('aria-label', getString('tableDeleteAriaLabel'));
     this.deleteTableButton.classList.add('muninn-button-danger');
     this.sourceToggleButton.type = 'button';
-    this.sourceToggleButton.textContent = getString('tableViewSourceButton');
+    setIconButton(this.sourceToggleButton, 'code', getString('tableViewSourceButton'));
     this.sourceToggleButton.dataset.testid = 'muninn-table-toggle-source';
 
-    this.actions.append(
-      this.addRowButton,
-      this.addColumnButton,
-      this.deleteTableButton,
-      this.sourceToggleButton,
-    );
+    this.actions.append(this.addButton, this.deleteTableButton, this.sourceToggleButton);
     this.header.append(title, this.actions);
 
     this.gridContainer.className = 'muninn-table-node-grid';
@@ -160,8 +162,12 @@ class TableNodeView implements NodeView {
     this.sourceTextarea.setAttribute('aria-describedby', this.sourceShortcutHintId);
     this.sourceTextarea.dataset.testid = 'muninn-table-source-text';
     this.applySourceButton.type = 'button';
-    this.applySourceButton.textContent = getString('tableApplySourceButton');
-    this.applySourceButton.title = getString('tableApplySourceTitle');
+    setIconButton(
+      this.applySourceButton,
+      'check',
+      getString('tableApplySourceButton'),
+      getString('tableApplySourceTitle'),
+    );
     this.applySourceButton.setAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter');
     this.applySourceButton.dataset.testid = 'muninn-table-apply-source';
 
@@ -171,8 +177,7 @@ class TableNodeView implements NodeView {
 
     this.sourceFeedback.className = 'muninn-table-node-source-feedback';
     this.sourceFeedback.dataset.testid = 'muninn-table-source-feedback';
-    this.sourceFeedback.setAttribute('role', 'status');
-    this.sourceFeedback.setAttribute('aria-live', 'polite');
+    this.sourceFeedback.id = this.sourceShortcutHintId + '-feedback';
     this.sourceFeedback.hidden = true;
 
     this.sourceContainer.append(
@@ -200,11 +205,9 @@ class TableNodeView implements NodeView {
         this.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc, position)));
     });
 
-    this.addRowButton.addEventListener('click', () => {
-      this.addRow();
-    });
-    this.addColumnButton.addEventListener('click', () => {
-      this.addColumn();
+    this.addButton.addEventListener('click', () => {
+      const position = this.getPos();
+      if (position !== undefined) this.options.pickAdd(position);
     });
     this.deleteTableButton.addEventListener('click', () => {
       this.deleteTable();
@@ -267,6 +270,11 @@ class TableNodeView implements NodeView {
     return target instanceof Node && this.dom.contains(target);
   }
 
+  destroy(): void {
+    this.cellResizeObserver.disconnect();
+    cancelAnimationFrame(this.cellResizeFrame);
+  }
+
   selectNode(): void {
     this.dom.classList.add('is-selected');
   }
@@ -282,7 +290,6 @@ class TableNodeView implements NodeView {
     if (!this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
-      this.sourceDirty = false;
       this.updateApplySourceButtonState();
     }
   }
@@ -321,6 +328,8 @@ class TableNodeView implements NodeView {
     tableElement.append(body);
 
     this.gridContainer.replaceChildren(tableElement);
+    this.cellResizeObserver.disconnect();
+    this.cellResizeObserver.observe(tableElement);
     this.restorePendingFocus(table);
   }
 
@@ -344,6 +353,7 @@ class TableNodeView implements NodeView {
       }
     });
     const commitInput = (): void => {
+      this.resizeCellInput(input);
       const start = input.selectionStart;
       const end = input.selectionEnd;
       this.updatingCell = true;
@@ -417,6 +427,16 @@ class TableNodeView implements NodeView {
     return input;
   }
 
+  private resizeCellInput(input: HTMLInputElement): void {
+    if (!this.textMeasure) return;
+    const style = getComputedStyle(input);
+    this.textMeasure.font = style.font;
+    const padding =
+      (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+    input.style.minInlineSize =
+      Math.max(32, Math.ceil(this.textMeasure.measureText(input.value).width + padding + 2)) + 'px';
+  }
+
   private updateCell(rowIndex: number, columnIndex: number, value: string): boolean {
     return this.applyEdit(
       { type: 'cell', row: rowIndex, column: columnIndex, value },
@@ -424,18 +444,8 @@ class TableNodeView implements NodeView {
     );
   }
 
-  private addRow(): void {
-    this.pendingFocus ??= this.getFocusedCellCoordinates();
-    this.applyEdit({ type: 'addRow' }, getString('statusTableRowAdded'));
-  }
-
-  private addColumn(): void {
-    this.pendingFocus ??= this.getFocusedCellCoordinates();
-    this.applyEdit({ type: 'addColumn' }, getString('statusTableColumnAdded'));
-  }
-
   private deleteTable(): void {
-    this.applyEdit({ type: 'delete' }, getString('statusTableDeleted'));
+    if (this.applyEdit({ type: 'delete' }, getString('statusTableDeleted'))) this.view.focus();
   }
 
   private toggleSourceVisibility(): void {
@@ -447,16 +457,14 @@ class TableNodeView implements NodeView {
     this.dom.classList.toggle('is-source-visible', visible);
     this.sourceContainer.hidden = !visible;
     this.gridContainer.hidden = visible;
-    this.sourceToggleButton.textContent = visible
-      ? getString('tableBackToPreviewButton')
-      : getString('tableViewSourceButton');
+    setIconButton(
+      this.sourceToggleButton,
+      visible ? 'preview' : 'code',
+      visible ? getString('tableBackToPreviewButton') : getString('tableViewSourceButton'),
+    );
     if (visible && !this.sourceDirty) {
       this.sourceDraft = this.normalizedCurrentSource;
       this.sourceTextarea.value = this.sourceDraft;
-      this.sourceDirty = false;
-      this.clearSourceFeedback();
-      this.updateApplySourceButtonState();
-      return;
     }
 
     this.clearSourceFeedback();
@@ -468,7 +476,11 @@ class TableNodeView implements NodeView {
     try {
       normalized = normalizeTableSource(this.sourceDraft);
     } catch {
-      this.setSourceFeedback('error', getString('statusTableSourceApplyFailed'));
+      const message = getString('statusTableSourceInvalid');
+      this.sourceTextarea.setAttribute('aria-invalid', 'true');
+      this.setSourceFeedback('error', message);
+      this.options.announce(message, { kind: 'error' });
+      this.sourceTextarea.focus();
       return;
     }
     if (normalized !== this.normalizedCurrentSource) {
@@ -478,7 +490,15 @@ class TableNodeView implements NodeView {
         getString('statusTableSourceApplied'),
       );
       if (!applied) {
-        this.setSourceFeedback('error', getString('statusTableSourceApplyFailed'));
+        this.setSourceFeedback(
+          'error',
+          getString(
+            this.resolveCurrentNodePosition() === undefined
+              ? 'statusTableSourceApplyFailed'
+              : 'statusSourceRequired',
+          ),
+        );
+        this.sourceTextarea.focus();
         return;
       }
 
@@ -662,18 +682,23 @@ class TableNodeView implements NodeView {
   }
 
   private updateApplySourceButtonState(): void {
-    const normalizedDraft = this.sourceDraft;
     this.applySourceButton.disabled =
-      !this.sourceVisible || normalizedDraft === this.normalizedCurrentSource;
+      !this.sourceVisible || this.sourceDraft === this.normalizedCurrentSource;
   }
 
   private clearSourceFeedback(): void {
+    this.sourceTextarea.removeAttribute('aria-invalid');
+    this.sourceTextarea.setAttribute('aria-describedby', this.sourceShortcutHintId);
     this.sourceFeedback.hidden = true;
     this.sourceFeedback.textContent = '';
     this.sourceFeedback.classList.remove('is-success', 'is-error');
   }
 
   private setSourceFeedback(kind: 'success' | 'error', message: string): void {
+    this.sourceTextarea.setAttribute(
+      'aria-describedby',
+      this.sourceShortcutHintId + ' ' + this.sourceFeedback.id,
+    );
     this.sourceFeedback.hidden = false;
     this.sourceFeedback.textContent = formatTableSourceFeedback(kind, message);
     this.sourceFeedback.classList.toggle('is-success', kind === 'success');

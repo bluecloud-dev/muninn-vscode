@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { EditorState, TextSelection } from 'prosemirror-state';
-import { toggleTask } from '../../src/webview/editor/document-navigation';
+import { continueList, toggleTask } from '../../src/webview/editor/document-navigation';
 import {
   parseHostMarkdown,
   serializeToHostMarkdown,
@@ -39,6 +39,26 @@ const editWord = (source: string, before: string, after: string): string => {
 };
 
 describe('source-preserving edits', () => {
+  for (const eol of ['\n', '\r\n']) {
+    it(
+      'preserves the final newline after lifting the last empty task: ' + JSON.stringify(eol),
+      () => {
+        const source = '- [X] Done' + eol + '- [ ]' + eol;
+        let state = EditorState.create({ doc: parseHostMarkdown(source) });
+        state = state.apply(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+        assert.equal(
+          continueList(state, (tr) => {
+            state = state.apply(tr);
+          }),
+          true,
+        );
+        const lifted = serializeToHostMarkdown(state.doc);
+        setDocumentSource(state.doc, lifted);
+        state = state.apply(state.tr.insertText('Next'));
+        assert.equal(serializeToHostMarkdown(state.doc), '- [X] Done' + eol + eol + 'Next' + eol);
+      },
+    );
+  }
   for (const source of ['Alpha\n', '- Alpha\n']) {
     it('keeps the cursor in visible text after creating a task: ' + JSON.stringify(source), () => {
       let state = EditorState.create({ doc: parseHostMarkdown(source) });

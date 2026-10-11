@@ -49,6 +49,7 @@ const webviewBuildOptions = {
   legalComments: 'external',
   loader: {
     '.css': 'css',
+    '.ttf': 'file',
   },
   logLevel: 'info',
 };

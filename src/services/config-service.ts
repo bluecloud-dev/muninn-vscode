@@ -49,7 +49,19 @@ export class ConfigService {
   }
 
   getConfig(resource?: vscode.Uri): ExtensionConfiguration {
-    return this.loadConfig(resource);
+    const config = vscode.workspace.getConfiguration('muninn', resource);
+    return {
+      mermaidEnabled: config.get('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled),
+      // Permission must come from the user, never a repository's settings.
+      mermaidAllowInUntrustedWorkspaces:
+        config.inspect<boolean>('integrations.mermaid.allowInUntrustedWorkspaces')?.globalValue ===
+        true,
+      toolbarMode: config.get('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
+      contentWidth: normalizeContentWidthSetting(
+        config.get<unknown>('appearance.contentWidth', DEFAULT_CONFIG.contentWidth),
+      ),
+      imageDestination: config.get('images.destination', DEFAULT_CONFIG.imageDestination),
+    };
   }
 
   inspect(resource?: vscode.Uri): {
@@ -68,22 +80,6 @@ export class ConfigService {
       toolbarMode: config.inspect<'basic' | 'advanced'>('toolbar.mode'),
       contentWidth: config.inspect<ContentWidthSetting>('appearance.contentWidth'),
       imageDestination: config.inspect<string>('images.destination'),
-    };
-  }
-
-  private loadConfig(resource?: vscode.Uri): ExtensionConfiguration {
-    const config = vscode.workspace.getConfiguration('muninn', resource);
-    return {
-      mermaidEnabled: config.get('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled),
-      // Permission must come from the user, never a repository's settings.
-      mermaidAllowInUntrustedWorkspaces:
-        config.inspect<boolean>('integrations.mermaid.allowInUntrustedWorkspaces')?.globalValue ===
-        true,
-      toolbarMode: config.get('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
-      contentWidth: normalizeContentWidthSetting(
-        config.get<unknown>('appearance.contentWidth', DEFAULT_CONFIG.contentWidth),
-      ),
-      imageDestination: config.get('images.destination', DEFAULT_CONFIG.imageDestination),
     };
   }
 }

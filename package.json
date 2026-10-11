@@ -552,6 +552,7 @@
     "bundle:production": "node esbuild.mjs --production"
   },
   "dependencies": {
+    "@vscode/codicons": "0.0.45",
     "diff": "^9.0.0",
     "markdown-it": "^14.3.0",
     "markdown-it-front-matter": "^0.2.4",

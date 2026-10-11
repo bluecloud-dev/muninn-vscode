@@ -112,6 +112,35 @@ describe('custom editor init protocol', () => {
 });
 
 describe('custom editor protocol guards', () => {
+  it('bounds native picker requests and results at both message boundaries', () => {
+    expect(
+      isViewToHostMessage({
+        type: 'view.requestPicker',
+        payload: { requestId: 1, kind: 'blockStyle', current: 6 },
+      }),
+    ).to.equal(true);
+    expect(
+      isHostToViewMessage({
+        type: 'host.pickerResult',
+        payload: { requestId: 1, command: 'setHeading2' },
+      }),
+    ).to.equal(true);
+    expect(isHostToViewMessage({ type: 'host.pickerResult', payload: { requestId: 1 } })).to.equal(
+      true,
+    );
+    for (const payload of [
+      { requestId: -1, kind: 'blockStyle' },
+      { requestId: 1, kind: 'arbitrary' },
+      { requestId: 1, kind: 'blockStyle', current: 7 },
+      { requestId: 1, kind: 'blockStyle', current: '1' },
+    ])
+      expect(isViewToHostMessage({ type: 'view.requestPicker', payload })).to.equal(false);
+    for (const command of ['openRawMarkdown', 'undo', 'arbitrary', 1])
+      expect(
+        isHostToViewMessage({ type: 'host.pickerResult', payload: { requestId: 1, command } }),
+      ).to.equal(false);
+  });
+
   it('accepts valid view-to-host payloads', () => {
     expect(isViewToHostMessage({ type: 'view.ready' })).to.equal(true);
     expect(

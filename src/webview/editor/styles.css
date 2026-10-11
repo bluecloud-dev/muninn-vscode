@@ -7,6 +7,32 @@
   box-sizing: border-box;
 }
 
+[hidden] { display: none !important; }
+
+.muninn-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: max(32px, 2.5rem);
+  min-block-size: max(32px, 2.5rem);
+  flex-shrink: 0;
+}
+
+.muninn-icon-button .codicon { font-size: 1.25rem; }
+
+.muninn-control-help {
+  position: fixed;
+  z-index: 10;
+  max-inline-size: min(30rem, calc(100vw - 1rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--vscode-editorHoverWidget-border);
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground));
+  font: inherit;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
 html,
 body {
   margin: 0;
@@ -26,21 +52,44 @@ body {
   height: 100%;
 }
 
+/* Keep document actions reachable while formatting wraps or scrolls in short panes. */
 .muninn-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  flex-shrink: 0;
+  max-block-size: 40%;
+  min-block-size: calc(32px + 1rem + 1px);
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--vscode-editorGroup-border);
   background: var(--vscode-editorWidget-background);
-  overflow-x: auto;
+  overflow: hidden;
+}
+
+.muninn-toolbar-formatting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.muninn-toolbar-group[data-group="utilities"] {
+  flex-wrap: nowrap;
+  align-self: start;
 }
 
 .muninn-toolbar-group {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 8px;
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  gap: 0.25rem;
+  padding-right: 0.5rem;
   border-right: 1px solid var(--vscode-editorWidget-border);
 }
 
@@ -50,17 +99,18 @@ body {
 }
 
 .muninn-toolbar-group-label {
-  color: var(--vscode-descriptionForeground);
-  font-size: 11px;
-  font-weight: 600;
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
-.muninn-toolbar button,
-.muninn-toolbar .muninn-toolbar-select {
+.muninn-toolbar button {
   min-height: 32px;
   border-radius: 6px;
   border: 1px solid var(--vscode-button-border, transparent);
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .muninn-toolbar button {
@@ -68,7 +118,7 @@ body {
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
   line-height: 1;
-  padding: 7px 10px;
+  padding: 0.5rem;
   cursor: pointer;
 }
 
@@ -82,38 +132,21 @@ body {
   border-color: var(--vscode-focusBorder);
 }
 
-.muninn-toolbar .muninn-toolbar-accent {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.muninn-toolbar .muninn-toolbar-accent:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
 .muninn-toolbar .muninn-toolbar-more {
   border-style: dashed;
 }
 
-.muninn-toolbar .muninn-toolbar-select {
-  background: var(--vscode-dropdown-background);
-  color: var(--vscode-dropdown-foreground);
-  line-height: 1.2;
-  padding: 5px 8px;
-  min-width: 140px;
-}
-
-.muninn-toolbar button:focus-visible,
-.muninn-toolbar .muninn-toolbar-select:focus-visible {
+.muninn-toolbar button:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 
 .muninn-editor-shell {
-  --muninn-content-gutter: 22px;
+  --muninn-content-gutter: 1.5rem;
   --muninn-content-width: 70ch;
 
   flex: 1;
+  min-height: 0;
   overflow: auto;
   outline: 2px solid transparent;
   outline-offset: -2px;
@@ -159,29 +192,6 @@ body {
   height: auto;
 }
 
-.muninn-mermaid-preview-panel {
-  box-sizing: border-box;
-  width: calc(100% - (var(--muninn-content-gutter) * 2));
-  max-width: var(--muninn-content-width);
-  border: 1px solid var(--vscode-editorWidget-border);
-  border-radius: 8px;
-  margin: 10px auto;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background) 86%, transparent);
-  overflow: hidden;
-}
-
-.muninn-mermaid-preview-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--vscode-editorWidget-border);
-}
-
-.muninn-mermaid-preview-header strong {
-  font-size: 12px;
-}
-
 .muninn-mermaid-preview-body {
   padding: 10px;
   overflow-x: auto;
@@ -221,6 +231,8 @@ body {
 }
 
 .muninn-table-node {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   margin: 0.9em 0;
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 8px;
@@ -234,20 +246,23 @@ body {
 
 .muninn-table-node-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--vscode-editorWidget-border);
 }
 
 .muninn-table-node-header strong {
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .muninn-table-node-actions {
   display: inline-flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  max-inline-size: 100%;
+  gap: 0.5rem;
 }
 
 .muninn-table-node-actions button,
@@ -257,7 +272,7 @@ body {
   border: 1px solid var(--vscode-button-border, transparent);
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
-  font-size: 12px;
+  font-size: 1rem;
   padding: 4px 8px;
   cursor: pointer;
 }
@@ -268,8 +283,7 @@ body {
 }
 
 .muninn-table-node-actions button.muninn-button-danger {
-  color: var(--vscode-errorForeground);
-  border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, transparent);
+  color: var(--vscode-button-secondaryForeground);
 }
 
 .muninn-table-node-actions button.muninn-button-danger:hover {
@@ -292,6 +306,7 @@ body {
 }
 
 .muninn-table-node-grid {
+  max-inline-size: 100%;
   overflow: auto;
 }
 
@@ -330,6 +345,8 @@ body {
 }
 
 .muninn-table-node-source {
+  min-inline-size: 0;
+  overflow-wrap: break-word;
   border-top: 1px solid var(--vscode-editorWidget-border);
   display: none;
   gap: 8px;
@@ -342,14 +359,14 @@ body {
 
 .muninn-table-node-source-text {
   width: 100%;
-  min-height: 110px;
+  min-height: 8rem;
   resize: vertical;
   border: 1px solid var(--vscode-input-border, var(--vscode-editorWidget-border));
   border-radius: 6px;
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-size: 1rem;
   line-height: 1.5;
   padding: 8px;
 }
@@ -361,22 +378,24 @@ body {
 
 .muninn-table-node-source-hint {
   margin: 0;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: 0.9rem;
+  color: var(--vscode-editor-foreground);
 }
 
 .muninn-table-node-source-feedback {
   margin: 0;
   min-height: 1.2em;
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .muninn-table-node-source-feedback.is-success {
-  color: var(--vscode-testing-iconPassed, var(--vscode-editor-foreground));
+  color: var(--vscode-editor-foreground);
 }
 
 .muninn-table-node-source-feedback.is-error {
-  color: var(--vscode-errorForeground);
+  color: var(--vscode-editor-foreground);
+  border-inline-start: 0.2em solid currentColor;
+  padding-inline-start: 0.5em;
 }
 
 .muninn-code-node {
@@ -397,7 +416,7 @@ body {
 }
 
 .muninn-code-node-header strong {
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .muninn-code-node-language {
@@ -406,7 +425,7 @@ body {
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-editorWidget-border));
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
-  font-size: 12px;
+  font-size: 1rem;
   padding: 5px 8px;
 }
 
@@ -441,7 +460,7 @@ body {
 }
 
 .muninn-front-matter-node-header strong {
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .muninn-front-matter-node-body {
@@ -465,7 +484,7 @@ body {
 .muninn-status {
   border-top: 1px solid var(--vscode-editorGroup-border);
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: 1rem;
   color: var(--vscode-descriptionForeground);
 }
 /* Preserve Markdown soft line breaks and inherit the workbench reading preferences. */
@@ -482,7 +501,7 @@ body {
   cursor: pointer;
 }
 .ProseMirror a:hover { color: var(--vscode-textLink-activeForeground); }
-.ProseMirror :is(h1,h2,h3,h4,h5,h6):focus-visible {
+.ProseMirror :is(a,h1,h2,h3,h4,h5,h6):focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 4px;
 }

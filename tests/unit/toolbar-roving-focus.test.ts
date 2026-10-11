@@ -15,6 +15,10 @@ type RecordedKeyboardEvent = {
 
 class FakeButton {
   public hidden = false;
+  public disabled = false;
+  public closest(): FakeButton | undefined {
+    return this.hidden ? this : undefined;
+  }
   public tabIndex = -1;
   public readonly focusedKeys: string[] = [];
 
