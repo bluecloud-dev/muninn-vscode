@@ -1,6 +1,6 @@
 # Release guide
 
-The current release candidate is **1.1.0 Preview**, with both `preview: true` in the manifest and explicit pre-release channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) remains Unreleased until publication is authorized. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
+The current version is **1.1.0 Preview**, with both `preview: true` in the manifest and explicit pre-release channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) records the release date and changes. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
 
 Marketplace versions must be numeric. Its [odd-minor pre-release scheme](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions) is a recommendation, so this workflow accepts the requested 1.0.0 starting point. The [Preview badge](https://code.visualstudio.com/api/references/extension-manifest) and pre-release channel are separate settings. A later regular release must use a new version; a version published as a pre-release cannot be reused on the regular channel.
 

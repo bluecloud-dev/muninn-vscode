@@ -12,7 +12,7 @@ Please describe the task you were doing and the result you expected. Include ste
 
 ## Start reading
 
-The current release candidate is **1.1.0 Preview**, prepared for the pre-release channel. See the [changelog](CHANGELOG.md) for changes since 1.0.1. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+The current version is **1.1.0 Preview**, distributed on the pre-release channel. See the [changelog](CHANGELOG.md) for changes since 1.0.1. Install the pre-release extension and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a compact toolbar with additional actions under More; standard GFM tasks and strikethrough; editable table cells with raw-source access.
