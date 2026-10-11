@@ -103,4 +103,4 @@ A configured secret name does not establish validity. Run the complete release r
 
 Maintainers own publisher membership, identity configuration and approval of public release notes. Creating a PR does not authorize a registry upload or release tag.
 
-Before tagging, complete the manual accessibility/platform/performance checks in [TESTING.md](TESTING.md), replace Unreleased in the versioned changelog heading with the actual release date, review the release notes and verify CI for the commit to be released.
+Before tagging, complete the manual accessibility/platform/performance checks in [TESTING.md](TESTING.md), verify that the versioned changelog heading includes the release version and actual date, keep a separate `## [Unreleased]` heading for future changes, review the release notes and verify CI for the commit to be released.
