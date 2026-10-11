@@ -121,6 +121,7 @@ export const createDocumentNavigation = (openLink: (href: string) => void): Plug
 /** Task syntax stays ordinary GFM text, so checkboxes never require a private node format. */
 export const continueList: Command = (state, dispatch) => {
   const { $from } = state.selection;
+  if ($from.parent.type.spec.code) return false;
   const task =
     $from.depth > 1 &&
     $from.node($from.depth - 1).type.name === 'list_item' &&

@@ -26,6 +26,7 @@ describe('bundled editor behavior with a delayed host', function () {
   let dom: JSDOM;
   let messages: ViewToHostMessage[];
   let savedState: unknown;
+  let resize: () => Promise<void>;
   const send = (message: HostToViewMessage) =>
     dom.window.dispatchEvent(
       new dom.window.MessageEvent('message', {
@@ -66,7 +67,42 @@ describe('bundled editor behavior with a delayed host', function () {
     win.Range.prototype.getBoundingClientRect = rect;
     win.HTMLElement.prototype.scrollIntoView = () => {};
     win.scrollBy = () => {};
+    const resizeCallbacks = new Set<() => void>();
+    resize = async () => {
+      for (const callback of resizeCallbacks) callback();
+      await new Promise(win.requestAnimationFrame);
+    };
+    Object.defineProperty(win.HTMLCanvasElement.prototype, 'getContext', {
+      value: () => ({
+        font: '14px TestFont',
+        measureText(text: string) {
+          const scale = Number.parseFloat(this.font.match(/[\d.]+px/)?.[0] ?? '14px') / 14;
+          return {
+            width: [...text].reduce((width, glyph) => width + (glyph === 'W' ? 16 : 4), 0) * scale,
+          };
+        },
+      }),
+    });
     Object.assign(win, {
+      ResizeObserver: class {
+        private readonly notify: () => void;
+        private readonly targets = new Set<Element>();
+        constructor(callback: ResizeObserverCallback) {
+          this.notify = () => callback([], this as unknown as ResizeObserver);
+        }
+        observe(target: Element) {
+          this.targets.add(target);
+          resizeCallbacks.add(this.notify);
+        }
+        unobserve(target: Element) {
+          this.targets.delete(target);
+          if (this.targets.size === 0) resizeCallbacks.delete(this.notify);
+        }
+        disconnect() {
+          this.targets.clear();
+          resizeCallbacks.delete(this.notify);
+        }
+      },
       acquireVsCodeApi: () => ({
         postMessage: (message: ViewToHostMessage) => messages.push(message),
         getState: () => savedState,
@@ -292,6 +328,22 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)?.payload.markdown, 'First\n\nNext\n');
   });
 
+  it('inserts a newline in a code block inside a list without splitting the item', async () => {
+    for (const eol of ['\n', '\r\n']) {
+      const editor = open(
+        '- item\n\n  ```js\n  alpha\n  ```\n\n- next\n'.replaceAll('\n', () => eol),
+      );
+      await enterAtEnd(editor, editor.querySelector('li code')!);
+      assert.equal(
+        applies().at(-1)?.payload.markdown,
+        '- item\n\n  ```js\n  alpha\n  \n  ```\n\n- next\n'.replaceAll('\n', () => eol),
+      );
+      assert.equal(editor.querySelectorAll('li').length, 2);
+      assert.equal(editor.querySelectorAll('li code').length, 1);
+      assert.equal(editor.querySelector('li code')!.textContent, 'alpha\n');
+    }
+  });
+
   it('keeps Shift+Enter splitting a paragraph inside the same list item', async () => {
     const editor = open('- First\n');
     await append(editor, '');
@@ -509,6 +561,47 @@ describe('bundled editor behavior with a delayed host', function () {
       applies().at(-1)!.payload.markdown,
       '| Name | State |\n| :--- | ---: |\n| AlXpha | Todo |\n',
     );
+  });
+
+  it('fits table cells to their font and glyphs on opening, editing and font resizing', async () => {
+    open('| Thin | Wide |\n| --- | --- |\n| iiiiiiiiiiiiiiiiiii | WWWWWWWWWWWWWWWWWWW |\n');
+    const style = dom.window.document.createElement('style');
+    style.textContent = '.muninn-table-node-cell { font: 14px TestFont; padding: 4px 6px; }';
+    dom.window.document.head.append(style);
+    await resize();
+    const [thin, wide] = dom.window.document.querySelectorAll<HTMLInputElement>('tbody input');
+    const fits = (input: HTMLInputElement, minimum: number, maximum: number) => {
+      assert.match(input.style.minInlineSize, /px$/);
+      const width = Number.parseFloat(input.style.minInlineSize);
+      assert.ok(width >= minimum && width <= maximum, input.value + ': ' + width);
+    };
+    fits(thin, 88, 104);
+    fits(wide, 316, 332);
+
+    thin.focus();
+    thin.value = 'WWWWWWWWWWWWWWWWWWW';
+    thin.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true }));
+    await tick();
+    fits(thin, 316, 332);
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '| Thin | Wide |\n| --- | --- |\n| WWWWWWWWWWWWWWWWWWW | WWWWWWWWWWWWWWWWWWW |\n',
+    );
+    ack(0, 1);
+
+    thin.value = 'iiiiiiiiiiiiiiiiiii';
+    thin.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true }));
+    await tick();
+    fits(thin, 88, 104);
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '| Thin | Wide |\n| --- | --- |\n| iiiiiiiiiiiiiiiiiii | WWWWWWWWWWWWWWWWWWW |\n',
+    );
+
+    style.textContent = '.muninn-table-node-cell { font: 28px TestFont; padding: 4px 6px; }';
+    await resize();
+    fits(thin, 164, 180);
+    fits(wide, 620, 636);
   });
 
   it('retains unapplied table source when returning to preview and persists the buffer', () => {
