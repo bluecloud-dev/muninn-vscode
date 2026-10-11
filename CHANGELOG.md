@@ -33,7 +33,7 @@ All notable changes to Muninn are documented here. The release sequence starts a
 ### Release
 
 - Version 1.1.0 retains the Marketplace Preview badge and is distributed on the pre-release channel.
-- Retains the Marketplace Preview badge and pre-release channel. Requires VS Code 1.85.2 or later; contributor tooling uses Node 24.
+- Requires VS Code 1.85.2 or later; contributor tooling uses Node 24.
 - Manual screen-reader, real Remote SSH/Codespaces, abrupt-shutdown recovery, and long-document performance acceptance remain outside the automated evidence; see [testing](https://github.com/bluecloud-dev/muninn-vscode/blob/v1.1.0/docs/TESTING.md).
 
 ## [1.0.1] - 2026-10-05
