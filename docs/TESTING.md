@@ -58,4 +58,4 @@ Record the VS Code version, OS, tested VSIX hash, outcome, and any remaining man
 
 Capture the editor overview, table grid and raw-source editing, Mermaid preview, Source action, feedback action, and keyboard focus in light and dark themes. Include a high-contrast focus check. Use the actual packaged extension and remove private document content from shared captures.
 
-Keep `assets/hero.png` aligned with the current editor and release positioning. Check that `assets/icon.png` is readable at small sizes and uses the same crow mark as `assets/muninn-rounded-logo.svg`. Replace screenshots when the depicted UI changes.
+Use the installed extension for product screenshots and replace them when the depicted UI changes. Check that `assets/icon.png` is readable at small sizes and uses the same crow mark as `assets/muninn-rounded-logo.svg`.

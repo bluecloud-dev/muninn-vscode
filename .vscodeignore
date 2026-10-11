@@ -37,7 +37,6 @@ tsconfig*.json
 AGENTS.md
 CLAUDE.md
 GEMINI.md
-assets/hero.png
 media/**
 !media/generated/**
 package-lock.json
