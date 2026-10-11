@@ -402,7 +402,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         assert.ok(Math.abs(geometry.width - target) <= 1, JSON.stringify(geometry));
         assert.equal(geometry.bodyOverflow, false);
         assert.equal(geometry.toolbarOverflow, false);
-        if (target <= 375) assert.equal(geometry.overflow, true);
+        // Native fonts can fit this table at 375px; 320px still requires local scrolling.
+        if (target === 320) assert.equal(geometry.overflow, true);
         for (const cell of geometry.cells)
           assert.ok(cell.available >= cell.text, JSON.stringify(cell));
         for (const button of geometry.targets)
