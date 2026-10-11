@@ -613,12 +613,18 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await paragraph.press('Escape');
     assert.equal(await style.evaluate((button) => document.activeElement === button), true);
     await editor.locator('.ProseMirror').focus();
-    assert.equal(await editor.evaluate(() => getSelection().toString()), 'Beta');
+    await eventually(
+      async () => (await editor.evaluate(() => getSelection().toString())) === 'Beta',
+      'Cancel did not restore the original text selection',
+    );
     assert.equal(fs.readFileSync(file, 'utf8'), 'Alpha\n\nBeta\n');
     await style.click();
     await editor.getByRole('menuitemradio', { name: 'Heading 2', exact: true }).click();
     editor = await save(editor, file, 'Alpha\n\n## Beta\n');
-    assert.equal(await editor.evaluate(() => getSelection().toString()), 'Beta');
+    await eventually(
+      async () => (await editor.evaluate(() => getSelection().toString())) === 'Beta',
+      'Local heading choice did not preserve the text selection',
+    );
     assert.equal(await style.innerText(), 'Heading 2');
     assert.equal(await style.getAttribute('aria-pressed'), null);
     await style.click();
