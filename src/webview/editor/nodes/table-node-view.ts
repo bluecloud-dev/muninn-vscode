@@ -100,6 +100,15 @@ class TableNodeView implements NodeView {
   private readonly header = document.createElement('div');
   private readonly actions = document.createElement('div');
   private readonly gridContainer = document.createElement('div');
+  private readonly textMeasure = document.createElement('canvas').getContext('2d');
+  private cellResizeFrame = 0;
+  private readonly cellResizeObserver = new ResizeObserver(() => {
+    cancelAnimationFrame(this.cellResizeFrame);
+    this.cellResizeFrame = requestAnimationFrame(() => {
+      for (const input of this.gridContainer.querySelectorAll<HTMLInputElement>('input'))
+        this.resizeCellInput(input);
+    });
+  });
   private readonly sourceContainer = document.createElement('div');
   private readonly sourceTextarea = document.createElement('textarea');
   private readonly applySourceButton = document.createElement('button');
@@ -261,6 +270,11 @@ class TableNodeView implements NodeView {
     return target instanceof Node && this.dom.contains(target);
   }
 
+  destroy(): void {
+    this.cellResizeObserver.disconnect();
+    cancelAnimationFrame(this.cellResizeFrame);
+  }
+
   selectNode(): void {
     this.dom.classList.add('is-selected');
   }
@@ -314,6 +328,8 @@ class TableNodeView implements NodeView {
     tableElement.append(body);
 
     this.gridContainer.replaceChildren(tableElement);
+    this.cellResizeObserver.disconnect();
+    this.cellResizeObserver.observe(tableElement);
     this.restorePendingFocus(table);
   }
 
@@ -331,14 +347,13 @@ class TableNodeView implements NodeView {
         : formatString(getString('tableRowColumnLabelTemplate'), rowIndex + 1, columnIndex + 1),
     );
     input.value = value;
-    input.style.minInlineSize = Math.max(12, value.length + 2) + 'em';
     input.addEventListener('focus', () => {
       if (this.pendingFocus?.row === logicalRowIndex && this.pendingFocus.col === columnIndex) {
         this.pendingFocus = undefined;
       }
     });
     const commitInput = (): void => {
-      input.style.minInlineSize = Math.max(12, input.value.length + 2) + 'em';
+      this.resizeCellInput(input);
       const start = input.selectionStart;
       const end = input.selectionEnd;
       this.updatingCell = true;
@@ -410,6 +425,16 @@ class TableNodeView implements NodeView {
       }
     });
     return input;
+  }
+
+  private resizeCellInput(input: HTMLInputElement): void {
+    if (!this.textMeasure) return;
+    const style = getComputedStyle(input);
+    this.textMeasure.font = style.font;
+    const padding =
+      (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+    input.style.minInlineSize =
+      Math.max(32, Math.ceil(this.textMeasure.measureText(input.value).width + padding + 2)) + 'px';
   }
 
   private updateCell(rowIndex: number, columnIndex: number, value: string): boolean {

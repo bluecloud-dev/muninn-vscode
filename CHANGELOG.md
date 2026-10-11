@@ -14,6 +14,7 @@ All notable changes to Muninn are documented here. The release sequence starts a
 ### Fixed
 
 - Continue bullet, numbered, and task lists while preserving Markdown markers, indentation, line endings, and the final newline; exit empty items correctly.
+- Keep Enter inside fenced code blocks nested in lists without splitting the list item.
 - Preserve indentation when ordered lists cross 9/10 or 99/100, and keep new unchecked task markers outside surrounding bold, italic, or code formatting.
 - Route native Undo/Redo shortcuts through the editor once and retain later typing when an earlier operation is acknowledged.
 - Activate focused Markdown links with Enter once and restore focus after native heading navigation.
@@ -25,6 +26,7 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 - Replace separate heading and table-add controls with compact native pickers; keep More available to expand or collapse advanced actions.
 - Adapt toolbar and table controls to narrow panes, enlarged fonts, native zoom, long labels, and reduced motion, with local scrolling for wide table grids.
+- Fit table cells to measured glyph widths in their rendered font when opening, editing, and resizing, avoiding excessive reserved width for short text.
 - Remove obsolete editor UI plumbing, unused localization entries, and empty directory placeholders while retaining validated messages and source-fidelity guards.
 - Expand the existing bundled-editor regressions and installed-VSIX journeys for keyboard editing, pickers, focus, draft retention, and responsive geometry across Linux, Windows, and macOS.
 
