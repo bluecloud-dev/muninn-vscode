@@ -285,8 +285,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     assert.equal(await editor.locator('.muninn-preview').count(), 0);
     editor = await save(editor, file, source);
     await editor.locator('.ProseMirror p').click();
-    await page.keyboard.press(lineEnd);
-    await page.keyboard.type('XY');
+    await editor.locator('.ProseMirror').press(lineEnd);
+    await editor.locator('.ProseMirror').pressSequentially('XY');
     editor = await save(editor, file, '# Reading\n\nAlphaXY\n');
     await editor.locator('.ProseMirror').press(`${modifier}+z`);
     await eventually(async () => {
@@ -319,13 +319,13 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         async () => (await editor.locator('.ProseMirror li').count()) === 2,
         'Enter did not create a sibling list item',
       );
-      await page.keyboard.type('Next');
+      await editor.locator('.ProseMirror').pressSequentially('Next');
       editor = await save(editor, file, continued);
       await command('Muninn for VS Code: Undo');
       editor = await save(editor, file, source);
       await command('Muninn for VS Code: Redo');
       editor = await save(editor, file, continued);
-      await page.keyboard.type('!');
+      await editor.locator('.ProseMirror').pressSequentially('!');
       editor = await save(editor, file, continued.replace('Next', 'Next!'));
       await command('View: Close Editor');
       await eventually(
@@ -1005,7 +1005,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
     await clickTool(editor, 'toggleTask');
-    await page.keyboard.type('X');
+    await editor.locator('.ProseMirror').pressSequentially('X');
     await save(editor, file, '* [ ] AlXpha\n');
   });
 
@@ -1050,8 +1050,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('opens Source after saving edits and creates a native note', async () => {
     const { editor, file } = await open('source.md', 'Before\n');
     await editor.locator('.ProseMirror p').click();
-    await page.keyboard.press(lineEnd);
-    await page.keyboard.type(' after');
+    await editor.locator('.ProseMirror').press(lineEnd);
+    await editor.locator('.ProseMirror').pressSequentially(' after');
     await clickTool(editor, 'openRawMarkdown');
     await page.locator('.monaco-editor textarea').first().waitFor();
     await page.keyboard.press(`${modifier}+s`);
