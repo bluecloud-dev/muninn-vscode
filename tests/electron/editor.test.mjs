@@ -132,6 +132,8 @@ async function open(name, source) {
   const file = path.join(workspace, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (source !== undefined) fs.writeFileSync(file, source);
+  const notOpened = 'Default Markdown editor did not open ' + name;
+  let editor;
   await eventually(
     async () => {
       // A newly written file may be absent from Quick Open's first search, or
@@ -149,20 +151,23 @@ async function open(name, source) {
           .filter({ hasText: name })
           .first()
           .click({ timeout: 2500 });
+        await eventually(
+          async () => {
+            editor = await visibleEditorFrame(name);
+            return Boolean(editor);
+          },
+          notOpened,
+          5000,
+        );
         return true;
       } catch (error) {
-        if (error.name !== 'TimeoutError') throw error;
+        if (error.name !== 'TimeoutError' && error.message !== notOpened) throw error;
         return false;
       }
     },
-    'Quick Open did not list ' + name,
+    notOpened,
     30000,
   );
-  let editor;
-  await eventually(async () => {
-    editor = await visibleEditorFrame(name);
-    return Boolean(editor);
-  }, 'Default Markdown editor did not open ' + name);
   return { editor, file };
 }
 async function save(editor, file, expected) {
@@ -283,7 +288,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press(lineEnd);
     await page.keyboard.type('XY');
     editor = await save(editor, file, '# Reading\n\nAlphaXY\n');
-    await editor.locator('.ProseMirror').press(`${modifier}+z`, { timeout: 3000 });
+    await editor.locator('.ProseMirror').press(`${modifier}+z`);
     await eventually(async () => {
       editor = (await visibleEditorFrame('reading.md')) ?? editor;
       try {
@@ -914,7 +919,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       '---\ntitle: Metadata\n---\n\n# Résumé\n\n- [x] Read spec\n\n[Target](target.md#destination)\n',
     );
     assert.equal(await editor.locator('h1').getAttribute('id'), 'résumé');
-    await editor.locator('[data-command="goToHeading"]').click();
+    await clickTool(editor, 'goToHeading');
     await page.getByText('Résumé', { exact: true }).first().click();
     await eventually(
       async () =>
@@ -1041,7 +1046,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await editor.locator('.ProseMirror p').click();
     await page.keyboard.press(lineEnd);
     await page.keyboard.type(' after');
-    await editor.locator('[data-command="openRawMarkdown"]').click();
+    await clickTool(editor, 'openRawMarkdown');
     await page.locator('.monaco-editor textarea').first().waitFor();
     await page.keyboard.press(`${modifier}+s`);
     await eventually(
