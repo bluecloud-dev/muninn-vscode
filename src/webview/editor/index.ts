@@ -12,7 +12,6 @@ import { type Command, EditorState, Plugin, TextSelection } from 'prosemirror-st
 import { EditorView } from 'prosemirror-view';
 import {
   isHostToViewMessage,
-  type ToolbarMode,
   type PickerCommand,
   type ViewEditorCommand,
   type ViewToHostMessage,
@@ -21,7 +20,6 @@ import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
-import { setIconButton } from './icon-button';
 import { applyContentWidth } from './content-width';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
@@ -41,7 +39,7 @@ import { initializeTableDrafts } from './table-drafts';
 import { createCodeBlockNodeViewConstructor } from './nodes/code-block-node-view';
 import { HostSyncController } from './sync';
 import { DEFAULT_TABLE_SOURCE } from './tables/markdown-table-utilities';
-import { attachToolbarRovingFocus } from './toolbar-roving-focus';
+import { attachAdaptiveToolbar, type ToolbarMenuItem } from './adaptive-toolbar';
 
 declare function acquireVsCodeApi(): {
   postMessage: (message: ViewToHostMessage) => void;
@@ -72,16 +70,6 @@ initializeTableDrafts(retained.tableDrafts, (drafts, key, markdown) => {
   vscode.postMessage({ type: 'view.tableDraft', payload: { key, markdown } });
 });
 let recovering = false;
-
-const ADVANCED_TOOLBAR_COMMANDS = new Set<string>([
-  'toggleStrike',
-  'toggleTask',
-  'insertFileLink',
-  'insertCodeBlock',
-  'insertMermaidBlock',
-]);
-
-const TRANSIENT_ACTIVE_COMMANDS = new Set<string>(['insertLink', 'insertTable', 'insertCodeBlock']);
 
 const COMMAND_LABELS = new Map<string, string>([
   ['toggleBold', getString('commandLabelBold')],
@@ -121,11 +109,13 @@ const formatCommandFailure = (command: string): string => {
 
 const { editorContainer, editorShell, toolbar, statusLine, alertLine, toolbarButtons } =
   bootstrapEditorApp();
-const moreButton = document.querySelector<HTMLButtonElement>('[data-testid="muninn-toolbar-more"]');
-const toolbarRovingFocus = attachToolbarRovingFocus(toolbar);
+const moreButton = document.querySelector<HTMLButtonElement>(
+  '[data-testid="muninn-toolbar-more"]',
+)!;
+const toolbarMenu = document.querySelector<HTMLDivElement>('#muninn-toolbar-menu')!;
+let pendingToolbarState: EditorState | undefined;
 
 let view: EditorView | undefined;
-let advancedActionsVisible = false;
 let lastMermaidInsertAt = 0;
 let imageSources = new Map<string, string>();
 let documentFileName = '';
@@ -137,59 +127,6 @@ const setImageSources = (sources: Record<string, string>): void => {
 };
 
 const getRenderedImageSource = (source: string): string | undefined => imageSources.get(source);
-
-const updateAdvancedToolbarVisibility = (): void => {
-  for (const command of ADVANCED_TOOLBAR_COMMANDS) {
-    const button = toolbarButtons.get(command);
-    if (!button) {
-      continue;
-    }
-    button.hidden = !advancedActionsVisible;
-  }
-
-  if (moreButton) {
-    moreButton.hidden = false;
-    moreButton.setAttribute('aria-expanded', advancedActionsVisible ? 'true' : 'false');
-  }
-
-  toolbarRovingFocus.revalidateCurrentStop(moreButton ?? undefined);
-};
-
-const getFirstAdvancedToolbarButton = (): HTMLButtonElement | undefined => {
-  for (const command of ADVANCED_TOOLBAR_COMMANDS) {
-    const button = toolbarButtons.get(command);
-    if (button) {
-      return button;
-    }
-  }
-  return undefined;
-};
-
-const isFocusedAdvancedToolbarAction = (): boolean => {
-  const activeElement = document.activeElement;
-  if (!(activeElement instanceof HTMLButtonElement)) {
-    return false;
-  }
-  const command = activeElement.dataset.command;
-  if (!command) {
-    return false;
-  }
-  return ADVANCED_TOOLBAR_COMMANDS.has(command);
-};
-
-const setToolbarMode = (mode: ToolbarMode): void => {
-  const needsFocusFallback = mode === 'basic' && isFocusedAdvancedToolbarAction();
-  advancedActionsVisible = mode === 'advanced';
-  updateAdvancedToolbarVisibility();
-  if (!needsFocusFallback) {
-    return;
-  }
-  if (moreButton && !moreButton.hidden) {
-    moreButton.focus();
-    return;
-  }
-  view?.focus();
-};
 
 const serializeMarkdownForHost = (): string => {
   if (!view) {
@@ -471,17 +408,20 @@ const getActiveHeadingLevel = (): number | undefined => {
   return undefined;
 };
 
-const isParagraphActive = (): boolean => {
-  if (!view) {
-    return false;
-  }
-  const { $from } = view.state.selection;
-  for (let depth = $from.depth; depth >= 0; depth -= 1) {
-    if ($from.node(depth).type === schema.nodes.paragraph) {
-      return true;
-    }
-  }
-  return false;
+const getSelectedBlockStyle = (): number | undefined => {
+  if (!view) return undefined;
+  const styles = new Set<number>();
+  let unsupported = false;
+  const record = (node: ProseMirrorNode): boolean => {
+    if (node.type === schema.nodes.paragraph) styles.add(0);
+    else if (node.type === schema.nodes.heading) styles.add(Number(node.attrs.level));
+    else if (node.isTextblock || node.isAtom) unsupported = true;
+    return !node.isTextblock;
+  };
+  const { from, to, empty, $from } = view.state.selection;
+  if (empty) record($from.parent);
+  else view.state.doc.nodesBetween(from, to, record);
+  return !unsupported && styles.size === 1 ? [...styles][0] : undefined;
 };
 
 const toggleHeadingLevel = (level: 1 | 2 | 3): boolean => {
@@ -668,35 +608,23 @@ let pickerRequestId = 0;
 let pendingPicker:
   | {
       requestId: number;
-      kind: 'blockStyle' | 'tableAdd';
       state: EditorState;
       tablePosition?: number;
       focusTarget?: HTMLElement;
     }
   | undefined;
-const requestPicker = (kind: 'blockStyle' | 'tableAdd', tablePosition?: number): void => {
+const requestPicker = (tablePosition: number): void => {
   if (!view) return;
   const requestId = ++pickerRequestId;
   pendingPicker = {
     requestId,
-    kind,
     state: view.state,
     tablePosition,
-    focusTarget:
-      kind === 'tableAdd' && document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : undefined,
+    focusTarget: document.activeElement instanceof HTMLElement ? document.activeElement : undefined,
   };
   vscode.postMessage({
     type: 'view.requestPicker',
-    payload: {
-      requestId,
-      kind,
-      current:
-        kind === 'blockStyle'
-          ? (getActiveHeadingLevel() ?? (isParagraphActive() ? 0 : undefined))
-          : undefined,
-    },
+    payload: { requestId, kind: 'tableAdd' },
   });
 };
 const applyPickerResult = (requestId: number, command?: PickerCommand): void => {
@@ -711,16 +639,7 @@ const applyPickerResult = (requestId: number, command?: PickerCommand): void => 
   view.dispatch(view.state.tr.setSelection(pending.state.selection));
   if (command) {
     let applied = false;
-    if (pending.kind === 'blockStyle' && command.startsWith('set')) {
-      const level = Number(command.at(-1));
-      runViewCommand(
-        command === 'setParagraph'
-          ? setBlockType(schema.nodes.paragraph)
-          : setBlockType(schema.nodes.heading, { level }),
-      );
-      applied = true;
-    } else if (
-      pending.kind === 'tableAdd' &&
+    if (
       pending.tablePosition !== undefined &&
       (command === 'addTableRow' || command === 'addTableColumn')
     ) {
@@ -809,7 +728,7 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
 };
 
 const requestHostCommand = async (
-  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading',
+  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage',
 ): Promise<void> => {
   if (await syncController.flush(serializeMarkdownForHost)) {
     vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
@@ -818,44 +737,45 @@ const requestHostCommand = async (
   }
 };
 
-for (const [command, button] of toolbarButtons.entries()) {
-  button.addEventListener('click', () => {
-    if (command === 'chooseBlockStyle') {
-      requestPicker('blockStyle');
+const executeToolbarCommand = (command: string, menu?: string): void => {
+  if (!view) return;
+  const pending = menu ? pendingToolbarState : undefined;
+  pendingToolbarState = undefined;
+  if (pending) {
+    if (view.state.doc !== pending.doc) {
+      announce(getString('pickerStaleMessage'), { kind: 'error' });
+      view.focus();
       return;
     }
-    if (command === 'goToHeading' || command === 'insertFileLink') {
+    if (!view.state.selection.eq(pending.selection))
+      view.dispatch(view.state.tr.setSelection(pending.selection));
+  }
+  switch (command) {
+    case 'goToHeading':
+    case 'insertFileLink':
+    case 'openRawMarkdown':
+    case 'insertImage': {
       void requestHostCommand(command);
       return;
     }
-    if (command === 'openRawMarkdown') {
-      void requestHostCommand('openRawMarkdown');
+  }
+  let executed: boolean;
+  if (menu === 'chooseBlockStyle') {
+    const level = command === 'setParagraph' ? 0 : Number(command.at(-1));
+    if (getSelectedBlockStyle() === level) {
+      view.focus();
       return;
     }
-
-    const executed = executeEditorCommand(command as ViewEditorCommand);
-    if (!executed) {
-      announce(formatCommandFailure(command), { kind: 'error' });
-    }
-    if (executed && TRANSIENT_ACTIVE_COMMANDS.has(command)) {
-      button.classList.add('is-active');
-      globalThis.setTimeout(() => {
-        updateToolbarState();
-      }, 600);
-    }
-    view?.focus();
-  });
-}
-
-moreButton?.addEventListener('click', () => {
-  advancedActionsVisible = !advancedActionsVisible;
-  updateAdvancedToolbarVisibility();
-  if (advancedActionsVisible) {
-    getFirstAdvancedToolbarButton()?.focus();
-    return;
-  }
-  moreButton.focus();
-});
+    executed = runViewCommand(
+      level === 0
+        ? setBlockType(schema.nodes.paragraph)
+        : setBlockType(schema.nodes.heading, { level }),
+    );
+  } else executed = executeEditorCommand(command as ViewEditorCommand);
+  if (!executed) announce(formatCommandFailure(command), { kind: 'error' });
+  updateToolbarState();
+  view.focus();
+};
 
 const updateToolbarPressedState = (command: string, pressed: boolean): void => {
   const button = toolbarButtons.get(command);
@@ -901,17 +821,89 @@ const updateToolbarState = (): void => {
   updateToolbarPressedState('toggleStrike', isMarkActive(schema.marks.strike));
   updateToolbarPressedState('insertLink', isMarkActive(schema.marks.link));
 
-  const headingLevel = getActiveHeadingLevel();
-  const blockStyleButton = toolbarButtons.get('chooseBlockStyle');
-  if (blockStyleButton) {
-    const style =
-      headingLevel === undefined ? getString('commandLabelParagraph') : 'H' + headingLevel;
-    const help = formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
-    setIconButton(blockStyleButton, 'text-size', getString('toolbarBlockStyleLabel'), help);
-  }
+  const headingLevel = getSelectedBlockStyle();
+  const blockStyleButton = toolbarButtons.get('chooseBlockStyle')!;
+  let style = getString('toolbarBlockStyleLabel');
+  if (headingLevel === 0) style = getString('commandLabelParagraph');
+  else if (headingLevel !== undefined)
+    style = formatString(getString('toolbarHeadingTemplate'), headingLevel);
+  const label = blockStyleButton.querySelector('.muninn-block-style-label')!;
+  if (label.textContent !== style) label.textContent = style;
+  const help =
+    headingLevel === undefined
+      ? style
+      : formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
+  blockStyleButton.setAttribute('aria-label', help);
+  blockStyleButton.dataset.help = help;
+  toolbarButtons.get('undo')!.disabled = !view || !undo(view.state);
+  toolbarButtons.get('redo')!.disabled = !view || !redo(view.state);
+  updateToolbarPressedState(
+    'toggleTask',
+    !!view && /^\[[ xX]\] /.test(view.state.selection.$from.parent.textContent),
+  );
   updateToolbarPressedState('toggleBulletList', isListActive(schema.nodes.bullet_list));
   updateToolbarPressedState('toggleNumberedList', isListActive(schema.nodes.ordered_list));
+  adaptiveToolbar.refresh();
 };
+
+const adaptiveToolbar = attachAdaptiveToolbar({
+  toolbar,
+  more: moreButton,
+  menu: toolbarMenu,
+  buttons: toolbarButtons,
+  onOpen: () => {
+    pendingToolbarState = view?.state;
+  },
+  execute: executeToolbarCommand,
+  getMenu: (command): ToolbarMenuItem[] | undefined => {
+    if (command === 'chooseTableAction') {
+      const disabled = findSelectedTablePosition() === undefined;
+      return [
+        {
+          command: 'insertTable',
+          label: getString('toolbarInsertTableLabel'),
+          icon: 'table',
+          shortcut: 'Ctrl/Cmd+Alt+T',
+        },
+        {
+          command: 'addTableRow',
+          label: getString('commandLabelAddTableRow'),
+          icon: 'insert',
+          disabled,
+        },
+        {
+          command: 'addTableColumn',
+          label: getString('commandLabelAddTableColumn'),
+          icon: 'insert',
+          disabled,
+        },
+      ];
+    }
+    if (command !== 'chooseBlockStyle') return undefined;
+    const current = getSelectedBlockStyle();
+    return [
+      getString('commandLabelParagraph'),
+      getString('commandLabelHeading1'),
+      getString('commandLabelHeading2'),
+      getString('commandLabelHeading3'),
+    ].map((label, level) => ({
+      command: level === 0 ? 'setParagraph' : 'setHeading' + level,
+      label,
+      role: 'menuitemradio',
+      checked: current === level,
+      disabled:
+        !view ||
+        recovering ||
+        !(
+          current === level ||
+          setBlockType(
+            level === 0 ? schema.nodes.paragraph : schema.nodes.heading,
+            level === 0 ? undefined : { level },
+          )(view.state)
+        ),
+    }));
+  },
+});
 
 const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): void => {
   documentFileName = fileName;
@@ -925,7 +917,7 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
         code_block: createCodeBlockNodeViewConstructor({ announce }),
         table: createTableNodeViewConstructor({
           announce,
-          pickAdd: (position) => requestPicker('tableAdd', position),
+          pickAdd: (position) => requestPicker(position),
         }),
         front_matter: createFrontMatterNodeViewConstructor(),
         image: createImageNodeView,
@@ -943,6 +935,11 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
             view.updateState(view.state);
             return;
           }
+        }
+        if (transaction.docChanged && adaptiveToolbar.isOpen()) {
+          adaptiveToolbar.close(true);
+          pendingToolbarState = undefined;
+          announce(getString('pickerStaleMessage'), { kind: 'error' });
         }
         const nextState = view.state.apply(transaction);
         if (nextMarkdown !== undefined) setDocumentSource(nextState.doc, nextMarkdown);
@@ -969,6 +966,12 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
     return;
   }
 
+  if (adaptiveToolbar.isOpen()) {
+    adaptiveToolbar.close(true);
+    pendingToolbarState = undefined;
+    announce(getString('pickerStaleMessage'), { kind: 'error' });
+  }
+
   syncController.withSuppressedSync(() => {
     if (view) applyRemoteDocument(view, hostMarkdown);
   });
@@ -991,7 +994,6 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       setMermaidRenderingEnabled(payload.mermaidEnabled);
       applyContentWidth(editorShell, payload.contentWidth);
       setImageSources(payload.imageSources);
-      setToolbarMode(payload.toolbarMode);
       applyHostMarkdown(payload.markdown, payload.fileName);
       announce(getString('statusConnected'), { kind: 'status' });
       if (savedDraft && savedDraft.markdown !== payload.markdown) {
@@ -1081,7 +1083,6 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       const payload = message.payload;
       setMermaidRenderingEnabled(payload.mermaidEnabled);
       applyContentWidth(editorShell, payload.contentWidth);
-      setToolbarMode(payload.toolbarMode);
       return;
     }
     case 'host.insertLink': {
@@ -1120,6 +1121,7 @@ window.addEventListener('beforeunload', () => {
   syncController.queueApply(serializeMarkdownForHost);
   window.removeEventListener('message', onHostMessage);
   syncController.dispose();
+  adaptiveToolbar.dispose();
 });
 
 editorShell.addEventListener(

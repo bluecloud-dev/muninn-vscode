@@ -8,7 +8,6 @@
   "Resource: {0}": "Resource: {0}",
   "integrations.mermaid.enabled: {0}": "integrations.mermaid.enabled: {0}",
   "integrations.mermaid.allowInUntrustedWorkspaces: {0}": "integrations.mermaid.allowInUntrustedWorkspaces: {0}",
-  "toolbar.mode: {0}": "toolbar.mode: {0}",
   "images.destination: {0}": "images.destination: {0}",
   "Insert New Table": "Insert New Table",
   "Add Table Row": "Add Table Row",
@@ -78,7 +77,6 @@
   "Mermaid": "Mermaid",
   "Source": "Source",
   "More": "More",
-  "Show advanced toolbar actions": "Show advanced toolbar actions",
   "Ready": "Ready",
   "Bold": "Bold",
   "Italic": "Italic",
@@ -135,6 +133,15 @@
   "Block style: {0}": "Block style: {0}",
   "Document": "Document",
   "Current": "Current",
-  "The document changed while the picker was open. Select the block again and retry.": "The document changed while the picker was open. Select the block again and retry.",
-  "Add to table": "Add to table"
+  "Add to table": "Add to table",
+  "History": "History",
+  "Lists": "Lists",
+  "Heading {0}": "Heading {0}",
+  "Insert new table": "Insert new table",
+  "More editing tools": "More editing tools",
+  "Undo": "Undo",
+  "Redo": "Redo",
+  "Image": "Image",
+  "toolbar.mode (deprecated, ignored): {0}": "toolbar.mode (deprecated, ignored): {0}",
+  "The document changed while the picker or menu was open. Select the block again and retry.": "The document changed while the picker or menu was open. Select the block again and retry."
 }

@@ -92,7 +92,9 @@ export function activate(context: vscode.ExtensionContext): void {
         formatInspectValue(inspection.mermaidAllowInUntrustedWorkspaces),
       ),
     );
-    outputChannel.appendLine(t('toolbar.mode: {0}', formatInspectValue(inspection.toolbarMode)));
+    outputChannel.appendLine(
+      t('toolbar.mode (deprecated, ignored): {0}', formatInspectValue(inspection.toolbarMode)),
+    );
     outputChannel.appendLine(
       t('appearance.contentWidth: {0}', formatInspectValue(inspection.contentWidth)),
     );

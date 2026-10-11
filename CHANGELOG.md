@@ -4,6 +4,25 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-11
+
+### Added
+
+- Undo, Redo and Image entry points in the editor toolbar, plus local Table choices for insertion and adding rows or columns to the selected table.
+
+### Changed
+
+- Open Paragraph/Heading choices beside the document, with the current style visible in the toolbar. Choosing the current style leaves the document and undo history unchanged.
+- Show as many full-size controls as fit on one toolbar row. Move only the remaining actions into More, and hide More when all controls fit.
+- Remove duplicate formatting entries from VS Code's editor-title menu while preserving public commands, shortcuts, Source and configuration access.
+- Deprecate `muninn.toolbar.mode`; both legacy values remain valid but visibility now adapts to available pane width.
+- Preserve keyboard focus, the original editing selection and raw table drafts while menus open or controls move during resizing; cancel stale menu choices after document changes.
+
+### Release
+
+- Version 1.1.1 retains the Marketplace Preview badge and pre-release channel, with VS Code 1.85.2 or later required.
+- Manual screen-reader, OS-specific dialog and remaining platform acceptance are separate from automated results; see [testing](https://github.com/bluecloud-dev/muninn-vscode/blob/v1.1.1/docs/TESTING.md).
+
 ## [1.1.0] - 2026-10-11
 
 ### Added

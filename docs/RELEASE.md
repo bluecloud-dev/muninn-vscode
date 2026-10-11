@@ -1,6 +1,6 @@
 # Release guide
 
-The current version is **1.1.0 Preview**, with both `preview: true` in the manifest and explicit pre-release channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) records the release date and changes. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
+The prepared version is **1.1.1 Preview**, with both `preview: true` in the manifest and explicit pre-release channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) records the release date and changes. Preparation does not publish the extension: merge the reviewed PR, complete the acceptance checks below, then authorize Marketplace publication. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
 
 Marketplace versions must be numeric. Its [odd-minor pre-release scheme](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions) is a recommendation, so this workflow accepts the requested 1.0.0 starting point. The [Preview badge](https://code.visualstudio.com/api/references/extension-manifest) and pre-release channel are separate settings. A later regular release must use a new version; a version published as a pre-release cannot be reused on the regular channel.
 
@@ -28,15 +28,17 @@ The Marketplace job uses the protected `marketplace` environment and Microsoft E
 Run a complete rehearsal without uploading an extension or creating a GitHub release:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=v1.1.0 -f registry=both -f publish=false -f verify_credentials=true
+gh workflow run release.yml --ref main -f tag=v1.1.1 -f registry=marketplace -f publish=false -f verify_credentials=true
 ```
 
 The `verify_credentials` input defaults to true. Set it to false only for a build rehearsal that does not establish credential readiness; publishing always verifies access. The two registry checks run independently, so an Open VSX setup failure does not hide the Marketplace result. The tested VSIX, hash report and release notes are retained as a workflow artifact for 14 days even if a registry check fails.
 
+Before merge, a build-only rehearsal can run from the PR branch with `publish=false` and `verify_credentials=false`. The protected Marketplace environment accepts `main` and release tags, so check publishing access separately through the read-only identity workflow on `main`. After merge, run the complete Marketplace rehearsal above against the reviewed commit before authorizing publication.
+
 For an authorized Marketplace-only release:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=v1.1.0 -f registry=marketplace -f publish=true
+gh workflow run release.yml --ref main -f tag=v1.1.1 -f registry=marketplace -f publish=true
 ```
 
 The unselected registry is skipped. The GitHub release is a pre-release and includes the tested VSIX. A tag created by the workflow's `GITHUB_TOKEN` does not trigger another publishing run.

@@ -855,50 +855,100 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
   });
 
-  it('opens one native block-style picker and cancels without editing the original selection', async () => {
-    const editor = open('Alpha\n\nBeta\n');
-    const paragraph = editor.querySelectorAll('p')[1];
+  const selectBlocks = async (editor: HTMLElement, first: Element, last = first): Promise<void> => {
     editor.focus();
     const range = dom.window.document.createRange();
-    range.selectNodeContents(paragraph);
+    range.selectNodeContents(first);
+    range.setEnd(last, last.childNodes.length);
     dom.window.getSelection()!.removeAllRanges();
     dom.window.getSelection()!.addRange(range);
     dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
     await tick();
-    const button = dom.window.document.querySelector<HTMLButtonElement>(
-      '[data-command="chooseBlockStyle"]',
+  };
+  const styleButton = () =>
+    dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-toolbar [data-command="chooseBlockStyle"]',
+    )!;
+  const chooseStyle = (command: string) => {
+    styleButton().click();
+    dom.window.document
+      .querySelector<HTMLButtonElement>('#muninn-toolbar-menu [data-command="' + command + '"]')!
+      .click();
+  };
+
+  it('opens local block styles and cancels without changing the original selection', async () => {
+    const editor = open('Alpha\n\nBeta\n');
+    await selectBlocks(editor, editor.querySelectorAll('p')[1]);
+    const button = styleButton();
+    button.focus();
+    button.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
     );
-    assert.ok(button, 'One block-style control is present');
-    button.click();
-    const request = messages.at(-1) as unknown as {
-      type: string;
-      payload: { requestId: number; kind: string; current: number };
-    };
-    assert.equal(request.type, 'view.requestPicker');
-    assert.equal(request.payload.kind, 'blockStyle');
-    assert.equal(request.payload.current, 0);
-    send({ type: 'host.pickerResult', payload: { requestId: request.payload.requestId } });
-    assert.equal(dom.window.document.activeElement === editor, true);
-    assert.equal(dom.window.getSelection()!.toString(), 'Beta');
+    const menu = dom.window.document.querySelector<HTMLElement>('#muninn-toolbar-menu')!;
+    assert.equal(menu.hidden, false);
+    assert.equal(menu.querySelector('[aria-checked="true"]')!.textContent, 'Paragraph');
+    assert.equal(
+      messages.some((message) => message.type === 'view.requestPicker'),
+      false,
+    );
+    menu.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(menu.hidden, true);
+    assert.equal(dom.window.document.activeElement, button);
     assert.equal(applies().length, 0);
     assert.equal(button.hasAttribute('aria-pressed'), false);
+    chooseStyle('setHeading2');
+    assert.equal(applies().at(-1)!.payload.markdown, 'Alpha\n\n## Beta\n');
+    assert.equal(dom.window.getSelection()!.toString(), 'Beta');
   });
 
-  it('keeps the current heading style unchanged when chosen again', async () => {
-    const editor = open('# Alpha\n');
-    editor.focus();
-    dom.window.document
-      .querySelector<HTMLButtonElement>('[data-command="chooseBlockStyle"]')!
-      .click();
-    const request = messages.at(-1) as Extract<ViewToHostMessage, { type: 'view.requestPicker' }>;
-    assert.equal(request.payload.current, 1);
-    send({
-      type: 'host.pickerResult',
-      payload: { requestId: request.payload.requestId, command: 'setHeading1' },
-    });
-    assert.equal(editor.querySelector('h1')!.textContent, 'Alpha');
+  for (const newline of ['\n', '\r\n'])
+    for (const terminal of ['', newline]) {
+      it(
+        'chooses a heading once and preserves source bytes: ' +
+          JSON.stringify({ newline, terminal }),
+        async () => {
+          const source = 'Alpha' + newline + newline + 'Beta' + terminal;
+          const editor = open(source);
+          await selectBlocks(editor, editor.querySelectorAll('p')[1]);
+          chooseStyle('setHeading2');
+          assert.equal(
+            applies().at(-1)!.payload.markdown,
+            'Alpha' + newline + newline + '## Beta' + terminal,
+          );
+          ack(0, 1);
+          assert.equal(styleButton().textContent, 'Heading 2');
+          chooseStyle('setHeading2');
+          assert.equal(
+            applies().length,
+            1,
+            'Choosing the same style must not create an edit or undo entry',
+          );
+          assert.equal(dom.window.getSelection()!.toString(), 'Beta');
+          dom.window.document
+            .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="undo"]')!
+            .click();
+          assert.equal(
+            applies().at(-1)!.payload.markdown,
+            source,
+            'One Undo restores the original source',
+          );
+          assert.equal(
+            dom.window.document.querySelector<HTMLElement>('#status-alert')!.hidden,
+            true,
+          );
+        },
+      );
+    }
+
+  it('reports mixed styles, unsupported blocks and existing Heading 4 truthfully', async () => {
+    const editor = open('Alpha\n\n## Beta\n\n#### Fourth\n\n```\nCode\n```\n');
+    await selectBlocks(editor, editor.querySelector('h4')!);
+    assert.equal(styleButton().textContent, 'Heading 4');
+    await selectBlocks(editor, editor.querySelector('p')!, editor.querySelector('h2')!);
+    assert.equal(styleButton().textContent, 'Block style');
+    await selectBlocks(editor, editor.querySelector('pre code')!);
+    assert.equal(styleButton().textContent, 'Block style');
     assert.equal(applies().length, 0);
-    assert.equal(dom.window.document.querySelector<HTMLElement>('#status-alert')!.hidden, true);
   });
 
   it('adds only to the table that opened the native picker', async () => {
@@ -922,65 +972,82 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)!.payload.markdown, source + '|  |\n');
   });
 
-  it('skips controls inside a hidden group and disabled controls while roving', () => {
+  it('skips hidden groups and disabled history buttons while roving', () => {
     open('Alpha\n');
-    const buttons =
-      dom.window.document.querySelectorAll<HTMLButtonElement>('.muninn-toolbar button');
-    buttons[1].disabled = true;
-    buttons[2].closest<HTMLElement>('[data-group]')!.hidden = true;
+    styleButton().closest<HTMLElement>('[data-group]')!.hidden = true;
     const source = dom.window.document.querySelector<HTMLButtonElement>(
-      '[data-command="openRawMarkdown"]',
+      '.muninn-toolbar [data-command="openRawMarkdown"]',
     )!;
     source.focus();
     source.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     assert.equal(
       dom.window.document.activeElement,
-      dom.window.document.querySelector('[data-command="chooseBlockStyle"]'),
+      dom.window.document.querySelector('.muninn-toolbar [data-command="toggleBold"]'),
     );
   });
 
-  it('formats the original block through the picker and ignores stale or mismatched replies', async () => {
+  it('dismisses local formatting when external content changes and ignores detached menu actions', async () => {
     const editor = open('Alpha\n\nBeta\n');
-    editor.focus();
-    const range = dom.window.document.createRange();
-    range.selectNodeContents(editor.querySelectorAll('p')[1]);
-    dom.window.getSelection()!.removeAllRanges();
-    dom.window.getSelection()!.addRange(range);
-    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
-    await tick();
-    const button = dom.window.document.querySelector<HTMLButtonElement>(
-      '[data-command="chooseBlockStyle"]',
+    await selectBlocks(editor, editor.querySelectorAll('p')[1]);
+    styleButton().click();
+    const choice = dom.window.document.querySelector<HTMLButtonElement>(
+      '#muninn-toolbar-menu [data-command="setHeading2"]',
     )!;
-    button.click();
-    let request = messages.at(-1) as Extract<ViewToHostMessage, { type: 'view.requestPicker' }>;
-    send({
-      type: 'host.pickerResult',
-      payload: { requestId: request.payload.requestId + 1, command: 'setHeading2' },
-    });
-    assert.equal(applies().length, 0);
-    send({
-      type: 'host.pickerResult',
-      payload: { requestId: request.payload.requestId, command: 'setHeading2' },
-    });
-    assert.equal(applies().at(-1)!.payload.markdown, 'Alpha\n\n## Beta\n');
-    ack(0, 1);
-    assert.equal(dom.window.getSelection()!.toString(), 'Beta');
-    button.click();
-    request = messages.at(-1) as Extract<ViewToHostMessage, { type: 'view.requestPicker' }>;
     send({
       type: 'host.documentChanged',
-      payload: { markdown: 'Replacement\n', revision: 2, imageSources: {} },
+      payload: { markdown: 'Replacement\n', revision: 1, imageSources: {} },
     });
-    send({
-      type: 'host.pickerResult',
-      payload: { requestId: request.payload.requestId, command: 'setHeading1' },
-    });
+    assert.equal(
+      dom.window.document.querySelector<HTMLElement>('#muninn-toolbar-menu')!.hidden,
+      true,
+    );
+    choice.click();
     assert.equal(editor.textContent, 'Replacement');
-    assert.equal(applies().length, 1);
+    assert.equal(applies().length, 0);
     assert.match(
       dom.window.document.querySelector('#status-alert')!.textContent!,
       /document changed/,
     );
+  });
+
+  it('routes Image through the existing host command and leaves cancellation clean', async () => {
+    open('Alpha\n');
+    dom.window.document
+      .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="insertImage"]')!
+      .click();
+    await tick();
+    assert.deepEqual(
+      structuredClone(messages.find((message) => message.type === 'view.executeCommand')),
+      { type: 'view.executeCommand', payload: { command: 'insertImage' } },
+    );
+    assert.equal(applies().length, 0);
+  });
+
+  it('exposes local table actions and targets the selected table while retaining raw drafts', async () => {
+    const source = '| A |\n| --- |\n| First |\n\nBetween\n\n| B |\n| --- |\n| Second |\n';
+    const editor = open(source);
+    editor.querySelectorAll<HTMLInputElement>('tbody input')[1].focus();
+    const table = dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-toolbar [data-command="chooseTableAction"]',
+    )!;
+    table.click();
+    dom.window.document
+      .querySelector<HTMLButtonElement>('#muninn-toolbar-menu [data-command="addTableRow"]')!
+      .click();
+    assert.equal(applies().at(-1)!.payload.markdown, source + '|  |\n');
+    ack(0, 1);
+    editor
+      .querySelectorAll<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')[1]
+      .click();
+    const draft = editor.querySelector<HTMLTextAreaElement>('textarea')!;
+    draft.value = 'unapplied draft';
+    draft.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    table.click();
+    dom.window.document
+      .querySelector<HTMLElement>('#muninn-toolbar-menu')!
+      .dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(draft.value, 'unapplied draft');
+    assert.equal(applies().length, 1);
   });
 
   it('does not apply a stale table picker to another table and retains an unapplied draft on cancel', () => {

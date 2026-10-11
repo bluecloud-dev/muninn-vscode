@@ -2,7 +2,7 @@
   "name": "muninn-vscode",
   "displayName": "%extension.displayName%",
   "publisher": "bluecloud-dev",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "preview": true,
   "description": "%extension.description%",
   "license": "AGPL-3.0-only",
@@ -287,41 +287,6 @@
       ],
       "editor/title": [
         {
-          "command": "muninn.goToHeading",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "1_muninn@0"
-        },
-        {
-          "command": "muninn.toggleBold",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@0"
-        },
-        {
-          "command": "muninn.toggleItalic",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@1"
-        },
-        {
-          "command": "muninn.insertMermaidBlock",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@2"
-        },
-        {
-          "command": "muninn.insertTable",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@3"
-        },
-        {
-          "command": "muninn.insertImage",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@4"
-        },
-        {
-          "command": "muninn.tableActions",
-          "when": "activeCustomEditorId == muninn.markdownEditor",
-          "group": "2_muninn@5"
-        },
-        {
           "command": "muninn.openRawMarkdown",
           "when": "activeCustomEditorId == muninn.markdownEditor",
           "group": "navigation@1"
@@ -504,7 +469,8 @@
           ],
           "default": "basic",
           "description": "%configuration.toolbar.mode.description%",
-          "scope": "window"
+          "scope": "window",
+          "deprecationMessage": "%configuration.toolbar.mode.deprecationMessage%"
         },
         "muninn.appearance.contentWidth": {
           "anyOf": [
