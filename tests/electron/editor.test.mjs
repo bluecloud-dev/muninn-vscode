@@ -189,6 +189,20 @@ async function save(editor, file, expected) {
   return (await visibleEditorFrame(path.basename(file))) ?? currentEditor;
 }
 
+async function clickTool(editor, command) {
+  if (command === 'insertTable') {
+    await clickTool(editor, 'chooseTableAction');
+    await editor.locator('#muninn-toolbar-menu [data-command="insertTable"]').click();
+    return;
+  }
+  const inline = editor.locator('.muninn-toolbar [data-command="' + command + '"]');
+  if (await inline.isVisible()) await inline.click();
+  else {
+    await editor.locator('[data-testid="muninn-toolbar-more"]').click();
+    await editor.locator('#muninn-toolbar-menu [data-command="' + command + '"]').click();
+  }
+}
+
 describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 240000 }, () => {
   before(async () => {
     assert.ok(fs.existsSync(vsix), 'Run npm run package before this suite');
@@ -269,7 +283,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press(lineEnd);
     await page.keyboard.type('XY');
     editor = await save(editor, file, '# Reading\n\nAlphaXY\n');
-    await page.keyboard.press(`${modifier}+z`);
+    await editor.locator('.ProseMirror').press(`${modifier}+z`, { timeout: 3000 });
     await eventually(async () => {
       editor = (await visibleEditorFrame('reading.md')) ?? editor;
       try {
@@ -391,7 +405,14 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
             targets: buttons.map((button) => {
               const r = button.getBoundingClientRect();
-              return { name: button.getAttribute('aria-label'), width: r.width, height: r.height };
+              return {
+                name: button.getAttribute('aria-label'),
+                command: button.dataset.command,
+                width: r.width,
+                height: r.height,
+                top: r.top,
+                right: r.right,
+              };
             }),
           };
         });
@@ -406,8 +427,23 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         if (target === 320) assert.equal(geometry.overflow, true);
         for (const cell of geometry.cells)
           assert.ok(cell.available >= cell.text, JSON.stringify(cell));
-        for (const button of geometry.targets)
+        for (const button of geometry.targets) {
           assert.ok(button.width >= 32 && button.height >= 32, JSON.stringify(button));
+          assert.equal(button.top, geometry.targets[0].top, 'Toolbar must remain one row');
+          assert.ok(button.right <= geometry.width, JSON.stringify(button));
+        }
+        const visible = geometry.targets.map((button) => button.command).filter(Boolean);
+        const more = editor.locator('[data-testid="muninn-toolbar-more"]');
+        if (await more.isVisible()) {
+          await more.click();
+          const overflow = await editor
+            .locator('#muninn-toolbar-menu button')
+            .evaluateAll((rows) => rows.map((row) => row.dataset.command));
+          assert.equal(new Set([...visible, ...overflow]).size, 17);
+          assert.equal(visible.length + overflow.length, 17);
+          await editor.locator('#muninn-toolbar-menu button').first().press('Escape');
+        } else assert.equal(visible.length, 17);
+        if (target === 1440) assert.equal(await more.isVisible(), false);
         evidence.geometry.push(geometry);
         if (target <= 375)
           await page.screenshot({ path: path.join(artifactDirectory, 'pane-' + target + '.png') });
@@ -437,31 +473,39 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       assert.equal(evidence.zoom200.toolbarOverflow, false);
       await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(1));
       await resize(320);
-      await editor.locator('[data-testid="muninn-toolbar-more"]').click();
-      await nativeWindow.evaluate((window) => window.setSize(window.getSize()[0], 300));
-      await eventually(
-        async () => (await editor.evaluate(() => innerHeight)) < 300,
-        'Short native editor pane unavailable',
-      );
-      const controls = await editor.evaluate(() => {
-        const toolbar = document.querySelector('.muninn-toolbar').getBoundingClientRect();
-        return [
-          '[data-command="openRawMarkdown"]',
-          '[data-command="goToHeading"]',
-          '[data-testid="muninn-toolbar-more"]',
-        ].map((selector) => {
-          const rect = document.querySelector(selector).getBoundingClientRect();
-          return {
-            selector,
-            visible:
-              rect.top >= toolbar.top && rect.bottom <= toolbar.bottom && rect.right <= innerWidth,
-            width: rect.width,
-            height: rect.height,
-          };
+      await eventually(async () => {
+        const height = await editor.evaluate(() => innerHeight);
+        if (height >= 120 && height <= 240) return true;
+        const current = await nativeWindow.evaluate((window) => window.getBounds());
+        await nativeWindow.evaluate((window, size) => window.setSize(size.width, size.height), {
+          width: current.width,
+          height: Math.max(300, Math.round(current.height + 200 - height)),
         });
+        return false;
+      }, 'Short native editor pane unavailable');
+      await editor.locator('[data-testid="muninn-toolbar-more"]').click();
+      const popup = await editor.locator('#muninn-toolbar-menu').evaluate((menu) => {
+        const rect = menu.getBoundingClientRect();
+        return {
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+          height: innerHeight,
+          width: innerWidth,
+          scrolls: menu.scrollHeight > menu.clientHeight,
+        };
       });
-      for (const control of controls) assert.equal(control.visible, true, JSON.stringify(control));
-      evidence.shortPane = controls;
+      assert.ok(
+        popup.left >= 0 &&
+          popup.right <= popup.width &&
+          popup.top >= 0 &&
+          popup.bottom <= popup.height,
+        JSON.stringify(popup),
+      );
+      assert.equal(popup.scrolls, true);
+      evidence.shortPane = popup;
+      await editor.locator('#muninn-toolbar-menu button').first().press('Escape');
       await nativeWindow.evaluate(
         (window, original) => window.setSize(window.getSize()[0], original.height),
         bounds,
@@ -480,7 +524,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           button.setAttribute('aria-label', button.getAttribute('aria-label').repeat(2));
         }
       });
-      await editor.locator('[data-command="toggleBold"]').focus();
+      await editor.locator('.muninn-toolbar [data-command="toggleBold"]').focus();
       assert.equal(
         await editor.locator('[role="tooltip"]').evaluate((help) => {
           const rect = help.getBoundingClientRect();
@@ -511,23 +555,21 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       const settingsPath = path.join(user, 'User/settings.json');
       const settings = fs.readFileSync(settingsPath, 'utf8');
       try {
-        await editor.locator('[data-testid="muninn-toolbar-more"]').click();
         fs.writeFileSync(
           settingsPath,
           JSON.stringify({ ...JSON.parse(settings), 'muninn.toolbar.mode': 'advanced' }),
         );
-        await eventually(
-          async () => await editor.locator('[data-command="insertCodeBlock"]').isVisible(),
-          'Advanced preference did not load',
-        );
         for (const target of [320, 375, 480, 768, 1024, 1440]) {
           await resize(target);
-          assert.equal(
-            await editor
-              .locator('[data-testid="muninn-toolbar-more"]')
-              .getAttribute('aria-expanded'),
-            'true',
-          );
+          const geometry = await measure();
+          assert.equal(geometry.toolbarOverflow, false);
+          if (target === 1440) {
+            assert.equal(geometry.targets.length, 17);
+            assert.equal(
+              await editor.locator('[data-testid="muninn-toolbar-more"]').isVisible(),
+              false,
+            );
+          } else if (target === 320) assert.ok(geometry.targets.length < 17);
         }
         assert.equal(
           JSON.parse(fs.readFileSync(settingsPath, 'utf8'))['muninn.toolbar.mode'],
@@ -539,7 +581,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       evidence.resizeRetention = true;
       evidence.longLabels = 'Doubled DOM names and help';
       evidence.reducedMotion = true;
-      evidence.advancedPreference = true;
+      evidence.legacyPreferenceIgnored = true;
       writeEvidence();
       assert.equal(fs.readFileSync(file, 'utf8').includes('Keyboard navigation'), true);
     } finally {
@@ -550,7 +592,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     }
   });
 
-  it('uses the native block-style picker without losing its original selection', async () => {
+  it('chooses local headings without losing selection or adding a duplicate undo entry', async () => {
     let { editor, file } = await open('block-style.md', 'Alpha\n\nBeta\n');
     await eventually(async () => {
       await editor.locator('.ProseMirror p').last().click();
@@ -558,24 +600,28 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await editor.locator('.ProseMirror').press(selectLineEnd);
       return (await editor.evaluate(() => getSelection().toString())) === 'Beta';
     }, 'Native text selection did not reach Beta');
-    const style = editor.getByRole('button', { name: 'Block style', exact: true });
+    const style = editor.locator('.muninn-toolbar [data-command="chooseBlockStyle"]');
     await style.click();
-    await page.getByText('Paragraph', { exact: true }).first().waitFor();
-    await page.getByText('Current', { exact: true }).first().waitFor();
-    await page.keyboard.press('Escape');
-    await eventually(
-      async () =>
-        await editor.evaluate(() => document.activeElement.classList.contains('ProseMirror')),
-      'Cancel did not restore editor focus',
-    );
+    const paragraph = editor.getByRole('menuitemradio', { name: 'Paragraph', exact: true });
+    assert.equal(await paragraph.getAttribute('aria-checked'), 'true');
+    assert.equal(await page.locator('.quick-input-widget').isVisible(), false);
+    await paragraph.press('Escape');
+    assert.equal(await style.evaluate((button) => document.activeElement === button), true);
+    await editor.locator('.ProseMirror').focus();
     assert.equal(await editor.evaluate(() => getSelection().toString()), 'Beta');
     assert.equal(fs.readFileSync(file, 'utf8'), 'Alpha\n\nBeta\n');
     await style.click();
-    await page.locator('.quick-input-widget input[type="text"]').fill('Heading 2');
-    await page.keyboard.press('Enter');
+    await editor.getByRole('menuitemradio', { name: 'Heading 2', exact: true }).click();
     editor = await save(editor, file, 'Alpha\n\n## Beta\n');
     assert.equal(await editor.evaluate(() => getSelection().toString()), 'Beta');
+    assert.equal(await style.innerText(), 'Heading 2');
     assert.equal(await style.getAttribute('aria-pressed'), null);
+    await style.click();
+    await editor.getByRole('menuitemradio', { name: 'Heading 2', exact: true }).click();
+    await clickTool(editor, 'undo');
+    editor = await save(editor, file, 'Alpha\n\nBeta\n');
+    await clickTool(editor, 'redo');
+    await save(editor, file, 'Alpha\n\n## Beta\n');
   });
 
   it('explains invalid table source, retains the draft and applies one correction', async () => {
@@ -627,66 +673,69 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         await bold.press('ArrowRight');
         await page.keyboard.press('ArrowLeft');
         await editor.locator('[role="tooltip"]').waitFor();
-        const measurements = await editor.evaluate(async () => {
-          await document.fonts.load('16px codicon');
-          const canvas = document.createElement('canvas').getContext('2d');
-          const rgba = (value) => {
-            canvas.clearRect(0, 0, 1, 1);
-            canvas.fillStyle = value;
-            canvas.fillRect(0, 0, 1, 1);
-            return [...canvas.getImageData(0, 0, 1, 1).data].map((value, index) =>
-              index === 3 ? value / 255 : value,
-            );
-          };
-          const blend = (front, back) =>
-            front
-              .slice(0, 3)
-              .map((value, index) => value * front[3] + back[index] * (1 - front[3]));
-          const background = (element) => {
-            const parents = [];
-            for (let node = element; node; node = node.parentElement) parents.unshift(node);
-            return parents.reduce(
-              (back, node) => blend(rgba(getComputedStyle(node).backgroundColor), back),
-              [255, 255, 255],
-            );
-          };
-          const luminance = (rgb) =>
-            rgb
-              .map((value) => value / 255)
-              .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
-              .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
-          const ratio = (first, second) => {
-            const a = luminance(first),
-              b = luminance(second);
-            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-          };
-          const selectors = [
-            '[role="tooltip"]',
-            '.muninn-table-node-source-hint',
-            '.muninn-table-node-source-feedback',
-            '[data-testid="muninn-table-delete"]',
-            '[data-command="toggleBold"]',
-          ];
-          return {
-            fontLoaded: document.fonts.check('16px codicon'),
-            glyph: getComputedStyle(document.querySelector('.codicon-bold'), '::before').content,
-            values: selectors.map((selector) => {
-              const element = document.querySelector(selector);
-              const style = getComputedStyle(element);
-              const back = background(element);
-              return {
-                selector,
-                text: ratio(blend(rgba(style.color), back), back),
-                focusStyle: style.outlineStyle,
-                focusWidth: parseFloat(style.outlineWidth),
-                focus: ratio(
-                  blend(rgba(style.outlineColor), background(element.parentElement)),
-                  background(element.parentElement),
-                ),
-              };
-            }),
-          };
-        });
+        const measure = (selectors) =>
+          editor.evaluate(async (selectors) => {
+            await document.fonts.load('16px codicon');
+            const canvas = document.createElement('canvas').getContext('2d');
+            const rgba = (value) => {
+              canvas.clearRect(0, 0, 1, 1);
+              canvas.fillStyle = value;
+              canvas.fillRect(0, 0, 1, 1);
+              return [...canvas.getImageData(0, 0, 1, 1).data].map((value, index) =>
+                index === 3 ? value / 255 : value,
+              );
+            };
+            const blend = (front, back) =>
+              front
+                .slice(0, 3)
+                .map((value, index) => value * front[3] + back[index] * (1 - front[3]));
+            const background = (element) => {
+              const parents = [];
+              for (let node = element; node; node = node.parentElement) parents.unshift(node);
+              return parents.reduce(
+                (back, node) => blend(rgba(getComputedStyle(node).backgroundColor), back),
+                [255, 255, 255],
+              );
+            };
+            const luminance = (rgb) =>
+              rgb
+                .map((value) => value / 255)
+                .map((value) =>
+                  value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+                )
+                .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+            const ratio = (first, second) => {
+              const a = luminance(first),
+                b = luminance(second);
+              return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+            };
+            return {
+              fontLoaded: document.fonts.check('16px codicon'),
+              glyph: getComputedStyle(document.querySelector('.codicon-bold'), '::before').content,
+              values: selectors.map((selector) => {
+                const element = document.querySelector(selector);
+                const style = getComputedStyle(element);
+                const back = background(element);
+                return {
+                  selector,
+                  text: ratio(blend(rgba(style.color), back), back),
+                  focusStyle: style.outlineStyle,
+                  focusWidth: parseFloat(style.outlineWidth),
+                  focus: ratio(
+                    blend(rgba(style.outlineColor), background(element.parentElement)),
+                    background(element.parentElement),
+                  ),
+                };
+              }),
+            };
+          }, selectors);
+        const measurements = await measure([
+          '[role="tooltip"]',
+          '.muninn-table-node-source-hint',
+          '.muninn-table-node-source-feedback',
+          '[data-testid="muninn-table-delete"]',
+          '.muninn-toolbar [data-command="toggleBold"]',
+        ]);
         assert.equal(measurements.fontLoaded, true);
         assert.notEqual(measurements.glyph, 'none');
         for (const value of measurements.values)
@@ -702,9 +751,22 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         assert.notEqual(measurements.values.at(-1).focusStyle, 'none');
         assert.ok(measurements.values.at(-1).focusWidth >= 1);
         assert.ok(measurements.values.at(-1).focus >= 3, theme.id + ' focus');
+        await clickTool(editor, 'chooseTableAction');
+        const insert = editor.getByRole('menuitem', { name: 'Insert new table', exact: true });
+        await insert.press('Home');
+        const popup = await measure([
+          '#muninn-toolbar-menu',
+          '#muninn-toolbar-menu [data-command="insertTable"]',
+        ]);
+        for (const value of popup.values)
+          assert.ok(value.text >= 4.5, theme.id + ' menu ' + JSON.stringify(value));
+        assert.ok(popup.values.at(-1).focus >= 3, theme.id + ' menu focus');
+        assert.ok(popup.values.at(-1).focusWidth >= 1);
+        measurements.menu = popup.values;
         await page.screenshot({
           path: path.join(artifactDirectory, 'theme-' + theme.uiTheme + '.png'),
         });
+        await insert.press('Escape');
         evidence.contrast.push({ theme: theme.id, ...measurements });
         writeEvidence();
         await editor.locator('[data-command="toggleBold"]').press('Escape');
@@ -726,8 +788,6 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await editor.evaluate(() => document.activeElement.dataset.command),
       'toggleItalic',
     );
-    await editor.locator('[data-testid="muninn-toolbar-more"]').click();
-    assert.equal(await editor.locator('[data-command="insertCodeBlock"]').isVisible(), true);
     await editor.locator('.ProseMirror p').click();
     await page.keyboard.press(lineStart);
     await page.keyboard.press(selectLineEnd);
@@ -735,7 +795,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     editor = await save(editor, file, '**Alpha**\n');
     bold = editor.locator('[data-command="toggleBold"]');
     assert.equal(await bold.getAttribute('aria-pressed'), 'true');
-    await editor.locator('[data-command="insertCodeBlock"]').click();
+    await clickTool(editor, 'insertCodeBlock');
     await eventually(() => editor.locator('.muninn-code-node').count(), 'Code block missing');
     assert.ok((await editor.locator('.ProseMirror').innerText()).includes('Alpha'));
     await editor.locator('[data-testid="muninn-code-language"]').selectOption('javascript');
@@ -769,9 +829,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           .then((count) => count === 2),
       'Add Row did not reach the original table',
     );
-    await editor.getByRole('button', { name: 'Add to table', exact: true }).click();
-    await page.locator('.quick-input-widget input[type="text"]').fill('Add Column');
-    await page.keyboard.press('Enter');
+    await clickTool(editor, 'chooseTableAction');
+    await editor.getByRole('menuitem', { name: 'Add table column', exact: true }).click();
     await eventually(
       () =>
         editor
@@ -934,18 +993,21 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press(lineStart);
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
-    await editor.locator('[data-testid="muninn-toolbar-more"]').click();
-    await editor.locator('[data-command="toggleTask"]').click();
+    await clickTool(editor, 'toggleTask');
     await page.keyboard.type('X');
     await save(editor, file, '* [ ] AlXpha\n');
   });
 
-  it('inserts an image through the native command and saves exact surrounding Markdown', async () => {
+  it('inserts an image through the toolbar and saves exact surrounding Markdown', async () => {
     const { editor, file } = await open('image.md', 'Alpha\n\n+ _untouched_\n');
     await editor.locator('.ProseMirror p').first().click();
     await page.keyboard.press(lineEnd);
+    await clickTool(editor, 'insertImage');
+    await page.locator('.quick-input-widget input[type="text"]').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(fs.readFileSync(file, 'utf8'), 'Alpha\n\n+ _untouched_\n');
     const selectedImage = path.join(root, 'assets', 'icon.png');
-    await command('Muninn for VS Code: Insert Image');
+    await clickTool(editor, 'insertImage');
     await page.locator('.quick-input-widget input[type="text"]').fill(selectedImage);
     await page.keyboard.press('Enter');
 

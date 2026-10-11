@@ -116,26 +116,26 @@ describe('custom editor protocol guards', () => {
     expect(
       isViewToHostMessage({
         type: 'view.requestPicker',
-        payload: { requestId: 1, kind: 'blockStyle', current: 6 },
+        payload: { requestId: 1, kind: 'tableAdd' },
       }),
     ).to.equal(true);
     expect(
       isHostToViewMessage({
         type: 'host.pickerResult',
-        payload: { requestId: 1, command: 'setHeading2' },
+        payload: { requestId: 1, command: 'addTableRow' },
       }),
     ).to.equal(true);
     expect(isHostToViewMessage({ type: 'host.pickerResult', payload: { requestId: 1 } })).to.equal(
       true,
     );
     for (const payload of [
-      { requestId: -1, kind: 'blockStyle' },
+      { requestId: -1, kind: 'tableAdd' },
       { requestId: 1, kind: 'arbitrary' },
-      { requestId: 1, kind: 'blockStyle', current: 7 },
-      { requestId: 1, kind: 'blockStyle', current: '1' },
+      { requestId: 1, kind: 'blockStyle' },
+      { requestId: 1, kind: 'tableAdd', current: '1' },
     ])
       expect(isViewToHostMessage({ type: 'view.requestPicker', payload })).to.equal(false);
-    for (const command of ['openRawMarkdown', 'undo', 'arbitrary', 1])
+    for (const command of ['openRawMarkdown', 'undo', 'setHeading2', 'arbitrary', 1])
       expect(
         isHostToViewMessage({ type: 'host.pickerResult', payload: { requestId: 1, command } }),
       ).to.equal(false);

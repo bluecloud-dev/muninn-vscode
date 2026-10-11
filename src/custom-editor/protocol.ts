@@ -28,10 +28,7 @@ export type ViewEditorCommand =
   | 'addTableRow'
   | 'addTableColumn';
 
-export type PickerCommand = Extract<
-  ViewEditorCommand,
-  'setParagraph' | 'setHeading1' | 'setHeading2' | 'setHeading3' | 'addTableRow' | 'addTableColumn'
->;
+export type PickerCommand = Extract<ViewEditorCommand, 'addTableRow' | 'addTableColumn'>;
 
 export type HostToViewMessage =
   | { type: 'host.pickerResult'; payload: { requestId: number; command?: PickerCommand } }
@@ -111,7 +108,7 @@ export type HostToViewMessage =
 export type ViewToHostMessage =
   | {
       type: 'view.requestPicker';
-      payload: { requestId: number; kind: 'blockStyle' | 'tableAdd'; current?: number };
+      payload: { requestId: number; kind: 'tableAdd' };
     }
   | { type: 'view.tableDraft'; payload: { key: string; markdown?: string } }
   | {
@@ -198,14 +195,7 @@ const isViewEditorCommand = (value: unknown): value is ViewEditorCommand =>
   value === 'addTableColumn';
 
 const isPickerCommand = (value: unknown): value is PickerCommand =>
-  [
-    'setParagraph',
-    'setHeading1',
-    'setHeading2',
-    'setHeading3',
-    'addTableRow',
-    'addTableColumn',
-  ].includes(value as string);
+  value === 'addTableRow' || value === 'addTableColumn';
 
 const isToolbarMode = (value: unknown): value is ToolbarMode =>
   value === 'basic' || value === 'advanced';
@@ -224,9 +214,8 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
     return (
       isObject(value.payload) &&
       isRevision(value.payload.requestId) &&
-      (value.payload.kind === 'blockStyle' || value.payload.kind === 'tableAdd') &&
-      (value.payload.current === undefined ||
-        (isRevision(value.payload.current) && value.payload.current <= 6))
+      value.payload.kind === 'tableAdd' &&
+      value.payload.current === undefined
     );
 
   if (value.type === 'view.tableDraft')

@@ -4,7 +4,11 @@
 
 Install the pre-release VSIX through VS Code's **Extensions: Install from VSIX…** command. Open a `.md` or `.markdown` file. Muninn registers as a default editor and respects existing editor preferences. If a different editor opens, use **Reopen Editor With… → Muninn Markdown Editor**; choose **Configure default editor** there when you want to change your preference.
 
-Read and edit in one pane. Use **Headings** to move through a specification, follow Markdown links with a click or Tab then Enter, and use VS Code Find within the webview. The Codicon toolbar shows common formatting; **Block style** chooses Heading 1–3 or Paragraph in a native picker. **More** reveals tasks, strikethrough, code, Mermaid and file links. Hover or focus an icon for its name and shortcut. Tables have one **Add to table** picker for rows and columns. **Source** opens the same file in VS Code's text editor.
+Read and edit in one pane. Use **Headings** to move through a specification, follow Markdown links with a click or Tab then Enter, and use VS Code Find within the webview. The toolbar keeps one row and shows every control that fits. **More** contains the remaining tools and disappears when all tools fit. **Paragraph / Heading** opens local style choices beside the document, with Heading 1–3 and Paragraph; the label also reflects existing Heading 4–6 content. Choosing the current style leaves the document unchanged.
+
+Undo, Redo, formatting, lists, tasks, links, images, code and Mermaid are all available through the toolbar or More. **Table** opens local Insert new table, Add table row and Add table column choices; row and column actions require a selected table. The table's own **Add to table** button still uses a native picker. File and link inputs keep VS Code's native dialogs. Hover or focus an icon for its name and shortcut. **Source** opens the same file in VS Code's text editor.
+
+The legacy `muninn.toolbar.mode` setting is deprecated. Its `basic` and `advanced` values remain valid but no longer affect visibility. Resize the editor pane to reveal more or fewer controls.
 
 Run **Muninn for VS Code: New Markdown Note** to choose a filename with the native save dialog. Existing files are never silently overwritten. **Insert File Link** inserts an ordinary relative Markdown link; Explorer, search and Git remain the organization tools.
 

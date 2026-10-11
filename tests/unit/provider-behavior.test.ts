@@ -367,24 +367,13 @@ describe('custom editor host lifecycle', () => {
   it('returns bounded native picker choices and cancellation to the requesting editor', async () => {
     const f = await fixture();
     const pick = sinon.stub(vscode.window, 'showQuickPick');
-    for (const current of [undefined, 0, 2, 4]) {
-      pick.resolves({ label: 'Heading 2', command: 'setHeading2' } as vscode.QuickPickItem);
-      await f.send({
-        type: 'view.requestPicker',
-        payload: { requestId: 1, kind: 'blockStyle', current },
-      });
-      const [items, options] = pick.lastCall.args;
-      assert.deepEqual(
-        (items as vscode.QuickPickItem[]).map((item) => item.label),
-        ['Heading 1', 'Heading 2', 'Heading 3', 'Paragraph'],
-      );
-      assert.match(options!.placeHolder!, /Block style/);
-      if (current === 2) assert.equal((items as vscode.QuickPickItem[])[1].description, 'Current');
-      assert.deepEqual(f.messages.at(-1), {
-        type: 'host.pickerResult',
-        payload: { requestId: 1, command: 'setHeading2' },
-      });
-    }
+    pick.resolves({ label: 'Add Row', command: 'addTableRow' } as vscode.QuickPickItem);
+    await f.send({ type: 'view.requestPicker', payload: { requestId: 1, kind: 'tableAdd' } });
+    assert.match(pick.lastCall.args[1]!.placeHolder!, /Add to table/);
+    assert.deepEqual(f.messages.at(-1), {
+      type: 'host.pickerResult',
+      payload: { requestId: 1, command: 'addTableRow' },
+    });
     pick.resolves();
     await f.send({ type: 'view.requestPicker', payload: { requestId: 2, kind: 'tableAdd' } });
     assert.deepEqual(

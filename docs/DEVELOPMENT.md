@@ -51,7 +51,7 @@ Keep the host/webview protocol typed and validate messages at the boundary. Own 
 
 Keep the custom editor CSP-safe: nonced local scripts, no inline handlers, remote resources, or `eval`. Host-side protocol guards validate every webview message. Mermaid rendering stays behind effective workspace trust and the explicit application-scoped permission for Restricted Mode. Markdown HTML remains disabled. No telemetry of any kind; run `npm run check:no-telemetry`.
 
-The ProseMirror custom editor is the only sanctioned webview. Use native VS Code pickers, inputs, notifications, symbols, and surrounding navigation. Do not add proprietary Markdown syntax. Production logging uses VS Code's `LogOutputChannel`; do not use `console.log` in extension or webview code.
+The ProseMirror custom editor is the only sanctioned webview. Its formatting choices and adaptive overflow use local anchored menus. Use native VS Code APIs for file/link inputs, notifications, symbols, table-node Add pickers, and surrounding navigation. Do not add proprietary Markdown syntax. Production logging uses VS Code's `LogOutputChannel`; do not use `console.log` in extension or webview code.
 
 Every new source file needs the two-line AGPL-3.0-only SPDX header. Keep `THIRD_PARTY_NOTICES.md` aligned with the production bundle metafile. Sign commits with `git commit -s` for DCO. Preserve unrelated local changes, and use an isolated worktree for broad cleanup in a dirty checkout.
 

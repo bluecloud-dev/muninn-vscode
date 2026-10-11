@@ -51,7 +51,9 @@ Table cell input commits immediately. Save and Source use the sync controller's 
 
 Each host session owns its pending flush requests and settles them on completion, delivery failure, timeout or disposal. Failed completion warns the user and leaves drafts available for recovery. The native save listener cannot guarantee cancellation of a VS Code save; the warning means the document may not yet contain the pending edits. Retained webview state and normal-close recovery do not establish abrupt-shutdown recovery.
 
-The editor accepts host messages only from its own webview origin, validates their payloads, and removes its window listener on unload. VS Code's relay uses that origin without preserving the parent-window identity. Native block-style and table Add pickers round-trip validated request IDs and a bounded command set. The webview retains the original selection and table position, ignores unrelated responses, and rejects results after a document change. Canceling makes no document edit.
+The editor accepts host messages only from its own webview origin, validates their payloads, and removes its window listener on unload. VS Code's relay uses that origin without preserving the parent-window identity. Local toolbar style, table and overflow menus retain the opening selection and document identity. Choices restore that selection before executing existing editor commands; document changes cancel open menus. Style choices use deterministic `setBlockType` semantics, while public heading commands retain their existing toggle behavior. The toolbar measures actual controls, gaps and separators, keeps a single row, and moves only surplus controls to More. Block style, Source, Bold and Italic receive priority. The deprecated `muninn.toolbar.mode` value is retained for inspection and compatibility but does not affect layout.
+
+The table-node Add picker still round-trips validated request IDs and a bounded row/column command set. The webview retains the original selection and table position, ignores unrelated responses, and rejects results after a document change. Canceling a local menu or native table picker makes no document edit.
 
 Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
@@ -75,7 +77,7 @@ The golden corpus and exact-edit tests are the executable contract. Add regressi
 - URI-based file operations preserve remote schemes. Desktop extension hosts are supported; browser/vscode.dev support is not advertised.
 - No telemetry is collected; the repository guard checks for known telemetry patterns. This is a product policy, not a proof about every dependency's network behavior.
 
-There is one sanctioned custom-editor webview. Use native VS Code APIs for pickers, inputs, notifications, symbols, and surrounding navigation. User-facing text is localized: webview defaults and keys live in `src/shared/webview-strings.ts`, translations in `l10n/bundle.l10n.json`, and command/setting contribution strings in `package.nls.json`. The host localizes and injects webview defaults. The CSP permits nonced local scripts; Markdown HTML remains disabled and Mermaid remains behind the trust gate.
+There is one sanctioned custom-editor webview. Toolbar formatting and overflow choices use local anchored menus. Use native VS Code APIs for file/link inputs, notifications, symbols, table-node Add pickers, and surrounding navigation. User-facing text is localized: webview defaults and keys live in `src/shared/webview-strings.ts`, translations in `l10n/bundle.l10n.json`, and command/setting contribution strings in `package.nls.json`. The host localizes and injects webview defaults. The CSP permits nonced local scripts; Markdown HTML remains disabled and Mermaid remains behind the trust gate.
 
 ## Build and validation
 
