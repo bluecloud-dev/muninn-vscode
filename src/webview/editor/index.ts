@@ -836,8 +836,12 @@ const updateToolbarState = (): void => {
   if (reset.textContent !== percentage) reset.textContent = percentage;
   const zoomHelp = formatString(getString('zoomResetHelpTemplate'), zoomPercent);
   setButtonHelp(reset, zoomHelp);
-  toolbarButtons.get('zoomIn')!.disabled = zoomPercent === 200;
-  toolbarButtons.get('zoomOut')!.disabled = zoomPercent === 50;
+  const zoomIn = toolbarButtons.get('zoomIn')!;
+  const zoomOut = toolbarButtons.get('zoomOut')!;
+  if (zoomPercent === 200 && document.activeElement === zoomIn) reset.focus();
+  if (zoomPercent === 50 && document.activeElement === zoomOut) reset.focus();
+  zoomIn.disabled = zoomPercent === 200;
+  zoomOut.disabled = zoomPercent === 50;
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
   updateToolbarPressedState('toggleItalic', isMarkActive(schema.marks.em));
   updateToolbarPressedState('toggleStrike', isMarkActive(schema.marks.strike));

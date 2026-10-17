@@ -93,10 +93,6 @@ async function activateMuninn() {
   );
   await page.keyboard.press('Escape');
   await command('Muninn for VS Code: Inspect Configuration');
-  // A log channel may leave the panel hidden, especially in Restricted Mode.
-  if (await page.locator('[id="workbench.parts.panel"]').isVisible()) {
-    await page.keyboard.press(`${modifier}+j`);
-  }
 }
 async function eventually(check, message, timeout = 15000) {
   const start = Date.now();
@@ -138,6 +134,8 @@ async function resizeEditorPane(editor, nativeWindow, target) {
 }
 async function command(label) {
   await page.bringToFront();
+  const activeTab = page.locator('.tabs-container .tab.active').first();
+  if (await activeTab.count()) await activeTab.focus();
   await page.keyboard.press(`${modifier}+Shift+P`);
   await eventually(async () => {
     await page.locator('.quick-input-widget input[type="text"]').fill('>' + label);
@@ -235,8 +233,8 @@ async function save(editor, file, expected) {
 async function clickTool(editor, command, keyboard = false) {
   const activate = async (button) => {
     if (keyboard) {
-      await button.focus();
-      await page.keyboard.press('Enter');
+      await button.waitFor({ state: 'visible' });
+      await button.press('Enter');
     } else await button.click();
   };
   if (command === 'insertTable') {
@@ -347,6 +345,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await (await app.browserWindow(page)).evaluate((window) => window.focus());
     await page.bringToFront();
     await page.keyboard.press('Escape');
+    // The configuration log can open its panel after the activation command returns.
+    const panel = page.locator('[id="workbench.parts.panel"]');
+    if (await panel.isVisible()) {
+      await page.keyboard.press(`${modifier}+j`);
+      await panel.waitFor({ state: 'hidden' });
+    }
   });
   after(async () => {
     if (app) {
@@ -362,6 +366,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           .catch(() => {});
       } finally {
         await app.close();
+        fs.cpSync(path.join(user, 'logs'), path.join(artifactDirectory, 'vscode-logs'), {
+          recursive: true,
+        });
       }
     }
     // Isolated profile retained in the OS temp directory for failure investigation.
@@ -464,6 +471,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         const coordinateScale = shell.clientWidth / surface.getBoundingClientRect().width;
         return {
           viewport: innerWidth,
+          viewportHeight: innerHeight,
           zoom: document.querySelector('#editor').style.zoom,
           percentage: document.querySelector('[data-command="resetZoom"]').textContent,
           proseWidth: prose.getBoundingClientRect().width * coordinateScale,
@@ -483,6 +491,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       });
     const check = async () => {
       const geometry = await measure();
+      assert.ok(geometry.viewportHeight >= 120, JSON.stringify(geometry));
       assert.equal(geometry.bodyOverflow, false, JSON.stringify(geometry));
       assert.equal(geometry.shellOverflow, false, JSON.stringify(geometry));
       assert.equal(geometry.toolbarOverflow, false, JSON.stringify(geometry));
@@ -642,11 +651,33 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         '100%',
       );
       await command('View: Close Editor');
+      await page
+        .locator('.tab')
+        .filter({ hasText: 'viewport-right.md' })
+        .waitFor({ state: 'hidden' });
       await command('View: Join All Editor Groups');
       await editor.locator('.ProseMirror').waitFor();
       await resize(1440);
       await clickTool(editor, 'resetZoom', true);
       assert.ok(Math.abs((await check()).proseWidth - comfortable.proseWidth) <= 1);
+      for (const [command, steps] of [
+        ['zoomIn', 10],
+        ['zoomOut', 5],
+      ]) {
+        assert.equal(
+          await editor.locator('.muninn-toolbar [data-command="' + command + '"]').isVisible(),
+          true,
+        );
+        for (let count = 0; count < steps; count++) await clickTool(editor, command, true);
+        assert.equal(
+          await editor
+            .locator('.muninn-toolbar [data-command="resetZoom"]')
+            .evaluate((button) => document.activeElement === button),
+          true,
+        );
+        await page.keyboard.press('Enter');
+        assert.equal((await check()).percentage, '100%');
+      }
       assert.equal(fs.readFileSync(file, 'utf8'), source);
       await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom.png') });
       evidence.editorZoomSourcePreserved = true;
@@ -1445,6 +1476,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.locator('.quick-input-widget input[type="text"]').fill(notePath);
     await page.getByRole('button', { name: 'OK', exact: true }).click();
     await eventually(() => fs.existsSync(notePath), 'New Note did not create a Markdown file');
+    await eventually(
+      async () => Boolean(await visibleEditorFrame('new-note.md')),
+      'New Note did not open its Markdown editor',
+    );
   });
 
   it('exports unsaved HTML through the native picker and renders printable offline output', async () => {

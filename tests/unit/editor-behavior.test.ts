@@ -186,12 +186,16 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(surface.style.zoom, '1.1');
     assert.equal(button('resetZoom').textContent, '110%');
     assert.match(button('resetZoom').getAttribute('aria-label')!, /100%.*110%/);
+    button('zoomIn').focus();
     for (let count = 0; count < 20; count++) button('zoomIn').click();
     assert.equal(surface.style.zoom, '2');
     assert.equal(button('zoomIn').disabled, true);
+    assert.equal(dom.window.document.activeElement, button('resetZoom'));
+    button('zoomOut').focus();
     for (let count = 0; count < 30; count++) button('zoomOut').click();
     assert.equal(surface.style.zoom, '0.5');
     assert.equal(button('zoomOut').disabled, true);
+    assert.equal(dom.window.document.activeElement, button('resetZoom'));
     button('resetZoom').click();
     assert.equal(surface.style.zoom, '1');
     assert.equal(button('resetZoom').textContent, '100%');
