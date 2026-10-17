@@ -155,6 +155,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ];
 
   const commandDisposables = registerCommands([
+    { id: 'muninn.exportHtml', run: () => customEditorProvider.exportHtmlInActiveEditor() },
     { id: 'muninn.newNote', run: createMarkdownNote },
     {
       id: 'muninn.reportIssue',

@@ -7,6 +7,7 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   commandLabelStrike: 'Strikethrough',
   commandLabelHeadings: 'Headings',
   commandLabelFileLink: 'File link',
+  commandLabelExportHtml: 'Export HTML',
   statusSyncConflict:
     'The document changed elsewhere. Preserving your edits in a recovery document.',
   statusSyncPending: 'Edits are still synchronizing. Retry once synchronization finishes.',

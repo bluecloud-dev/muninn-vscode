@@ -48,6 +48,7 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
       <button type="button" data-command="insertMermaidBlock" data-icon="symbol-structure" data-shortcut="Ctrl/Cmd+Alt+M" tabindex="-1" title="${getHtmlString('toolbarButtonMermaidTitle')}">${getHtmlString('toolbarButtonMermaidLabel')}</button>
     </div>
     <div class="muninn-toolbar-group" data-group="utilities" role="group" aria-label="${getHtmlString('toolbarGroupUtilitiesLabel')}">
+      <button type="button" data-command="exportHtml" data-icon="export" tabindex="-1" title="${getHtmlString('commandLabelExportHtml')}">${getHtmlString('commandLabelExportHtml')}</button>
       <button type="button" data-command="goToHeading" data-icon="list-tree" tabindex="-1" title="${getHtmlString('commandLabelHeadings')}">${getHtmlString('commandLabelHeadings')}</button>
       <button type="button" data-command="openRawMarkdown" data-icon="go-to-file" tabindex="-1" title="${getHtmlString('toolbarButtonSourceTitle')}">${getHtmlString('toolbarButtonSourceLabel')}</button>
       <button type="button" class="muninn-toolbar-more" data-icon="ellipsis" data-testid="muninn-toolbar-more" aria-haspopup="menu" aria-controls="muninn-toolbar-menu" aria-expanded="false" tabindex="-1" hidden title="${getHtmlString('toolbarMoreTitle')}">${getHtmlString('toolbarMoreLabel')}</button>

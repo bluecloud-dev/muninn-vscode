@@ -24,6 +24,7 @@ import {
   type ImageValidationFailure,
 } from './image-assets';
 import { DocumentSync } from './document-sync';
+import { exportHtml } from './html-export';
 import { mergeIndependentChanges } from '../shared/text-edits';
 import {
   HostToViewMessage,
@@ -351,6 +352,7 @@ export class MuninnCustomEditorProvider
         return;
       }
       case 'view.executeCommand': {
+        if (message.payload.command === 'exportHtml') await this.exportSessionHtml(session);
         if (message.payload.command === 'openRawMarkdown')
           await this.openRawMarkdown(session.document.uri);
         if (message.payload.command === 'save' && (await this.flushSession(session)))
@@ -673,6 +675,15 @@ export class MuninnCustomEditorProvider
         type: 'host.revealHeading',
         payload: { index: selected.index },
       });
+  }
+
+  async exportHtmlInActiveEditor(): Promise<void> {
+    const session = this.getActiveSession();
+    if (session) await this.exportSessionHtml(session);
+  }
+
+  private async exportSessionHtml(session: EditorSession): Promise<void> {
+    if (session.ready && (await this.flushSession(session))) await exportHtml(session.document);
   }
 
   private getActiveCustomEditorUri(): vscode.Uri | undefined {

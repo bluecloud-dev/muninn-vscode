@@ -57,6 +57,8 @@ The table-node Add picker still round-trips validated request IDs and a bounded 
 
 Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
+HTML export uses the existing session flush before a host-owned snapshot of `TextDocument.getText()`. `html-export.ts` owns the native destination picker, URI-aware local image embedding, static Markdown rendering, print CSS, writing and localized notices. It does not read webview DOM, execute Mermaid or save Markdown. The shared heading-slug rule keeps editor/export anchors coherent. The output disables raw HTML, scripts and remote resources; unsupported images/links and Mermaid have explicit fallbacks. PDF uses the exported file and the user's browser print workflow, with no bundled browser or conversion framework. See [the export decision](proposals/export.md).
+
 Code highlighting is a decoration plugin around the existing code node view. Selected highlight.js grammars produce private token offsets after an exact-text check; generated HTML never enters the live editor. A per-plugin WeakMap caches tokens by immutable code node. Unknown languages, Mermaid, tokenization failures and blocks over 20,000 UTF-16 units stay plain. Decorations never change document nodes, serialization or undo history. Theme variables supply colors rather than a second editor or a separate TextMate theme service.
 
 `supportsMultipleEditorsPerDocument: false` matches the provider's one-session-per-URI index. The old `muninn.editorAssociations` setting is deprecated and inert; VS Code's native editor picker owns the user's default choice.

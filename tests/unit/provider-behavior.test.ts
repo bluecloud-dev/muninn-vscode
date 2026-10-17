@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import sinon from 'sinon';
+import { JSDOM } from 'jsdom';
 import * as vscode from 'vscode';
 import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 import { ConfigService } from '../../src/services/config-service';
@@ -136,6 +138,209 @@ describe('custom editor host lifecycle', () => {
       },
     };
   };
+
+  it('exports the current unsaved document through the host command without saving Markdown', async () => {
+    const f = await fixture('# Unsaved\n\nAlpha\n');
+    await f.send({
+      type: 'view.applyDocument',
+      payload: { markdown: '# Unsaved\n\nAlphaX\n', revision: 0, operationId: 1 },
+    });
+    const destination = vscode.Uri.joinPath(f.document.uri, '..', 'spec.html');
+    const picker = sinon.stub(vscode.window, 'showSaveDialog').resolves(destination);
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await f.send({ type: 'view.executeCommand', payload: { command: 'exportHtml' } });
+    assert.equal(write.callCount, 1);
+    assert.equal(picker.firstCall.args[0]?.defaultUri?.toString(), destination.toString());
+    assert.equal(write.firstCall.args[0].toString(), destination.toString());
+    const html = Buffer.from(write.firstCall.args[1]).toString('utf8');
+    assert.match(html, /<title>Unsaved<\/title>/);
+    assert.match(html, /<h1 id="unsaved">Unsaved<\/h1>/);
+    assert.match(html, /<p>AlphaX<\/p>/);
+    assert.match(html, /<meta name="generator" content="Muninn">/);
+    assert.equal(f.document.getText(), '# Unsaved\n\nAlphaX\n');
+    assert.equal((f.document.save as sinon.SinonStub).called, false);
+    assert.equal(f.applyEdit.callCount, 1);
+    assert.equal(f.messages.at(-1)?.type, 'host.requestFlush');
+  });
+
+  it('exports semantic content without executable HTML, remote images or Mermaid scripts', async () => {
+    const source =
+      '# <script>alert(1)</script>\n\n- [x] Done\n- Second\n\n| A | B |\n| - | - |\n| one | two |\n\n```js\nconst tag = "<script>";\n```\n\n```mermaid\ngraph TD\nA --> B\n```\n\n![Remote](https://example.invalid/pixel.png)\n\n[unsafe](javascript:alert(1))\n\n<script>alert(2)</script>\n';
+    const f = await fixture(source);
+    sinon
+      .stub(vscode.window, 'showSaveDialog')
+      .resolves(vscode.Uri.joinPath(f.document.uri, '..', 'spec.html'));
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const read = sinon.spy(vscode.workspace.fs, 'readFile');
+    const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves();
+    await f.send({ type: 'view.executeCommand', payload: { command: 'exportHtml' } });
+    const html = Buffer.from(write.firstCall.args[1]).toString('utf8');
+    const output = new JSDOM(html).window.document;
+    assert.equal(output.querySelectorAll('script, iframe, object, embed').length, 0);
+    assert.equal(output.querySelectorAll('a[href^="javascript:"]').length, 0);
+    assert.equal(output.querySelectorAll('img[src^="http"]').length, 0);
+    assert.equal(read.called, false);
+    assert.equal(output.querySelectorAll('li').length, 2);
+    assert.equal(output.querySelector('td')?.textContent, 'one');
+    assert.equal(
+      output.querySelector('code.language-js')?.textContent,
+      'const tag = "<script>";\n',
+    );
+    assert.equal(output.querySelector('code.language-mermaid')?.textContent, 'graph TD\nA --> B\n');
+    assert.match(output.body.textContent!, /Mermaid diagrams are included as source code/);
+    assert.match(output.body.textContent!, /Remote/);
+    assert.equal(warning.calledOnce, true);
+    assert.equal(f.applyEdit.called, false);
+  });
+
+  it('embeds local images up to 2 MiB and rebases large or missing image fallbacks', async () => {
+    const f = await fixture(
+      '![Small](images/space%20name.png)\n\n![Big](images/big.webp)\n\n![Missing](images/missing.jpg)\n\n![Unsupported](images/script.txt)\n',
+    );
+    const destination = vscode.Uri.joinPath(f.document.uri, '..', 'exports', 'spec.html');
+    sinon.stub(vscode.window, 'showSaveDialog').resolves(destination);
+    const bytes = Buffer.alloc(2 * 1024 * 1024, 7);
+    sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri) => {
+      if (uri.path.endsWith('missing.jpg')) throw new Error('missing');
+      return {
+        type: 1,
+        size: uri.path.endsWith('big.webp') ? bytes.length + 1 : bytes.length,
+        ctime: 0,
+        mtime: 0,
+      };
+    });
+    const read = sinon.stub(vscode.workspace.fs, 'readFile').resolves(bytes);
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves();
+    await f.send({ type: 'view.executeCommand', payload: { command: 'exportHtml' } });
+    const output = new JSDOM(Buffer.from(write.firstCall.args[1]).toString()).window.document;
+    const embedded = output.querySelector('img[alt="Small"]')?.getAttribute('src');
+    assert.ok(embedded);
+    assert.ok(embedded.startsWith('data:image/png;base64,'));
+    assert.ok(Buffer.from(embedded.split(',')[1], 'base64').equals(bytes));
+    assert.equal(output.querySelector('img[alt="Big"]')?.getAttribute('src'), '../images/big.webp');
+    assert.equal(
+      output.querySelector('img[alt="Missing"]')?.getAttribute('src'),
+      '../images/missing.jpg',
+    );
+    assert.equal(output.querySelectorAll('img[alt="Unsupported"]').length, 0);
+    assert.equal(read.callCount, 1);
+    assert.equal(read.firstCall.args[0].path, '/workspace/images/space name.png');
+    assert.equal(warning.calledOnce, true);
+  });
+
+  it('preserves heading anchors and safe links while rebasing local destinations', async () => {
+    const f = await fixture(
+      '# Héllo *world*\n\n# Héllo *world*\n\n[Anchor](#héllo-world-1) [Local](guide.md#intro) [Web](https://example.org) [Mail](mailto:test@example.org) [Command](command:workbench.action.closeWindow)\n',
+    );
+    sinon
+      .stub(vscode.window, 'showSaveDialog')
+      .resolves(vscode.Uri.joinPath(f.document.uri, '..', 'exports', 'spec.html'));
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await f.send({ type: 'view.executeCommand', payload: { command: 'exportHtml' } });
+    const output = new JSDOM(Buffer.from(write.firstCall.args[1]).toString()).window.document;
+    assert.equal(output.title, 'Héllo world');
+    assert.deepEqual(
+      [...output.querySelectorAll('h1')].map((heading) => heading.id),
+      ['héllo-world', 'héllo-world-1'],
+    );
+    assert.deepEqual(
+      [...output.querySelectorAll('a')].map((link) => link.getAttribute('href') ?? undefined),
+      [
+        '#h%C3%A9llo-world-1',
+        '../guide.md#intro',
+        'https://example.org',
+        'mailto:test@example.org',
+        undefined,
+      ],
+    );
+  });
+
+  it('waits for the export flush and reads its accepted unsaved snapshot', async () => {
+    const f = await fixture();
+    f.replyToFlush(undefined);
+    const picker = sinon
+      .stub(vscode.window, 'showSaveDialog')
+      .resolves(vscode.Uri.joinPath(f.document.uri, '..', 'spec.html'));
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const completion = provider.exportHtmlInActiveEditor();
+    await tick();
+    assert.equal(picker.called, false);
+    const request = f.messages.at(-1)!;
+    if (request.type !== 'host.requestFlush') throw new Error('Missing flush request');
+    await f.send({
+      type: 'view.applyDocument',
+      payload: { markdown: 'Latest\n', revision: 0, operationId: 1 },
+    });
+    await f.send({
+      type: 'view.flushComplete',
+      payload: { requestId: request.payload.requestId, ok: true },
+    });
+    await completion;
+    assert.match(Buffer.from(write.firstCall.args[1]).toString(), /<p>Latest<\/p>/);
+    assert.equal((f.document.save as sinon.SinonStub).called, false);
+  });
+
+  for (const outcome of ['cancel', 'source', 'extension', 'flush', 'write'] as const) {
+    it('keeps Markdown intact when export cannot complete: ' + outcome, async () => {
+      const f = await fixture();
+      const target =
+        outcome === 'source'
+          ? f.document.uri
+          : vscode.Uri.joinPath(
+              f.document.uri,
+              '..',
+              outcome === 'extension' ? 'spec.txt' : 'spec.html',
+            );
+      const picker = sinon
+        .stub(vscode.window, 'showSaveDialog')
+        .resolves(outcome === 'cancel' ? undefined : target);
+      const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+      const error = sinon.stub(vscode.window, 'showErrorMessage').resolves();
+      const success = sinon.stub(vscode.window, 'showInformationMessage').resolves();
+      if (outcome === 'write') write.rejects(new Error('Permission denied'));
+      if (outcome === 'flush') f.replyToFlush(false);
+      await provider.exportHtmlInActiveEditor();
+      assert.equal(write.callCount, outcome === 'write' ? 1 : 0);
+      assert.equal(error.callCount, ['source', 'extension', 'write'].includes(outcome) ? 1 : 0);
+      if (outcome === 'flush') assert.equal(picker.called, false);
+      if (outcome === 'write') assert.match(error.firstCall.args[0], /Permission denied/);
+      assert.equal(success.called, false);
+      assert.equal(f.applyEdit.called, false);
+      assert.equal((f.document.save as sinon.SinonStub).called, false);
+      assert.equal(f.document.getText(), 'Alpha\n');
+    });
+  }
+
+  it('falls back to alt text when an unavailable image belongs to another provider', async () => {
+    await fixture('![Remote asset](image.svg)\n');
+    sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file('/export.html'));
+    sinon.stub(vscode.workspace.fs, 'stat').rejects(new Error('Offline'));
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await provider.exportHtmlInActiveEditor();
+    const output = new JSDOM(Buffer.from(write.firstCall.args[1]).toString()).window.document;
+    assert.equal(output.querySelectorAll('img').length, 0);
+    assert.match(output.body.textContent!, /Image: Remote asset/);
+  });
+
+  it('matches the reviewed standalone HTML fixture', async () => {
+    const source = readFileSync('tests/fixtures/export/representative.md', 'utf8');
+    const image = readFileSync('tests/fixtures/export/image.svg');
+    const f = await fixture(source);
+    sinon
+      .stub(vscode.window, 'showSaveDialog')
+      .resolves(vscode.Uri.joinPath(f.document.uri, '..', 'spec.html'));
+    sinon
+      .stub(vscode.workspace.fs, 'stat')
+      .resolves({ type: 1, size: image.length, ctime: 0, mtime: 0 });
+    sinon.stub(vscode.workspace.fs, 'readFile').resolves(image);
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await provider.exportHtmlInActiveEditor();
+    assert.equal(
+      Buffer.from(write.firstCall.args[1]).toString(),
+      readFileSync('tests/fixtures/export/representative.html', 'utf8'),
+    );
+  });
 
   it('preserves unapplied table source separately when its panel closes', async () => {
     const f = await fixture();

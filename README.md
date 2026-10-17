@@ -19,6 +19,7 @@ This source targets **1.1.1 Preview**, distributed on the pre-release channel. S
 - **Capture notes:** **Muninn for VS Code: New Markdown Note** uses the native file dialog. **Insert File Link** connects existing files with ordinary relative Markdown.
 - **Review diagrams:** local, lazy-loaded Mermaid previews, gated by workspace trust.
 - **Read code:** fenced code uses the editor font, a language selector and theme-aware syntax colors. Long lines scroll within the block. Unknown languages and blocks over 20,000 characters remain editable as plain text.
+- **Share a document:** **Export HTML** in the toolbar/More menu, editor-title menu or Command Palette writes a standalone HTML snapshot, including accepted unsaved edits, through the native save picker. Open that file in a browser and choose **Print → Save as PDF** for PDF output. Print styles wrap code and keep headings with following content.
 - **Use Source:** open the same file in VS Code's Markdown text editor whenever you need the full source syntax.
 
 Untouched files round-trip byte for byte in the regression corpus. Edits preserve surrounding source syntax; changes that cannot be mapped safely are rejected with a Source fallback. Conflicting external edits are preserved in a separate unsaved recovery document. Save and Source wait for pending rich edits. No proprietary note syntax or database is introduced.
@@ -36,6 +37,8 @@ Untouched files round-trip byte for byte in the regression corpus. Edits preserv
 The old `muninn.editorAssociations` setting is deprecated and has no effect. Configure defaults with VS Code's editor picker.
 
 Remote images do not load automatically. Imported images are limited to 10 MiB. Markdown HTML stays disabled. The extension makes no telemetry calls. Desktop VS Code 1.85.2+ is supported; browser/vscode.dev support is not advertised.
+
+HTML exports embed local PNG, JPEG, GIF, WebP and SVG images up to 2 MiB each. Larger or unreadable images retain relative references when possible, with a warning; share those files alongside the HTML. Remote/data image sources and unavailable cross-provider assets become alt text. Mermaid is exported as readable source with a notice; code blocks and task markers remain plain text. No scripts or remote resources are included. Unapplied table-source drafts are not exported. Export does not save or rewrite the Markdown file. Direct PDF export is not provided; browser/OS print dialogs and PDF destinations vary. See the [export decision](docs/proposals/export.md), which implements the HTML workflow tracked in [#275](https://github.com/bluecloud-dev/muninn-vscode/issues/275).
 
 ## Development
 

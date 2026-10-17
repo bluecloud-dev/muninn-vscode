@@ -730,7 +730,8 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
 };
 
 const requestHostCommand = async (
-  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage',
+  command:
+    'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage' | 'exportHtml',
 ): Promise<void> => {
   if (await syncController.flush(serializeMarkdownForHost)) {
     vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
@@ -753,6 +754,7 @@ const executeToolbarCommand = (command: string, menu?: string): void => {
       view.dispatch(view.state.tr.setSelection(pending.selection));
   }
   switch (command) {
+    case 'exportHtml':
     case 'goToHeading':
     case 'insertFileLink':
     case 'openRawMarkdown':

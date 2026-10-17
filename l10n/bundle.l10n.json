@@ -143,5 +143,14 @@
   "Redo": "Redo",
   "Image": "Image",
   "toolbar.mode (deprecated, ignored): {0}": "toolbar.mode (deprecated, ignored): {0}",
-  "The document changed while the picker or menu was open. Select the block again and retry.": "The document changed while the picker or menu was open. Select the block again and retry."
+  "The document changed while the picker or menu was open. Select the block again and retry.": "The document changed while the picker or menu was open. Select the block again and retry.",
+  "Export HTML": "Export HTML",
+  "Export": "Export",
+  "Exporting HTML…": "Exporting HTML…",
+  "Choose an HTML file distinct from the Markdown source.": "Choose an HTML file distinct from the Markdown source.",
+  "Mermaid diagrams are included as source code in this export.": "Mermaid diagrams are included as source code in this export.",
+  "Some images could not be embedded. Include any referenced image files when sharing this HTML.": "Some images could not be embedded. Include any referenced image files when sharing this HTML.",
+  "Image: {0}": "Image: {0}",
+  "Exported {0}. Open the HTML in a browser and choose Print → Save as PDF for PDF output.": "Exported {0}. Open the HTML in a browser and choose Print → Save as PDF for PDF output.",
+  "Could not export HTML: {0}": "Could not export HTML: {0}"
 }

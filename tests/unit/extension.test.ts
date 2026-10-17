@@ -129,6 +129,7 @@ describe('extension activation', () => {
     expect(registeredCommands).to.include('muninn.inspectConfiguration');
     expect(registeredCommands).to.include('muninn.reportIssue');
     expect(registeredCommands).to.include('muninn.tableActions');
+    expect(registeredCommands).to.include('muninn.exportHtml');
     expect(registerCustomEditorProviderStub.calledOnce).to.equal(true);
 
     const inspectCommand = registerCommandStub

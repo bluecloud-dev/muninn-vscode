@@ -1120,6 +1120,29 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
   });
 
+  it('flushes pending edits before requesting HTML export from the toolbar', async () => {
+    const editor = open('Alpha\n');
+    await append(editor, 'X');
+    const exportButton = dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-toolbar [data-command="exportHtml"]',
+    );
+    assert.ok(exportButton);
+    exportButton.click();
+    await tick();
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+    ack(0, 1);
+    await tick();
+    assert.deepEqual(
+      structuredClone(messages.find((message) => message.type === 'view.executeCommand')),
+      { type: 'view.executeCommand', payload: { command: 'exportHtml' } },
+    );
+    assert.equal(applies().length, 1);
+    assert.equal(applies()[0].payload.markdown, 'AlphaX\n');
+  });
+
   it('exposes local table actions and targets the selected table while retaining raw drafts', async () => {
     const source = '| A |\n| --- |\n| First |\n\nBetween\n\n| B |\n| --- |\n| Second |\n';
     const editor = open(source);
