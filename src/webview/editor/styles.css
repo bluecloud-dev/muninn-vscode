@@ -465,6 +465,8 @@ body {
 }
 
 .muninn-code-node {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   margin: 0.9em 0;
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 8px;
@@ -474,6 +476,7 @@ body {
 
 .muninn-code-node-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -482,10 +485,13 @@ body {
 }
 
 .muninn-code-node-header strong {
-  font-size: 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .muninn-code-node-language {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   min-height: 32px;
   border-radius: 6px;
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-editorWidget-border));
@@ -500,16 +506,60 @@ body {
   outline-offset: 1px;
 }
 
-.muninn-code-node-body {
+.ProseMirror .muninn-code-node-body {
   margin: 0;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 0;
   background: var(--vscode-textCodeBlock-background);
   overflow: auto;
+  color: var(--vscode-editor-foreground);
+  font-size: var(--vscode-editor-font-size, 13px);
+  font-weight: var(--vscode-editor-font-weight, normal);
+  line-height: 1.6;
 }
 
 .muninn-code-node-body code {
   font-family: var(--vscode-editor-font-family, monospace);
+  background: transparent;
+  color: inherit;
+}
+
+.muninn-code-node .hljs-keyword,
+.muninn-code-node .hljs-selector-tag,
+.muninn-code-node .hljs-title,
+.muninn-code-node .hljs-section {
+  color: color-mix(
+    in srgb,
+    var(--vscode-textLink-foreground, var(--vscode-editor-foreground)) 75%,
+    var(--vscode-editor-foreground)
+  );
+}
+
+.muninn-code-node .hljs-string,
+.muninn-code-node .hljs-regexp,
+.muninn-code-node .hljs-attr {
+  color: color-mix(
+    in srgb,
+    var(--vscode-debugTokenExpression-string, var(--vscode-editor-foreground)) 75%,
+    var(--vscode-editor-foreground)
+  );
+}
+
+.muninn-code-node .hljs-number,
+.muninn-code-node .hljs-literal,
+.muninn-code-node .hljs-type,
+.muninn-code-node .hljs-built_in {
+  color: color-mix(
+    in srgb,
+    var(--vscode-debugTokenExpression-number, var(--vscode-editor-foreground)) 60%,
+    var(--vscode-editor-foreground)
+  );
+}
+
+.muninn-code-node .hljs-comment,
+.muninn-code-node .hljs-quote {
+  color: var(--vscode-editor-foreground);
+  font-style: italic;
 }
 
 .muninn-front-matter-node {

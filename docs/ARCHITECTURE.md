@@ -57,6 +57,8 @@ The table-node Add picker still round-trips validated request IDs and a bounded 
 
 Native Undo/Redo shortcuts dispatch to ProseMirror once; running both VS Code's WorkspaceEdit undo and ProseMirror history for a single key causes a race.
 
+Code highlighting is a decoration plugin around the existing code node view. Selected highlight.js grammars produce private token offsets after an exact-text check; generated HTML never enters the live editor. A per-plugin WeakMap caches tokens by immutable code node. Unknown languages, Mermaid, tokenization failures and blocks over 20,000 UTF-16 units stay plain. Decorations never change document nodes, serialization or undo history. Theme variables supply colors rather than a second editor or a separate TextMate theme service.
+
 `supportsMultipleEditorsPerDocument: false` matches the provider's one-session-per-URI index. The old `muninn.editorAssociations` setting is deprecated and inert; VS Code's native editor picker owns the user's default choice.
 
 ## Fidelity contract

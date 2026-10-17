@@ -18,6 +18,7 @@ This source targets **1.1.1 Preview**, distributed on the pre-release channel. S
 - **Edit:** a toolbar with local Paragraph/Heading choices and as many controls as fit; More contains only the remaining actions; standard GFM tasks and strikethrough; editable table cells with raw-source access.
 - **Capture notes:** **Muninn for VS Code: New Markdown Note** uses the native file dialog. **Insert File Link** connects existing files with ordinary relative Markdown.
 - **Review diagrams:** local, lazy-loaded Mermaid previews, gated by workspace trust.
+- **Read code:** fenced code uses the editor font, a language selector and theme-aware syntax colors. Long lines scroll within the block. Unknown languages and blocks over 20,000 characters remain editable as plain text.
 - **Use Source:** open the same file in VS Code's Markdown text editor whenever you need the full source syntax.
 
 Untouched files round-trip byte for byte in the regression corpus. Edits preserve surrounding source syntax; changes that cannot be mapped safely are rejected with a Source fallback. Conflicting external edits are preserved in a separate unsaved recovery document. Save and Source wait for pending rich edits. No proprietary note syntax or database is introduced.

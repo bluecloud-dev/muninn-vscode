@@ -247,11 +247,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         '--extensions-dir=' + extensions,
       ],
     });
-    evidence.vscode = await app.evaluate(({ app }) => app.getVersion());
-    writeEvidence();
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     await page.locator('.monaco-workbench').waitFor();
+    evidence.vscode = await app.evaluate(({ app }) => app.getVersion());
+    writeEvidence();
     await activateMuninn();
     await app.context().setOffline(true);
     evidence.offline = true;
@@ -265,14 +265,19 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
   after(async () => {
     if (app) {
-      await page
-        .screenshot({ path: path.join(artifactDirectory, 'workbench.png') })
-        .catch(() => {});
-      await app
-        .context()
-        .tracing.stop({ path: path.join(artifactDirectory, 'trace.zip') })
-        .catch(() => {});
-      await app.close();
+      try {
+        if (page) {
+          await page
+            .screenshot({ path: path.join(artifactDirectory, 'workbench.png') })
+            .catch(() => {});
+        }
+        await app
+          .context()
+          .tracing.stop({ path: path.join(artifactDirectory, 'trace.zip') })
+          .catch(() => {});
+      } finally {
+        await app.close();
+      }
     }
     // Isolated profile retained in the OS temp directory for failure investigation.
   });
@@ -345,7 +350,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('keeps ordinary table values readable in a 320 CSS-pixel pane', async () => {
     const { editor, file } = await open(
       'narrow-table.md',
-      '| Area | Scenario | Result |\n| --- | --- | --- |\n| Editor | Keyboard navigation | Narrow split panes |\n',
+      '| Area | Scenario | Result |\n| --- | --- | --- |\n| Editor | Keyboard navigation | Narrow split panes |\n\n```Unknown-Language-With-A-Long-Name\n' +
+        'long_code_'.repeat(100) +
+        '\n```\n',
     );
     const nativeWindow = await app.browserWindow(page);
     const bounds = await nativeWindow.evaluate((window) => window.getBounds());
@@ -399,6 +406,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             };
           });
           const toolbar = document.querySelector('.muninn-toolbar');
+          const codeBody = document.querySelector('.muninn-code-node-body');
           const buttons = [...toolbar.querySelectorAll('button')].filter(
             (button) => !button.hidden,
           );
@@ -407,6 +415,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             cells,
             overflow: grid.scrollWidth > grid.clientWidth,
             bodyOverflow: document.body.scrollWidth > innerWidth,
+            codeOverflow: codeBody.scrollWidth > codeBody.clientWidth,
+            shellOverflow: document.querySelector('.muninn-editor-shell').scrollWidth > innerWidth,
+            languageRight: document
+              .querySelector('.muninn-code-node-language')
+              .getBoundingClientRect().right,
             toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
             targets: buttons.map((button) => {
               const r = button.getBoundingClientRect();
@@ -427,6 +440,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         const geometry = await measure();
         assert.ok(Math.abs(geometry.width - target) <= 1, JSON.stringify(geometry));
         assert.equal(geometry.bodyOverflow, false);
+        assert.equal(geometry.shellOverflow, false);
+        assert.equal(geometry.codeOverflow, true);
+        assert.ok(geometry.languageRight <= geometry.width);
         assert.equal(geometry.toolbarOverflow, false);
         // Native fonts can fit this table at 375px; 320px still requires local scrolling.
         if (target === 320) assert.equal(geometry.overflow, true);
@@ -456,6 +472,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await resize(320);
       await editor.evaluate(() =>
         document.documentElement.style.setProperty('--vscode-font-size', '24px'),
+      );
+      await eventually(
+        async () => !(await measure()).toolbarOverflow,
+        'Toolbar did not settle after font size changed',
       );
       const large = await measure();
       assert.equal(large.bodyOverflow, false);
@@ -660,7 +680,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
 
   it('keeps Codicons, help, table feedback and focus legible in default themes', async () => {
-    const { editor, file } = await open('theme-table.md', '| Name |\n| --- |\n| Alpha |\n');
+    const source =
+      '| Name |\n| --- |\n| Alpha |\n\n```javascript\nconst count = 42; // a comment\nconst label = "hello";\n```\n';
+    const { editor, file } = await open('theme-table.md', source);
     await editor.locator('[data-testid="muninn-table-toggle-source"]').click();
     await editor.locator('textarea').fill('invalid draft');
     await editor.getByRole('button', { name: 'Apply Source', exact: true }).click();
@@ -741,6 +763,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             };
           }, selectors);
         const measurements = await measure([
+          '.muninn-code-node .hljs-keyword',
+          '.muninn-code-node .hljs-string',
+          '.muninn-code-node .hljs-number',
+          '.muninn-code-node .hljs-comment',
           '[role="tooltip"]',
           '.muninn-table-node-source-hint',
           '.muninn-table-node-source-feedback',
@@ -749,6 +775,16 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         ]);
         assert.equal(measurements.fontLoaded, true);
         assert.notEqual(measurements.glyph, 'none');
+        assert.equal(
+          await editor.evaluate(() => {
+            const keyword = document.querySelector('.muninn-code-node .hljs-keyword');
+            return (
+              getComputedStyle(keyword).color !== getComputedStyle(keyword.closest('code')).color
+            );
+          }),
+          true,
+          theme.id + ' keyword must be visually distinct',
+        );
         for (const value of measurements.values)
           assert.ok(
             value.text >=
@@ -787,7 +823,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     } finally {
       fs.writeFileSync(settingsPath, originalSettings);
     }
-    assert.equal(fs.readFileSync(file, 'utf8'), '| Name |\n| --- |\n| Alpha |\n');
+    assert.equal(fs.readFileSync(file, 'utf8'), source);
   });
 
   it('keeps basic actions quiet and keyboard accessible, formats without replacing selected text', async () => {
@@ -815,6 +851,46 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       () => fs.readFileSync(file, 'utf8').includes('```javascript'),
       'Code language was not saved',
     );
+  });
+
+  it('edits highlighted code with native selection, paste, save, undo and redo', async () => {
+    const source = 'Before\n\n~~~javascript\nconst value = 1;\n~~~\n\nAfter\n';
+    let { editor, file } = await open('highlighting.md', source);
+    await editor.locator('pre code').click();
+    await editor.locator('.ProseMirror').press(lineEnd);
+    await editor.locator('.ProseMirror').pressSequentially(' // edited');
+    const edited = 'Before\n\n~~~javascript\nconst value = 1; // edited\n~~~\n\nAfter\n';
+    editor = await save(editor, file, edited);
+    assert.equal(await editor.locator('.hljs-comment').innerText(), '// edited');
+    await command('Muninn for VS Code: Undo');
+    editor = await save(editor, file, source);
+    await command('Muninn for VS Code: Redo');
+    editor = await save(editor, file, edited);
+    await editor.locator('pre code').click();
+    await editor.locator('.ProseMirror').press(lineStart);
+    await editor.locator('.ProseMirror').press(selectLineEnd);
+    assert.equal(
+      await editor.evaluate(() => getSelection().toString()),
+      'const value = 1; // edited',
+    );
+    await editor.evaluate(() => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', 'const label = "<safe>";');
+      document
+        .querySelector('.ProseMirror')
+        .dispatchEvent(
+          new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+    });
+    editor = await save(
+      editor,
+      file,
+      'Before\n\n~~~javascript\nconst label = "<safe>";\n~~~\n\nAfter\n',
+    );
+    assert.equal(await editor.locator('.hljs-string').innerText(), '"<safe>"');
+    await editor.locator('.muninn-code-node-language').selectOption('');
+    editor = await save(editor, file, 'Before\n\n~~~\nconst label = "<safe>";\n~~~\n\nAfter\n');
+    assert.equal(await editor.locator('pre code span').count(), 0);
   });
 
   it('saves focused table input immediately and supports grid actions, source apply, delete and undo', async () => {

@@ -130,7 +130,7 @@ describe('bundled editor behavior with a delayed host', function () {
   const append = async (
     editor: HTMLElement,
     text: string,
-    paragraph = editor.querySelector('p')!,
+    paragraph: HTMLElement = editor.querySelector('p')!,
   ): Promise<void> => {
     if (!(paragraph.lastChild instanceof dom.window.Text)) {
       paragraph.append(dom.window.document.createTextNode(''));
@@ -164,6 +164,103 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
     if (applies().length > 0) ack(applies().length - 1, applies().length);
   };
+
+  it('highlights fenced code without changing literal text or surrounding Markdown', async () => {
+    const source =
+      '# Keep  \r\n\r\n~~~javascript\r\nconst greeting = "<b>🚀 & hello</b>";\r\n~~~\r\n\r\nAfter\r\n';
+    const editor = open(source);
+    const code = editor.querySelector('pre code')!;
+    assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
+    assert.equal(code.textContent, 'const greeting = "<b>🚀 & hello</b>";');
+    assert.equal(code.querySelectorAll('b').length, 0);
+    await tick();
+    assert.equal(applies().length, 0);
+    await append(editor, '!');
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '# Keep  \r\n\r\n~~~javascript\r\nconst greeting = "<b>🚀 & hello</b>";\r\n~~~\r\n\r\nAfter!\r\n',
+    );
+  });
+
+  it('highlights each supported code language and its common aliases', () => {
+    for (const [language, code] of [
+      ['typescript', 'const value: number = 1;'],
+      ['tsx', 'const view = <b>Hi</b>;'],
+      ['jsx', 'const view = <b>Hi</b>;'],
+      ['python', 'def greet():\n    return "hi"'],
+      ['go', 'func main() {}'],
+      ['rust', 'fn main() {}'],
+      ['java', 'public class Main {}'],
+      ['csharp', 'public class Main {}'],
+      ['cpp', 'int main() { return 0; }'],
+      ['bash', 'echo "hello"'],
+      ['json', '{"value": 1}'],
+      ['yaml', 'value: true'],
+      ['sql', 'SELECT * FROM users;'],
+      ['markdown', '# Hello'],
+      ['js', 'const value = 1;'],
+      ['ts', 'const value: number = 1;'],
+      ['py', 'def greet(): pass'],
+    ]) {
+      const editor = open('```' + language + '\n' + code + '\n```\n');
+      assert.ok(editor.querySelector('pre code span[class*="hljs-"]'), language);
+      assert.equal(editor.querySelector('pre code')!.textContent, code, language);
+      assert.equal(applies().length, 0, language);
+    }
+  });
+
+  it('updates code highlighting while editing, changing language and undoing', async () => {
+    const source = 'Before\n\n```javascript\nconst first = 1;\n```\n\nAfter\n';
+    const editor = open(source);
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    await append(editor, '\nconst next = 2;', code);
+    assert.equal(code.querySelectorAll('.hljs-keyword').length, 2);
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Before\n\n```javascript\nconst first = 1;\nconst next = 2;\n```\n\nAfter\n',
+    );
+    ack(0, 1);
+    send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, source);
+    assert.equal(code.querySelectorAll('.hljs-keyword').length, 1);
+    ack(1, 2);
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    language.value = '';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(code.querySelectorAll('span').length, 0);
+    assert.equal(code.textContent, 'const first = 1;');
+    ack(2, 3);
+    send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+    await tick();
+    assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
+    assert.equal(applies().at(-1)?.payload.markdown, source);
+  });
+
+  it('keeps unknown, omitted and Mermaid code languages editable as plain text', async () => {
+    for (const language of ['', 'Unknown-Lang', 'mermaid']) {
+      const source = '~~~' + language + '\nraw <script>& text\n~~~\n';
+      const editor = open(source);
+      const code = editor.querySelector<HTMLElement>('pre code')!;
+      assert.equal(code.querySelectorAll('span').length, 0);
+      await append(editor, '!', code);
+      assert.equal(
+        applies().at(-1)?.payload.markdown,
+        '~~~' + language + '\nraw <script>& text!\n~~~\n',
+      );
+    }
+  });
+
+  it('keeps code above the highlighting limit fully editable as plain text', async () => {
+    const codeText = 'const value = 1;\n'.repeat(1300).trimEnd();
+    const editor = open('```javascript\n' + codeText + '\n```\n');
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    assert.equal(code.querySelectorAll('span').length, 0);
+    assert.equal(code.textContent, codeText);
+    await append(editor, '!', code);
+    assert.equal(applies().at(-1)?.payload.markdown, '```javascript\n' + codeText + '!\n```\n');
+  });
 
   it('continues a bullet list with a sibling item and preserves typed Markdown', async () => {
     const editor = open('- First\n- Second\n');

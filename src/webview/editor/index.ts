@@ -37,6 +37,7 @@ import { editTable, isTableNode } from './tables/table-edit';
 import { setMermaidRenderingEnabled } from './renderers/mermaid-renderer';
 import { initializeTableDrafts } from './table-drafts';
 import { createCodeBlockNodeViewConstructor } from './nodes/code-block-node-view';
+import { createCodeHighlighting } from './code-highlighting';
 import { HostSyncController } from './sync';
 import { DEFAULT_TABLE_SOURCE } from './tables/markdown-table-utilities';
 import { attachAdaptiveToolbar, type ToolbarMenuItem } from './adaptive-toolbar';
@@ -161,6 +162,7 @@ const parseMarkdown = (markdown: string): EditorState =>
   EditorState.create({
     doc: parseHostMarkdown(markdown),
     plugins: [
+      createCodeHighlighting(),
       createDocumentNavigation((href) =>
         vscode.postMessage({ type: 'view.openLink', payload: { href } }),
       ),

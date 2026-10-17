@@ -4,6 +4,10 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+### Added
+
+- Theme-aware syntax colors for supported fenced code languages, with editor font settings, a clear language header and contained scrolling for long lines. Unsupported languages and blocks over 20,000 UTF-16 units remain editable as plain text.
+
 ## [1.1.1] - 2026-10-11
 
 ### Added
