@@ -220,6 +220,11 @@ async function save(editor, file, expected) {
       () => fs.readFileSync(file, 'utf8') === expected,
       'Saved source differs: ' + fs.readFileSync(file, 'utf8'),
     );
+    // The disk write can finish before VS Code clears its dirty tab and close confirmation.
+    await page
+      .locator('.tab.dirty')
+      .filter({ hasText: path.basename(file) })
+      .waitFor({ state: 'hidden' });
   } catch (error) {
     error.message += '\\nActual file: ' + JSON.stringify(fs.readFileSync(file, 'utf8'));
     throw error;
