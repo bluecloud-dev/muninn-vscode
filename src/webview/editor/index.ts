@@ -20,7 +20,8 @@ import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
-import { applyContentWidth } from './content-width';
+import { createEditorViewport } from './editor-viewport';
+import { setButtonHelp } from './icon-button';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
 import {
@@ -37,6 +38,7 @@ import { editTable, isTableNode } from './tables/table-edit';
 import { setMermaidRenderingEnabled } from './renderers/mermaid-renderer';
 import { initializeTableDrafts } from './table-drafts';
 import { createCodeBlockNodeViewConstructor } from './nodes/code-block-node-view';
+import { createCodeHighlighting } from './code-highlighting';
 import { HostSyncController } from './sync';
 import { DEFAULT_TABLE_SOURCE } from './tables/markdown-table-utilities';
 import { attachAdaptiveToolbar, type ToolbarMenuItem } from './adaptive-toolbar';
@@ -114,6 +116,7 @@ const moreButton = document.querySelector<HTMLButtonElement>(
 )!;
 const toolbarMenu = document.querySelector<HTMLDivElement>('#muninn-toolbar-menu')!;
 let pendingToolbarState: EditorState | undefined;
+const viewport = createEditorViewport(editorShell, editorContainer);
 
 let view: EditorView | undefined;
 let lastMermaidInsertAt = 0;
@@ -161,6 +164,7 @@ const parseMarkdown = (markdown: string): EditorState =>
   EditorState.create({
     doc: parseHostMarkdown(markdown),
     plugins: [
+      createCodeHighlighting(),
       createDocumentNavigation((href) =>
         vscode.postMessage({ type: 'view.openLink', payload: { href } }),
       ),
@@ -728,7 +732,8 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
 };
 
 const requestHostCommand = async (
-  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage',
+  command:
+    'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage' | 'exportHtml',
 ): Promise<void> => {
   if (await syncController.flush(serializeMarkdownForHost)) {
     vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
@@ -741,6 +746,13 @@ const executeToolbarCommand = (command: string, menu?: string): void => {
   if (!view) return;
   const pending = menu ? pendingToolbarState : undefined;
   pendingToolbarState = undefined;
+  if (viewport.execute(command)) {
+    updateToolbarState();
+    announce(formatString(getString('zoomStatusTemplate'), viewport.zoomPercent), {
+      kind: 'status',
+    });
+    return;
+  }
   if (pending) {
     if (view.state.doc !== pending.doc) {
       announce(getString('pickerStaleMessage'), { kind: 'error' });
@@ -751,6 +763,7 @@ const executeToolbarCommand = (command: string, menu?: string): void => {
       view.dispatch(view.state.tr.setSelection(pending.selection));
   }
   switch (command) {
+    case 'exportHtml':
     case 'goToHeading':
     case 'insertFileLink':
     case 'openRawMarkdown':
@@ -816,6 +829,19 @@ const isListActive = (listNodeType: NodeType): boolean => {
 };
 
 const updateToolbarState = (): void => {
+  const { zoomPercent, fitToWidth } = viewport;
+  updateToolbarPressedState('fitToWidth', fitToWidth);
+  const reset = toolbarButtons.get('resetZoom')!;
+  const percentage = zoomPercent + '%';
+  if (reset.textContent !== percentage) reset.textContent = percentage;
+  const zoomHelp = formatString(getString('zoomResetHelpTemplate'), zoomPercent);
+  setButtonHelp(reset, zoomHelp);
+  const zoomIn = toolbarButtons.get('zoomIn')!;
+  const zoomOut = toolbarButtons.get('zoomOut')!;
+  if (zoomPercent === 200 && document.activeElement === zoomIn) reset.focus();
+  if (zoomPercent === 50 && document.activeElement === zoomOut) reset.focus();
+  zoomIn.disabled = zoomPercent === 200;
+  zoomOut.disabled = zoomPercent === 50;
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
   updateToolbarPressedState('toggleItalic', isMarkActive(schema.marks.em));
   updateToolbarPressedState('toggleStrike', isMarkActive(schema.marks.strike));
@@ -833,8 +859,7 @@ const updateToolbarState = (): void => {
     headingLevel === undefined
       ? style
       : formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
-  blockStyleButton.setAttribute('aria-label', help);
-  blockStyleButton.dataset.help = help;
+  setButtonHelp(blockStyleButton, help);
   toolbarButtons.get('undo')!.disabled = !view || !undo(view.state);
   toolbarButtons.get('redo')!.disabled = !view || !redo(view.state);
   updateToolbarPressedState(
@@ -992,7 +1017,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       const payload = message.payload;
       syncController.initialize(payload.markdown, payload.revision);
       setMermaidRenderingEnabled(payload.mermaidEnabled);
-      applyContentWidth(editorShell, payload.contentWidth);
+      viewport.setContentWidth(payload.contentWidth);
       setImageSources(payload.imageSources);
       applyHostMarkdown(payload.markdown, payload.fileName);
       announce(getString('statusConnected'), { kind: 'status' });
@@ -1082,7 +1107,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     case 'host.settingsChanged': {
       const payload = message.payload;
       setMermaidRenderingEnabled(payload.mermaidEnabled);
-      applyContentWidth(editorShell, payload.contentWidth);
+      viewport.setContentWidth(payload.contentWidth);
       return;
     }
     case 'host.insertLink': {

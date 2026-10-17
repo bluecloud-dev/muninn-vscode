@@ -93,10 +93,6 @@ async function activateMuninn() {
   );
   await page.keyboard.press('Escape');
   await command('Muninn for VS Code: Inspect Configuration');
-  // A log channel may leave the panel hidden, especially in Restricted Mode.
-  if (await page.locator('[id="workbench.parts.panel"]').isVisible()) {
-    await page.keyboard.press(`${modifier}+j`);
-  }
 }
 async function eventually(check, message, timeout = 15000) {
   const start = Date.now();
@@ -106,11 +102,57 @@ async function eventually(check, message, timeout = 15000) {
   }
   throw new Error(message);
 }
+async function resizeEditorPane(editor, nativeWindow, target) {
+  let matchingSamples = 0;
+  await eventually(
+    async () => {
+      const width = await editor.evaluate(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return innerWidth;
+      });
+      if (Math.abs(width - target) <= 1) return ++matchingSamples >= 3;
+      matchingSamples = 0;
+      const current = await nativeWindow.evaluate((window) => ({
+        width: window.getSize()[0],
+        height: window.getSize()[1],
+        zoom: window.webContents.getZoomFactor(),
+      }));
+      await nativeWindow.evaluate(
+        (window, size) => {
+          window.setMinimumSize(200, 200);
+          window.setSize(size.width, size.height);
+        },
+        {
+          width: Math.round(current.width + (target - width) * current.zoom),
+          height: current.height,
+        },
+      );
+      return false;
+    },
+    'Native editor did not resize to ' + target + ' CSS pixels',
+  );
+}
 async function command(label) {
-  await page.bringToFront();
-  await page.keyboard.press(`${modifier}+Shift+P`);
-  await page.locator('.quick-input-widget input[type="text"]').fill('>' + label);
-  await page.getByText(label, { exact: true }).first().click();
+  const item = page.getByText(label, { exact: true }).first();
+  await eventually(async () => {
+    try {
+      await page.bringToFront();
+      const activeTab = page.locator('.tabs-container .tab.active').first();
+      if (await activeTab.count()) await activeTab.focus();
+      await page.keyboard.press(`${modifier}+Shift+P`);
+      await page
+        .locator('.quick-input-widget input[type="text"]')
+        .fill('>' + label, { timeout: 2500 });
+      // Retry palette setup before dispatch, so a late focus change cannot repeat a command.
+      await item.click({ trial: true, timeout: 1000 });
+      return true;
+    } catch (error) {
+      if (error.name !== 'TimeoutError') throw error;
+      await page.keyboard.press('Escape');
+      return false;
+    }
+  }, 'Command unavailable: ' + label);
+  await item.click();
 }
 async function visibleEditorFrame(name) {
   for (const frame of page.frames()) {
@@ -187,6 +229,11 @@ async function save(editor, file, expected) {
       () => fs.readFileSync(file, 'utf8') === expected,
       'Saved source differs: ' + fs.readFileSync(file, 'utf8'),
     );
+    // The disk write can finish before VS Code clears its dirty tab and close confirmation.
+    await page
+      .locator('.tab.dirty')
+      .filter({ hasText: path.basename(file) })
+      .waitFor({ state: 'hidden' });
   } catch (error) {
     error.message += '\\nActual file: ' + JSON.stringify(fs.readFileSync(file, 'utf8'));
     throw error;
@@ -194,18 +241,65 @@ async function save(editor, file, expected) {
   return (await visibleEditorFrame(path.basename(file))) ?? currentEditor;
 }
 
-async function clickTool(editor, command) {
+async function clickTool(editor, command, keyboard = false) {
+  const activate = async (button) => {
+    if (keyboard) {
+      await button.waitFor({ state: 'visible' });
+      await button.press('Enter');
+    } else await button.click();
+  };
   if (command === 'insertTable') {
-    await clickTool(editor, 'chooseTableAction');
-    await editor.locator('#muninn-toolbar-menu [data-command="insertTable"]').click();
+    await clickTool(editor, 'chooseTableAction', keyboard);
+    await activate(editor.locator('#muninn-toolbar-menu [data-command="insertTable"]'));
     return;
   }
   const inline = editor.locator('.muninn-toolbar [data-command="' + command + '"]');
-  if (await inline.isVisible()) await inline.click();
+  if (await inline.isVisible()) await activate(inline);
   else {
-    await editor.locator('[data-testid="muninn-toolbar-more"]').click();
-    await editor.locator('#muninn-toolbar-menu [data-command="' + command + '"]').click();
+    await activate(editor.locator('[data-testid="muninn-toolbar-more"]'));
+    await activate(editor.locator('#muninn-toolbar-menu [data-command="' + command + '"]'));
   }
+}
+
+async function clickZoomedContent(editor, locator, offset, clickCount = 1) {
+  const point = await locator.evaluate(async (element, offset) => {
+    element.scrollIntoView({ block: 'center' });
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const shell = document.querySelector('#editor-shell');
+    const surface = document.querySelector('#editor');
+    const scale = shell.clientWidth / surface.getBoundingClientRect().width;
+    const rect = element.getBoundingClientRect();
+    const x = rect.left * scale + (offset?.x ?? (rect.width * scale) / 2);
+    const y = rect.top * scale + (offset?.y ?? (rect.height * scale) / 2);
+    return { x, y, hit: element.contains(document.elementFromPoint(x, y)) };
+  }, offset);
+  assert.equal(point.hit, true, JSON.stringify(point));
+  const frameBounds = await (await editor.frameElement()).boundingBox();
+  const frameScale = frameBounds.width / (await editor.evaluate(() => innerWidth));
+  await locator.evaluate((element) => {
+    window.__muninnTestClick = undefined;
+    document.addEventListener(
+      'click',
+      (event) => {
+        window.__muninnTestClick = {
+          hit: element.contains(event.target),
+          tag: event.target.tagName,
+        };
+      },
+      { once: true, capture: true },
+    );
+  });
+  await page.mouse.click(
+    frameBounds.x + point.x * frameScale,
+    frameBounds.y + point.y * frameScale,
+    { clickCount },
+  );
+  const clicked = await editor.evaluate(() => {
+    const result = window.__muninnTestClick;
+    delete window.__muninnTestClick;
+    return result;
+  });
+  assert.equal(clicked?.hit, true, JSON.stringify({ point, frameBounds, frameScale, clicked }));
 }
 
 describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 240000 }, () => {
@@ -247,11 +341,16 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         '--extensions-dir=' + extensions,
       ],
     });
-    evidence.vscode = await app.evaluate(({ app }) => app.getVersion());
-    writeEvidence();
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
+    page.on('pageerror', (error) => {
+      evidence.pageErrors ??= [];
+      evidence.pageErrors.push(error.stack ?? error.message);
+      writeEvidence();
+    });
     await page.locator('.monaco-workbench').waitFor();
+    evidence.vscode = await app.evaluate(({ app }) => app.getVersion());
+    writeEvidence();
     await activateMuninn();
     await app.context().setOffline(true);
     evidence.offline = true;
@@ -262,17 +361,40 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await (await app.browserWindow(page)).evaluate((window) => window.focus());
     await page.bringToFront();
     await page.keyboard.press('Escape');
+    // The configuration log can open its panel after the activation command returns.
+    const panel = page.locator('[id="workbench.parts.panel"]');
+    if (await panel.isVisible()) {
+      await page.keyboard.press(`${modifier}+j`);
+      await panel.waitFor({ state: 'hidden' });
+    }
+    // Retained webviews multiply trace work; each scenario owns its saved editors.
+    const savedTabs = page.locator('.tabs-container .tab:not(.dirty)');
+    if (await savedTabs.count()) {
+      await command('View: Close Saved Editors in Group');
+      await eventually(
+        async () => (await savedTabs.count()) === 0,
+        'Saved editors did not close before the next scenario',
+      );
+    }
   });
   after(async () => {
     if (app) {
-      await page
-        .screenshot({ path: path.join(artifactDirectory, 'workbench.png') })
-        .catch(() => {});
-      await app
-        .context()
-        .tracing.stop({ path: path.join(artifactDirectory, 'trace.zip') })
-        .catch(() => {});
-      await app.close();
+      try {
+        if (page) {
+          await page
+            .screenshot({ path: path.join(artifactDirectory, 'workbench.png') })
+            .catch(() => {});
+        }
+        await app
+          .context()
+          .tracing.stop({ path: path.join(artifactDirectory, 'trace.zip') })
+          .catch(() => {});
+      } finally {
+        await app.close();
+        fs.cpSync(path.join(user, 'logs'), path.join(artifactDirectory, 'vscode-logs'), {
+          recursive: true,
+        });
+      }
     }
     // Isolated profile retained in the OS temp directory for failure investigation.
   });
@@ -342,44 +464,272 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     });
   }
 
+  it('fits and zooms the document independently while retaining selection, edits and source bytes', async () => {
+    await command('View: Close All Editors');
+    fs.writeFileSync(
+      path.join(workspace, 'wide.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="160"><rect width="1600" height="160" fill="steelblue"/></svg>',
+    );
+    const source =
+      '# Viewport\n\nAlpha beta gamma.\n\n![Wide](wide.svg)\n\n```javascript\nconst text = "' +
+      'long_code_'.repeat(100) +
+      '";\n```\n\n' +
+      '| One | Two | Three | Four | Five | Six |\n| --- | --- | --- | --- | --- | --- |\n| First cell | Second | Third | Fourth | Fifth | Sixth |\n\n' +
+      'Long document paragraph with ordinary readable prose.\n\n'.repeat(100);
+    const { editor, file } = await open('viewport.md', source);
+    assert.equal(await editor.locator('.muninn-toolbar [data-command="resetZoom"]').count(), 1);
+    const nativeWindow = await app.browserWindow(page);
+    const bounds = await nativeWindow.evaluate((window) => window.getBounds());
+    const resize = (target) => resizeEditorPane(editor, nativeWindow, target);
+    const measure = () =>
+      editor.evaluate(async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const shell = document.querySelector('#editor-shell');
+        const prose = document.querySelector('.ProseMirror');
+        const toolbar = document.querySelector('.muninn-toolbar');
+        const pre = document.querySelector('.muninn-code-node-body');
+        const table = document.querySelector('.muninn-table-node-grid');
+        const image = document.querySelector('.ProseMirror img[alt="Wide"]');
+        const surface = document.querySelector('#editor');
+        // VS Code can retain Chromium's pre-128 CSS-zoom coordinate behavior.
+        const coordinateScale = shell.clientWidth / surface.getBoundingClientRect().width;
+        return {
+          viewport: innerWidth,
+          viewportHeight: innerHeight,
+          zoom: document.querySelector('#editor').style.zoom,
+          percentage: document.querySelector('[data-command="resetZoom"]').textContent,
+          proseWidth: prose.getBoundingClientRect().width * coordinateScale,
+          coordinateScale,
+          userAgent: navigator.userAgent,
+          proseLeft: prose.getBoundingClientRect().left * coordinateScale,
+          proseRight: prose.getBoundingClientRect().right * coordinateScale,
+          imageWidth: image.getBoundingClientRect().width * coordinateScale,
+          bodyOverflow: document.body.scrollWidth > innerWidth,
+          shellOverflow: shell.scrollWidth > shell.clientWidth + 1,
+          verticalScroll: shell.scrollHeight > shell.clientHeight,
+          toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth + 1,
+          codeOverflow: pre.scrollWidth > pre.clientWidth,
+          tableContained:
+            table.getBoundingClientRect().right <= prose.getBoundingClientRect().right + 1,
+        };
+      });
+    const check = async () => {
+      const geometry = await measure();
+      assert.ok(geometry.viewportHeight >= 120, JSON.stringify(geometry));
+      assert.equal(geometry.bodyOverflow, false, JSON.stringify(geometry));
+      assert.equal(geometry.shellOverflow, false, JSON.stringify(geometry));
+      assert.equal(geometry.toolbarOverflow, false, JSON.stringify(geometry));
+      assert.equal(geometry.verticalScroll, true, JSON.stringify(geometry));
+      assert.equal(geometry.codeOverflow, true, JSON.stringify(geometry));
+      assert.equal(geometry.tableContained, true, JSON.stringify(geometry));
+      assert.ok(
+        geometry.proseLeft >= 0 && geometry.proseRight <= geometry.viewport + 1,
+        JSON.stringify(geometry),
+      );
+      assert.ok(geometry.imageWidth <= geometry.proseWidth + 1, JSON.stringify(geometry));
+      assert.equal(
+        await editor.locator('.muninn-toolbar [data-command="resetZoom"]').isVisible(),
+        true,
+      );
+      return geometry;
+    };
+    evidence.editorZoom = [];
+    try {
+      await resize(1440);
+      await editor.locator('.ProseMirror img[alt="Wide"]').evaluate((image) => image.decode());
+      const comfortable = await check();
+      await clickTool(editor, 'fitToWidth', true);
+      const fitted = await check();
+      assert.ok(fitted.proseWidth > comfortable.proseWidth);
+      for (const width of [1024, 480, 320]) {
+        await resize(width);
+        evidence.editorZoom.push(await check());
+      }
+      for (let count = 0; count < 10; count++) await clickTool(editor, 'zoomIn', true);
+      assert.equal((await check()).percentage, '200%');
+      await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom-200.png') });
+      evidence.editorZoom.push(await check());
+      await clickTool(editor, 'resetZoom', true);
+      for (let count = 0; count < 5; count++) await clickTool(editor, 'zoomOut', true);
+      assert.equal((await check()).percentage, '50%');
+      await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom-50.png') });
+      evidence.editorZoom.push(await check());
+      await clickTool(editor, 'resetZoom', true);
+      // Enter operates the visible percentage control through the existing keyboard focus model.
+      await editor.locator('.muninn-toolbar [data-command="resetZoom"]').focus();
+      await page.keyboard.press('Enter');
+      assert.equal((await check()).percentage, '100%');
+      await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(2));
+      await resize(320);
+      await clickTool(editor, 'zoomIn', true);
+      assert.equal((await check()).percentage, '110%');
+      evidence.editorZoom.push({ ...(await check()), applicationZoom: 2 });
+      await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(1));
+      await resize(640);
+      for (let count = 0; count < 9; count++) await clickTool(editor, 'zoomIn', true);
+      const paragraph = editor.locator('.ProseMirror > p').first();
+      await clickZoomedContent(editor, paragraph, { x: 8, y: 8 }, 2);
+      // Windows word selection includes the following space; keep the same exact edit target.
+      if (await editor.evaluate(() => getSelection().toString() === 'Alpha ')) {
+        await page.keyboard.press('Shift+ArrowLeft');
+      }
+      await eventually(
+        () => editor.evaluate(() => getSelection().toString() === 'Alpha'),
+        'Mouse selection did not select Alpha at 200%',
+      );
+      await clickTool(editor, 'zoomOut', true);
+      await clickTool(editor, 'toggleBold', true);
+      const bold = source.replace('Alpha beta', '**Alpha** beta');
+      await save(editor, file, bold);
+      await clickTool(editor, 'fitToWidth', true);
+      await command('Muninn for VS Code: Undo');
+      await save(editor, file, source);
+      await clickTool(editor, 'zoomIn', true);
+      await command('Muninn for VS Code: Redo');
+      await save(editor, file, bold);
+      await command('Muninn for VS Code: Undo');
+      await save(editor, file, source);
+      await clickZoomedContent(
+        editor,
+        editor.locator('[data-testid="muninn-table-toggle-source"]'),
+      );
+      assert.equal(await paragraph.textContent(), 'Alpha beta gamma.');
+      const helpGeometry = await editor
+        .locator('[data-testid="muninn-table-toggle-source"]')
+        .evaluate(async (button) => {
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+          const shell = document.querySelector('#editor-shell');
+          const surface = document.querySelector('#editor');
+          const scale = shell.clientWidth / surface.getBoundingClientRect().width;
+          const anchor = button.getBoundingClientRect();
+          const tooltip = document.querySelector('[role="tooltip"]');
+          const hint = tooltip.getBoundingClientRect();
+          return {
+            scale,
+            hidden: tooltip.hidden,
+            anchorTop: anchor.top * scale,
+            anchorBottom: anchor.bottom * scale,
+            hintTop: hint.top,
+            hintBottom: hint.bottom,
+            hintLeft: hint.left,
+            hintRight: hint.right,
+            paneWidth: innerWidth,
+          };
+        });
+      assert.equal(helpGeometry.hidden, false, JSON.stringify(helpGeometry));
+      // Integer layout metrics can differ from rendered bounds by one CSS pixel.
+      assert.ok(
+        helpGeometry.hintLeft >= 7 && helpGeometry.hintRight <= helpGeometry.paneWidth - 7,
+        JSON.stringify(helpGeometry),
+      );
+      assert.ok(
+        Math.min(
+          Math.abs(helpGeometry.hintTop - helpGeometry.anchorBottom),
+          Math.abs(helpGeometry.anchorTop - helpGeometry.hintBottom),
+        ) <= 8,
+        JSON.stringify(helpGeometry),
+      );
+      await page.screenshot({ path: path.join(artifactDirectory, 'zoomed-table-help.png') });
+      const draft = editor.locator('textarea');
+      await draft.fill('unapplied zoom draft');
+      await draft.evaluate((input) => input.setSelectionRange(2, 7));
+      await clickTool(editor, 'fitToWidth', true);
+      await clickTool(editor, 'zoomIn', true);
+      assert.deepEqual(
+        await draft.evaluate((input) => [input.value, input.selectionStart, input.selectionEnd]),
+        ['unapplied zoom draft', 2, 7],
+      );
+      await clickTool(editor, 'resetZoom', true);
+      await save(editor, file, source);
+      await editor.locator('[data-testid="muninn-table-toggle-source"]').focus();
+      await page.keyboard.press('Enter');
+      await clickTool(editor, 'fitToWidth', true);
+      // Multiple views of one document are disabled on the supported minimum version.
+      await command('View: New Editor Group to the Right');
+      const { editor: rightEditor } = await open(
+        'viewport-right.md',
+        '# Independent view\n\nRight pane.\n',
+      );
+      const splitFrames = [editor, rightEditor];
+      for (const frame of splitFrames) {
+        assert.equal(await (await frame.frameElement()).isVisible(), true);
+        assert.equal(
+          await frame.evaluate(() => {
+            const shell = document.querySelector('#editor-shell');
+            return (
+              shell.scrollWidth <= shell.clientWidth + 1 && document.body.scrollWidth <= innerWidth
+            );
+          }),
+          true,
+        );
+      }
+      await clickTool(rightEditor, 'zoomIn', true);
+      assert.equal(
+        await rightEditor.locator('.muninn-toolbar [data-command="resetZoom"]').textContent(),
+        '110%',
+      );
+      assert.equal(
+        await editor.locator('.muninn-toolbar [data-command="resetZoom"]').textContent(),
+        '100%',
+      );
+      await command('View: Close Editor');
+      await page
+        .locator('.tab')
+        .filter({ hasText: 'viewport-right.md' })
+        .waitFor({ state: 'hidden' });
+      await command('View: Join All Editor Groups');
+      await editor.locator('.ProseMirror').waitFor();
+      await resize(1440);
+      await clickTool(editor, 'resetZoom', true);
+      assert.ok(Math.abs((await check()).proseWidth - comfortable.proseWidth) <= 1);
+      for (const [command, steps] of [
+        ['zoomIn', 10],
+        ['zoomOut', 5],
+      ]) {
+        assert.equal(
+          await editor.locator('.muninn-toolbar [data-command="' + command + '"]').isVisible(),
+          true,
+        );
+        for (let count = 0; count < steps; count++) await clickTool(editor, command, true);
+        assert.equal(
+          await editor
+            .locator('.muninn-toolbar [data-command="resetZoom"]')
+            .evaluate((button) => document.activeElement === button),
+          true,
+        );
+        await page.keyboard.press('Enter');
+        assert.equal((await check()).percentage, '100%');
+      }
+      assert.equal(fs.readFileSync(file, 'utf8'), source);
+      await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom.png') });
+      evidence.editorZoomSourcePreserved = true;
+      evidence.editorZoomSplitPanes = true;
+      writeEvidence();
+    } finally {
+      await command('View: Join All Editor Groups');
+      await nativeWindow.evaluate((window, original) => {
+        window.webContents.setZoomFactor(1);
+        window.setBounds(original);
+      }, bounds);
+    }
+  });
+
   it('keeps ordinary table values readable in a 320 CSS-pixel pane', async () => {
     const { editor, file } = await open(
       'narrow-table.md',
-      '| Area | Scenario | Result |\n| --- | --- | --- |\n| Editor | Keyboard navigation | Narrow split panes |\n',
+      '| Area | Scenario | Result |\n| --- | --- | --- |\n| Editor | Keyboard navigation | Narrow split panes |\n\n```Unknown-Language-With-A-Long-Name\n' +
+        'long_code_'.repeat(100) +
+        '\n```\n',
     );
     const nativeWindow = await app.browserWindow(page);
     const bounds = await nativeWindow.evaluate((window) => window.getBounds());
+    const expectedCommands = await editor
+      .locator('.muninn-toolbar [data-command]')
+      .evaluateAll((buttons) => buttons.map((button) => button.dataset.command));
     try {
-      const resize = async (target) => {
-        await eventually(
-          async () => {
-            const width = await editor.evaluate(async () => {
-              await new Promise((resolve) =>
-                requestAnimationFrame(() => requestAnimationFrame(resolve)),
-              );
-              return innerWidth;
-            });
-            if (Math.abs(width - target) <= 1) return true;
-            const current = await nativeWindow.evaluate((window) => ({
-              width: window.getSize()[0],
-              height: window.getSize()[1],
-              zoom: window.webContents.getZoomFactor(),
-            }));
-            await nativeWindow.evaluate(
-              (window, size) => {
-                window.setMinimumSize(200, 200);
-                window.setSize(size.width, size.height);
-              },
-              {
-                width: Math.round(current.width + (target - width) * current.zoom),
-                height: current.height,
-              },
-            );
-            return false;
-          },
-          'Native editor did not resize to ' + target + ' CSS pixels',
-        );
-      };
+      const resize = (target) => resizeEditorPane(editor, nativeWindow, target);
       const measure = () =>
         editor.evaluate(async () => {
           // Native zoom/resizing also schedules webview layout and ResizeObserver callbacks.
@@ -399,6 +749,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             };
           });
           const toolbar = document.querySelector('.muninn-toolbar');
+          const codeBody = document.querySelector('.muninn-code-node-body');
           const buttons = [...toolbar.querySelectorAll('button')].filter(
             (button) => !button.hidden,
           );
@@ -407,6 +758,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             cells,
             overflow: grid.scrollWidth > grid.clientWidth,
             bodyOverflow: document.body.scrollWidth > innerWidth,
+            codeOverflow: codeBody.scrollWidth > codeBody.clientWidth,
+            shellOverflow: document.querySelector('.muninn-editor-shell').scrollWidth > innerWidth,
+            languageRight: document
+              .querySelector('.muninn-code-node-language')
+              .getBoundingClientRect().right,
             toolbarOverflow: toolbar.scrollWidth > toolbar.clientWidth,
             targets: buttons.map((button) => {
               const r = button.getBoundingClientRect();
@@ -427,6 +783,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         const geometry = await measure();
         assert.ok(Math.abs(geometry.width - target) <= 1, JSON.stringify(geometry));
         assert.equal(geometry.bodyOverflow, false);
+        assert.equal(geometry.shellOverflow, false);
+        assert.equal(geometry.codeOverflow, true);
+        assert.ok(geometry.languageRight <= geometry.width);
         assert.equal(geometry.toolbarOverflow, false);
         // Native fonts can fit this table at 375px; 320px still requires local scrolling.
         if (target === 320) assert.equal(geometry.overflow, true);
@@ -444,10 +803,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           const overflow = await editor
             .locator('#muninn-toolbar-menu button')
             .evaluateAll((rows) => rows.map((row) => row.dataset.command));
-          assert.equal(new Set([...visible, ...overflow]).size, 17);
-          assert.equal(visible.length + overflow.length, 17);
+          assert.deepEqual(new Set([...visible, ...overflow]), new Set(expectedCommands));
+          assert.equal(visible.length + overflow.length, expectedCommands.length);
           await editor.locator('#muninn-toolbar-menu button').first().press('Escape');
-        } else assert.equal(visible.length, 17);
+        } else assert.deepEqual(new Set(visible), new Set(expectedCommands));
         if (target === 1440) assert.equal(await more.isVisible(), false);
         evidence.geometry.push(geometry);
         if (target <= 375)
@@ -456,6 +815,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await resize(320);
       await editor.evaluate(() =>
         document.documentElement.style.setProperty('--vscode-font-size', '24px'),
+      );
+      await eventually(
+        async () => !(await measure()).toolbarOverflow,
+        'Toolbar did not settle after font size changed',
       );
       const large = await measure();
       assert.equal(large.bodyOverflow, false);
@@ -529,14 +892,30 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           button.setAttribute('aria-label', button.getAttribute('aria-label').repeat(2));
         }
       });
-      await editor.locator('.muninn-toolbar [data-command="toggleBold"]').focus();
-      assert.equal(
-        await editor.locator('[role="tooltip"]').evaluate((help) => {
+      await editor.locator('[data-testid="muninn-toolbar-more"]').focus();
+      let tooltipGeometry;
+      await eventually(async () => {
+        tooltipGeometry = await editor.locator('[role="tooltip"]').evaluate((help) => {
           const rect = help.getBoundingClientRect();
-          return rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth;
-        }),
-        true,
-      );
+          return {
+            width: rect.width,
+            left: rect.left,
+            right: rect.right,
+            pane: innerWidth,
+            hidden: help.hidden,
+            text: help.textContent,
+            active: document.activeElement?.outerHTML,
+          };
+        });
+        return (
+          tooltipGeometry.width > 0 &&
+          tooltipGeometry.left >= 0 &&
+          tooltipGeometry.right <= tooltipGeometry.pane
+        );
+      }, 'Expanded tooltip did not settle inside the pane').catch((error) => {
+        error.message += ': ' + JSON.stringify(tooltipGeometry);
+        throw error;
+      });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(
         await editor.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
@@ -569,12 +948,12 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           const geometry = await measure();
           assert.equal(geometry.toolbarOverflow, false);
           if (target === 1440) {
-            assert.equal(geometry.targets.length, 17);
+            assert.equal(geometry.targets.length, expectedCommands.length);
             assert.equal(
               await editor.locator('[data-testid="muninn-toolbar-more"]').isVisible(),
               false,
             );
-          } else if (target === 320) assert.ok(geometry.targets.length < 17);
+          } else if (target === 320) assert.ok(geometry.targets.length < expectedCommands.length);
         }
         assert.equal(
           JSON.parse(fs.readFileSync(settingsPath, 'utf8'))['muninn.toolbar.mode'],
@@ -660,7 +1039,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
 
   it('keeps Codicons, help, table feedback and focus legible in default themes', async () => {
-    const { editor, file } = await open('theme-table.md', '| Name |\n| --- |\n| Alpha |\n');
+    const source =
+      '| Name |\n| --- |\n| Alpha |\n\n```javascript\nconst count = 42; // a comment\nconst label = "hello";\n```\n';
+    const { editor, file } = await open('theme-table.md', source);
     await editor.locator('[data-testid="muninn-table-toggle-source"]').click();
     await editor.locator('textarea').fill('invalid draft');
     await editor.getByRole('button', { name: 'Apply Source', exact: true }).click();
@@ -741,6 +1122,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
             };
           }, selectors);
         const measurements = await measure([
+          '.muninn-code-node .hljs-keyword',
+          '.muninn-code-node .hljs-string',
+          '.muninn-code-node .hljs-number',
+          '.muninn-code-node .hljs-comment',
           '[role="tooltip"]',
           '.muninn-table-node-source-hint',
           '.muninn-table-node-source-feedback',
@@ -749,6 +1134,16 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         ]);
         assert.equal(measurements.fontLoaded, true);
         assert.notEqual(measurements.glyph, 'none');
+        assert.equal(
+          await editor.evaluate(() => {
+            const keyword = document.querySelector('.muninn-code-node .hljs-keyword');
+            return (
+              getComputedStyle(keyword).color !== getComputedStyle(keyword.closest('code')).color
+            );
+          }),
+          true,
+          theme.id + ' keyword must be visually distinct',
+        );
         for (const value of measurements.values)
           assert.ok(
             value.text >=
@@ -787,7 +1182,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     } finally {
       fs.writeFileSync(settingsPath, originalSettings);
     }
-    assert.equal(fs.readFileSync(file, 'utf8'), '| Name |\n| --- |\n| Alpha |\n');
+    assert.equal(fs.readFileSync(file, 'utf8'), source);
   });
 
   it('keeps basic actions quiet and keyboard accessible, formats without replacing selected text', async () => {
@@ -815,6 +1210,46 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       () => fs.readFileSync(file, 'utf8').includes('```javascript'),
       'Code language was not saved',
     );
+  });
+
+  it('edits highlighted code with native selection, paste, save, undo and redo', async () => {
+    const source = 'Before\n\n~~~javascript\nconst value = 1;\n~~~\n\nAfter\n';
+    let { editor, file } = await open('highlighting.md', source);
+    await editor.locator('pre code').click();
+    await editor.locator('.ProseMirror').press(lineEnd);
+    await editor.locator('.ProseMirror').pressSequentially(' // edited');
+    const edited = 'Before\n\n~~~javascript\nconst value = 1; // edited\n~~~\n\nAfter\n';
+    editor = await save(editor, file, edited);
+    assert.equal(await editor.locator('.hljs-comment').innerText(), '// edited');
+    await command('Muninn for VS Code: Undo');
+    editor = await save(editor, file, source);
+    await command('Muninn for VS Code: Redo');
+    editor = await save(editor, file, edited);
+    await editor.locator('pre code').click();
+    await editor.locator('.ProseMirror').press(lineStart);
+    await editor.locator('.ProseMirror').press(selectLineEnd);
+    assert.equal(
+      await editor.evaluate(() => getSelection().toString()),
+      'const value = 1; // edited',
+    );
+    await editor.evaluate(() => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', 'const label = "<safe>";');
+      document
+        .querySelector('.ProseMirror')
+        .dispatchEvent(
+          new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+    });
+    editor = await save(
+      editor,
+      file,
+      'Before\n\n~~~javascript\nconst label = "<safe>";\n~~~\n\nAfter\n',
+    );
+    assert.equal(await editor.locator('.hljs-string').innerText(), '"<safe>"');
+    await editor.locator('.muninn-code-node-language').selectOption('');
+    editor = await save(editor, file, 'Before\n\n~~~\nconst label = "<safe>";\n~~~\n\nAfter\n');
+    assert.equal(await editor.locator('pre code span').count(), 0);
   });
 
   it('saves focused table input immediately and supports grid actions, source apply, delete and undo', async () => {
@@ -880,7 +1315,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await command('Muninn for VS Code: Open Source Editor');
     await page
       .getByRole('tab', { name: /Untitled/ })
-      .first()
+      .last()
       .click();
     await eventually(
       async () =>
@@ -1001,9 +1436,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('creates a standard GFM task and keeps typing outside the hidden marker', async () => {
     const { editor, file } = await open('new-task.md', 'Alpha\n');
     await editor.locator('.ProseMirror p').click();
-    await page.keyboard.press(lineStart);
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('ArrowRight');
+    await editor.locator('.ProseMirror').press(lineStart);
+    await editor.locator('.ProseMirror').press('ArrowRight');
+    await editor.locator('.ProseMirror').press('ArrowRight');
     await clickTool(editor, 'toggleTask');
     await editor.locator('.ProseMirror').pressSequentially('X');
     await save(editor, file, '* [ ] AlXpha\n');
@@ -1061,9 +1496,143 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     );
     const notePath = path.join(workspace, 'new-note.md');
     await command('Muninn for VS Code: New Markdown Note');
+    await page.getByText('Create Markdown Note', { exact: true }).waitFor();
     await page.locator('.quick-input-widget input[type="text"]').fill(notePath);
-    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
     await eventually(() => fs.existsSync(notePath), 'New Note did not create a Markdown file');
+    await eventually(
+      async () => Boolean(await visibleEditorFrame('new-note.md')),
+      'New Note did not open its Markdown editor',
+    );
+  });
+
+  it('exports unsaved HTML through the native picker and renders printable offline output', async () => {
+    // Git may check fixtures out as CRLF; do not build a mixed-newline test document.
+    const source =
+      fs.readFileSync('tests/fixtures/export/representative.md', 'utf8').replaceAll('\r\n', '\n') +
+      '\n## Page flow\n\n' +
+      Array.from(
+        { length: 12 },
+        (_, index) =>
+          `Paragraph ${index + 1}. ` +
+          'This paragraph checks readable page flow, preserved text and useful margins when a shared document spans several printed pages. '.repeat(
+            4,
+          ),
+      ).join('\n\n') +
+      '\n\n```text\n' +
+      'long_code_'.repeat(60) +
+      '\n```\n\nFinal export paragraph.\n';
+    fs.copyFileSync('tests/fixtures/export/image.svg', path.join(workspace, 'image.svg'));
+    const { editor, file } = await open('export.md', source);
+    await editor.locator('.ProseMirror p').last().click();
+    await editor.locator('.ProseMirror').press(lineEnd);
+    await editor.locator('.ProseMirror').pressSequentially(' Unsaved change.');
+    const exported = path.join(workspace, 'shared-notes.html');
+    await clickTool(editor, 'exportHtml');
+    await page.locator('.quick-input-widget input[type="text"]').waitFor();
+    await page.keyboard.press('Escape');
+    assert.equal(fs.existsSync(exported), false);
+    assert.equal(fs.readFileSync(file, 'utf8'), source);
+    await command('Muninn for VS Code: Export HTML');
+    await page.getByText('Export HTML', { exact: true }).waitFor();
+    await page.locator('.quick-input-widget input[type="text"]').fill(exported);
+    await page.getByRole('button', { name: 'OK', exact: true }).click();
+    await eventually(() => fs.existsSync(exported), 'Export did not write an HTML file');
+    const html = fs.readFileSync(exported, 'utf8');
+    assert.match(html, /Final export paragraph\. Unsaved change\./);
+    assert.doesNotMatch(html, /<script[\s>]/i);
+    assert.equal(fs.readFileSync(file, 'utf8'), source);
+    fs.copyFileSync(exported, path.join(artifactDirectory, 'export.html'));
+
+    const windowOpened = app.waitForEvent('window');
+    const outputWindowId = await app.evaluate(async ({ BrowserWindow }, exported) => {
+      const window = new BrowserWindow({
+        show: false,
+        width: 900,
+        height: 1000,
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          partition: 'muninn-export-verification',
+        },
+      });
+      window.webContents.session.webRequest.onBeforeRequest(
+        { urls: ['http://*/*', 'https://*/*'] },
+        (_request, reply) => reply({ cancel: true }),
+      );
+      try {
+        await window.loadFile(exported);
+      } catch (error) {
+        window.destroy();
+        throw error;
+      }
+      return window.id;
+    }, exported);
+    const output = await windowOpened;
+    try {
+      await output.locator('h1').waitFor();
+      assert.equal(await output.locator('h1').innerText(), 'Shared notes');
+      assert.equal(await output.locator('table td').count(), 4);
+      assert.equal(await output.locator('script').count(), 0);
+      assert.equal(
+        await output
+          .locator('img')
+          .evaluate((image) => image.complete && image.naturalWidth === 240),
+        true,
+      );
+      assert.match(
+        await output.locator('body').innerText(),
+        /Mermaid diagrams are included as source code/,
+      );
+      await output.screenshot({ path: path.join(artifactDirectory, 'export.png'), fullPage: true });
+      await output.emulateMedia({ media: 'print' });
+      assert.equal(
+        await output
+          .locator('pre')
+          .first()
+          .evaluate((pre) => getComputedStyle(pre).whiteSpace),
+        'pre-wrap',
+      );
+      assert.equal(
+        await output
+          .locator('h2')
+          .first()
+          .evaluate((heading) => getComputedStyle(heading).breakAfter),
+        'avoid',
+      );
+      if (version === '1.85.2') {
+        // This VS Code build disables Electron printing; browser PDF is verified on stable.
+        evidence.export = { offline: true, printStyles: true, pdfRendererAvailable: false };
+      } else {
+        const pdf = await app.evaluate(async ({ BrowserWindow }, id) => {
+          const window = BrowserWindow.fromId(id);
+          const bytes = await window.webContents.printToPDF({
+            pageSize: 'A4',
+            printBackground: true,
+            preferCSSPageSize: true,
+          });
+          return bytes.toString('base64');
+        }, outputWindowId);
+        const bytes = Buffer.from(pdf, 'base64');
+        assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+        assert.ok(bytes.length > 10000);
+        fs.writeFileSync(path.join(artifactDirectory, 'export.pdf'), bytes);
+        evidence.export = {
+          offline: true,
+          pdfBytes: bytes.length,
+          renderer: 'Chromium print pipeline',
+        };
+      }
+      writeEvidence();
+    } finally {
+      await app.evaluate(
+        ({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(),
+        outputWindowId,
+      );
+    }
+    await command('Muninn for VS Code: Undo');
+    await save(editor, file, source);
   });
 });
 

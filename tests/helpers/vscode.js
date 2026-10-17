@@ -81,6 +81,7 @@ const workspace = {
 };
 
 const window = {
+  withProgress: async (_options, task) => task(),
   showInformationMessage: async () => undefined,
   showWarningMessage: async () => undefined,
   showErrorMessage: async () => undefined,
@@ -185,6 +186,7 @@ const StatusBarAlignment = {
 };
 
 module.exports = {
+  ProgressLocation: { Notification: 15 },
   Uri,
   Position,
   Range,

@@ -6,13 +6,7 @@ import { liftListItem, splitListItem } from 'prosemirror-schema-list';
 import { Plugin, TextSelection, type Command } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { getString } from './localization';
-
-export const headingSlug = (text: string): string =>
-  text
-    .toLowerCase()
-    .trim()
-    .replaceAll(/[^\p{L}\p{N}\p{M}_\-\s]/gu, '')
-    .replaceAll(/\s/g, '-');
+import { headingSlug } from '../../shared/heading-slug';
 
 const decorations = (document_: ProseMirrorNode): DecorationSet => {
   const result: Decoration[] = [];

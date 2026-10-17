@@ -121,7 +121,13 @@ export type ViewToHostMessage =
   | {
       type: 'view.executeCommand';
       payload: {
-        command: 'openRawMarkdown' | 'save' | 'insertImage' | 'insertFileLink' | 'goToHeading';
+        command:
+          | 'openRawMarkdown'
+          | 'save'
+          | 'insertImage'
+          | 'insertFileLink'
+          | 'goToHeading'
+          | 'exportHtml';
       };
     }
   | {
@@ -257,9 +263,14 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
   if (value.type === 'view.executeCommand') {
     return (
       isObject(value.payload) &&
-      ['openRawMarkdown', 'save', 'insertImage', 'insertFileLink', 'goToHeading'].includes(
-        value.payload.command as string,
-      )
+      [
+        'openRawMarkdown',
+        'save',
+        'insertImage',
+        'insertFileLink',
+        'goToHeading',
+        'exportHtml',
+      ].includes(value.payload.command as string)
     );
   }
 

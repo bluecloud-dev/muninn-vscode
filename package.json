@@ -277,6 +277,13 @@
         "title": "%command.muninn.redo.title%",
         "category": "%command.category%",
         "enablement": "activeCustomEditorId == muninn.markdownEditor"
+      },
+      {
+        "command": "muninn.exportHtml",
+        "title": "%command.muninn.exportHtml.title%",
+        "category": "%command.category%",
+        "icon": "$(export)",
+        "enablement": "activeCustomEditorId == muninn.markdownEditor"
       }
     ],
     "menus": {
@@ -295,6 +302,11 @@
           "command": "muninn.inspectConfiguration",
           "when": "activeCustomEditorId == muninn.markdownEditor",
           "group": "2_muninn@7"
+        },
+        {
+          "command": "muninn.exportHtml",
+          "when": "activeCustomEditorId == muninn.markdownEditor",
+          "group": "2_muninn@6"
         }
       ],
       "commandPalette": [
@@ -397,6 +409,10 @@
         },
         {
           "command": "muninn.redo",
+          "when": "activeCustomEditorId == muninn.markdownEditor"
+        },
+        {
+          "command": "muninn.exportHtml",
           "when": "activeCustomEditorId == muninn.markdownEditor"
         }
       ]
@@ -520,6 +536,7 @@
   "dependencies": {
     "@vscode/codicons": "0.0.45",
     "diff": "^9.0.0",
+    "highlight.js": "11.12.0",
     "markdown-it": "^14.3.0",
     "markdown-it-front-matter": "^0.2.4",
     "mermaid": "^11.16.1",

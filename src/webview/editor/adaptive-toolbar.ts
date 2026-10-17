@@ -29,7 +29,13 @@ export const attachAdaptiveToolbar = (options: {
   const roving = attachToolbarRovingFocus(toolbar);
   const groups = [...toolbar.querySelectorAll<HTMLElement>('.muninn-toolbar-group')];
   const actions = [...buttons.keys()];
-  const priority = new Set(['chooseBlockStyle', 'openRawMarkdown', 'toggleBold', 'toggleItalic']);
+  const priority = new Set([
+    'resetZoom',
+    'chooseBlockStyle',
+    'openRawMarkdown',
+    'toggleBold',
+    'toggleItalic',
+  ]);
   const preferredOrder = [...priority, ...actions.filter((command) => !priority.has(command))];
   const measurement = document.createElement('div');
   measurement.className = 'muninn-toolbar-measure';

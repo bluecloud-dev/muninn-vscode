@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getHtmlString } from './localization';
-import { attachIconHelp, setIconButton } from './icon-button';
+import { attachIconHelp, setIconButton, setButtonHelp } from './icon-button';
 
 export type EditorBootstrap = {
   app: HTMLDivElement;
@@ -47,7 +47,14 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
       <button type="button" data-command="insertCodeBlock" data-icon="code" tabindex="-1" title="${getHtmlString('toolbarButtonCodeTitle')}">${getHtmlString('commandLabelCodeBlock')}</button>
       <button type="button" data-command="insertMermaidBlock" data-icon="symbol-structure" data-shortcut="Ctrl/Cmd+Alt+M" tabindex="-1" title="${getHtmlString('toolbarButtonMermaidTitle')}">${getHtmlString('toolbarButtonMermaidLabel')}</button>
     </div>
+    <div class="muninn-toolbar-group" data-group="view" role="group" aria-label="${getHtmlString('toolbarGroupViewLabel')}">
+      <button type="button" data-command="zoomOut" data-icon="zoom-out" tabindex="-1" title="${getHtmlString('commandLabelZoomOut')}">${getHtmlString('commandLabelZoomOut')}</button>
+      <button type="button" data-command="resetZoom" tabindex="-1" title="${getHtmlString('commandLabelResetZoom')}">100%</button>
+      <button type="button" data-command="zoomIn" data-icon="zoom-in" tabindex="-1" title="${getHtmlString('commandLabelZoomIn')}">${getHtmlString('commandLabelZoomIn')}</button>
+      <button type="button" data-command="fitToWidth" data-icon="screen-normal" aria-pressed="false" tabindex="-1" title="${getHtmlString('commandLabelFitToWidth')}">${getHtmlString('commandLabelFitToWidth')}</button>
+    </div>
     <div class="muninn-toolbar-group" data-group="utilities" role="group" aria-label="${getHtmlString('toolbarGroupUtilitiesLabel')}">
+      <button type="button" data-command="exportHtml" data-icon="export" tabindex="-1" title="${getHtmlString('commandLabelExportHtml')}">${getHtmlString('commandLabelExportHtml')}</button>
       <button type="button" data-command="goToHeading" data-icon="list-tree" tabindex="-1" title="${getHtmlString('commandLabelHeadings')}">${getHtmlString('commandLabelHeadings')}</button>
       <button type="button" data-command="openRawMarkdown" data-icon="go-to-file" tabindex="-1" title="${getHtmlString('toolbarButtonSourceTitle')}">${getHtmlString('toolbarButtonSourceLabel')}</button>
       <button type="button" class="muninn-toolbar-more" data-icon="ellipsis" data-testid="muninn-toolbar-more" aria-haspopup="menu" aria-controls="muninn-toolbar-menu" aria-expanded="false" tabindex="-1" hidden title="${getHtmlString('toolbarMoreTitle')}">${getHtmlString('toolbarMoreLabel')}</button>
@@ -75,10 +82,7 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
   for (const button of app.querySelectorAll<HTMLButtonElement>('button')) {
     if (button.dataset.icon)
       setIconButton(button, button.dataset.icon, button.textContent!, button.title);
-    else {
-      button.dataset.help = button.title;
-      button.removeAttribute('title');
-    }
+    else setButtonHelp(button, button.title);
     const command = button.dataset.command;
     if (!command) {
       continue;

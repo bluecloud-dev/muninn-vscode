@@ -57,5 +57,6 @@
   "command.muninn.redo.title": "Redo",
   "capabilities.untrustedWorkspaces.description": "The editor works in Restricted Mode. Mermaid rendering requires workspace trust or explicit user permission.",
   "customEditor.displayName": "Muninn Markdown Editor",
-  "configuration.toolbar.mode.deprecationMessage": "The toolbar now shows every control that fits and places the remaining actions in More. Basic and advanced values are retained for compatibility and no longer affect visibility."
+  "configuration.toolbar.mode.deprecationMessage": "The toolbar now shows every control that fits and places the remaining actions in More. Basic and advanced values are retained for compatibility and no longer affect visibility.",
+  "command.muninn.exportHtml.title": "Export HTML"
 }

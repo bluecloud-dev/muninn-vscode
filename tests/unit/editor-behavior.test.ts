@@ -35,6 +35,11 @@ describe('bundled editor behavior with a delayed host', function () {
         source: dom.window as unknown as Window,
       }),
     );
+  const setting = (contentWidth: 'comfortable' | 'full' | number) =>
+    send({
+      type: 'host.settingsChanged',
+      payload: { mermaidEnabled: false, toolbarMode: 'basic', contentWidth },
+    });
   const applies = () =>
     messages.filter(
       (m): m is Extract<ViewToHostMessage, { type: 'view.applyDocument' }> =>
@@ -130,7 +135,7 @@ describe('bundled editor behavior with a delayed host', function () {
   const append = async (
     editor: HTMLElement,
     text: string,
-    paragraph = editor.querySelector('p')!,
+    paragraph: HTMLElement = editor.querySelector('p')!,
   ): Promise<void> => {
     if (!(paragraph.lastChild instanceof dom.window.Text)) {
       paragraph.append(dom.window.document.createTextNode(''));
@@ -164,6 +169,251 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
     if (applies().length > 0) ack(applies().length - 1, applies().length);
   };
+
+  it('changes only the document zoom, shows its percentage and enforces 50–200% bounds', async () => {
+    const editor = open('Keep **this** exactly.\r\n');
+    const button = (command: string) => {
+      const control = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      );
+      assert.ok(control, command + ' is reachable from the toolbar');
+      return control;
+    };
+    const surface = dom.window.document.querySelector<HTMLElement>('#editor')!;
+    const original = editor.textContent;
+    assert.equal(button('resetZoom').textContent, '100%');
+    button('zoomIn').click();
+    assert.equal(surface.style.zoom, '1.1');
+    assert.equal(button('resetZoom').textContent, '110%');
+    assert.match(button('resetZoom').getAttribute('aria-label')!, /100%.*110%/);
+    button('zoomIn').focus();
+    for (let count = 0; count < 20; count++) button('zoomIn').click();
+    assert.equal(surface.style.zoom, '2');
+    assert.equal(button('zoomIn').disabled, true);
+    assert.equal(dom.window.document.activeElement, button('resetZoom'));
+    button('zoomOut').focus();
+    for (let count = 0; count < 30; count++) button('zoomOut').click();
+    assert.equal(surface.style.zoom, '0.5');
+    assert.equal(button('zoomOut').disabled, true);
+    assert.equal(dom.window.document.activeElement, button('resetZoom'));
+    button('resetZoom').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('zoomIn').disabled, false);
+    assert.equal(button('zoomOut').disabled, false);
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.muninn-toolbar')!.style.zoom, '');
+    assert.equal(editor.textContent, original);
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+  });
+
+  it('fits responsively and resets to the latest configured reading width', async () => {
+    open('# Width\n\nKeep this.\n');
+    const button = (command: string) => {
+      const control = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      );
+      assert.ok(control, command);
+      return control;
+    };
+    const shell = dom.window.document.querySelector<HTMLElement>('#editor-shell')!;
+    const surface = dom.window.document.querySelector<HTMLElement>('#editor')!;
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '70ch');
+    button('zoomIn').click();
+    button('fitToWidth').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'true');
+    button('zoomIn').click();
+    setting(90);
+    await resize();
+    assert.equal(surface.style.zoom, '1.1');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    button('resetZoom').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '90ch');
+    setting('full');
+    button('fitToWidth').click();
+    button('resetZoom').click();
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    setting('comfortable');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '70ch');
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+  });
+
+  it('preserves a text selection and history across local zoom and fit changes', async () => {
+    const source = 'Alpha beta gamma.\r\n';
+    const editor = open(source);
+    editor.focus();
+    const node = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(node, 6);
+    range.setEnd(node, 10);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    const click = (command: string) => {
+      const button = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      )!;
+      button.focus();
+      button.click();
+    };
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) click(command);
+    await tick();
+    assert.equal(applies().length, 0);
+    click('toggleBold');
+    await tick();
+    assert.equal(applies()[0].payload.markdown, 'Alpha **beta** gamma.\r\n');
+    ack(0, 1);
+    click('zoomIn');
+    click('undo');
+    await tick();
+    assert.equal(applies()[1].payload.markdown, source);
+    ack(1, 2);
+    click('fitToWidth');
+    click('redo');
+    await tick();
+    assert.equal(applies()[2].payload.markdown, 'Alpha **beta** gamma.\r\n');
+  });
+
+  it('updates visible zoom help and retains unapplied table drafts', async () => {
+    const editor = open('| A |\n| --- |\n| Alpha |\n');
+    const button = (command: string) =>
+      dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      )!;
+    button('zoomIn').click();
+    button('resetZoom').focus();
+    const tooltip = dom.window.document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    assert.match(tooltip.textContent!, /110%/);
+    button('resetZoom').click();
+    assert.equal(tooltip.textContent, 'Reset zoom to 100% (current: 100%)');
+    editor.querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!.click();
+    const draft = editor.querySelector<HTMLTextAreaElement>('textarea')!;
+    draft.value = 'unapplied zoom draft';
+    draft.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    draft.focus();
+    draft.setSelectionRange(2, 7);
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) button(command).click();
+    assert.deepEqual(
+      [draft.value, draft.selectionStart, draft.selectionEnd],
+      ['unapplied zoom draft', 2, 7],
+    );
+    await tick();
+    assert.equal(applies().length, 0);
+    open('Another view.\n');
+    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
+  });
+
+  it('highlights fenced code without changing literal text or surrounding Markdown', async () => {
+    const source =
+      '# Keep  \r\n\r\n~~~javascript\r\nconst greeting = "<b>🚀 & hello</b>";\r\n~~~\r\n\r\nAfter\r\n';
+    const editor = open(source);
+    const code = editor.querySelector('pre code')!;
+    assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
+    assert.equal(code.textContent, 'const greeting = "<b>🚀 & hello</b>";');
+    assert.equal(code.querySelectorAll('b').length, 0);
+    await tick();
+    assert.equal(applies().length, 0);
+    await append(editor, '!');
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      '# Keep  \r\n\r\n~~~javascript\r\nconst greeting = "<b>🚀 & hello</b>";\r\n~~~\r\n\r\nAfter!\r\n',
+    );
+  });
+
+  it('highlights each supported code language and its common aliases', () => {
+    for (const [language, code] of [
+      ['typescript', 'const value: number = 1;'],
+      ['tsx', 'const view = <b>Hi</b>;'],
+      ['jsx', 'const view = <b>Hi</b>;'],
+      ['python', 'def greet():\n    return "hi"'],
+      ['go', 'func main() {}'],
+      ['rust', 'fn main() {}'],
+      ['java', 'public class Main {}'],
+      ['csharp', 'public class Main {}'],
+      ['cpp', 'int main() { return 0; }'],
+      ['bash', 'echo "hello"'],
+      ['json', '{"value": 1}'],
+      ['yaml', 'value: true'],
+      ['sql', 'SELECT * FROM users;'],
+      ['markdown', '# Hello'],
+      ['js', 'const value = 1;'],
+      ['ts', 'const value: number = 1;'],
+      ['py', 'def greet(): pass'],
+    ]) {
+      const editor = open('```' + language + '\n' + code + '\n```\n');
+      assert.ok(editor.querySelector('pre code span[class*="hljs-"]'), language);
+      assert.equal(editor.querySelector('pre code')!.textContent, code, language);
+      assert.equal(applies().length, 0, language);
+    }
+  });
+
+  it('updates code highlighting while editing, changing language and undoing', async () => {
+    const source = 'Before\n\n```javascript\nconst first = 1;\n```\n\nAfter\n';
+    const editor = open(source);
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    await append(editor, '\nconst next = 2;', code);
+    assert.equal(code.querySelectorAll('.hljs-keyword').length, 2);
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Before\n\n```javascript\nconst first = 1;\nconst next = 2;\n```\n\nAfter\n',
+    );
+    ack(0, 1);
+    send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, source);
+    assert.equal(code.querySelectorAll('.hljs-keyword').length, 1);
+    ack(1, 2);
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    language.value = '';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(code.querySelectorAll('span').length, 0);
+    assert.equal(code.textContent, 'const first = 1;');
+    ack(2, 3);
+    send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+    await tick();
+    assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
+    assert.equal(applies().at(-1)?.payload.markdown, source);
+  });
+
+  it('keeps unknown, omitted and Mermaid code languages editable as plain text', async () => {
+    for (const language of ['', 'Unknown-Lang', 'mermaid']) {
+      const source = '~~~' + language + '\nraw <script>& text\n~~~\n';
+      const editor = open(source);
+      const code = editor.querySelector<HTMLElement>('pre code')!;
+      assert.equal(code.querySelectorAll('span').length, 0);
+      await append(editor, '!', code);
+      assert.equal(
+        applies().at(-1)?.payload.markdown,
+        '~~~' + language + '\nraw <script>& text!\n~~~\n',
+      );
+    }
+  });
+
+  it('keeps code above the highlighting limit fully editable as plain text', async () => {
+    const codeText = 'const value = 1;\n'.repeat(1300).trimEnd();
+    const editor = open('```javascript\n' + codeText + '\n```\n');
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    assert.equal(code.querySelectorAll('span').length, 0);
+    assert.equal(code.textContent, codeText);
+    await append(editor, '!', code);
+    assert.equal(applies().at(-1)?.payload.markdown, '```javascript\n' + codeText + '!\n```\n');
+  });
 
   it('continues a bullet list with a sibling item and preserves typed Markdown', async () => {
     const editor = open('- First\n- Second\n');
@@ -1021,6 +1271,29 @@ describe('bundled editor behavior with a delayed host', function () {
       { type: 'view.executeCommand', payload: { command: 'insertImage' } },
     );
     assert.equal(applies().length, 0);
+  });
+
+  it('flushes pending edits before requesting HTML export from the toolbar', async () => {
+    const editor = open('Alpha\n');
+    await append(editor, 'X');
+    const exportButton = dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-toolbar [data-command="exportHtml"]',
+    );
+    assert.ok(exportButton);
+    exportButton.click();
+    await tick();
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+    ack(0, 1);
+    await tick();
+    assert.deepEqual(
+      structuredClone(messages.find((message) => message.type === 'view.executeCommand')),
+      { type: 'view.executeCommand', payload: { command: 'exportHtml' } },
+    );
+    assert.equal(applies().length, 1);
+    assert.equal(applies()[0].payload.markdown, 'AlphaX\n');
   });
 
   it('exposes local table actions and targets the selected table while retaining raw drafts', async () => {
