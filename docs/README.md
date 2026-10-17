@@ -10,7 +10,7 @@ Start with [setup](GETTING_STARTED.md#development-setup) and [development](DEVEL
 | [Source fidelity](ROUNDTRIP_CONTRACT.md) | Markdown preservation requirements and edit-level regression checks                 |
 | [Testing](TESTING.md)                    | Automated suites and manual UI, accessibility, platform, and visual acceptance      |
 | [Troubleshooting](TROUBLESHOOTING.md)    | Editor preferences, rendering, source editing, and test-runner issues               |
-| [Roadmap](ROADMAP.md)                    | Preview priorities, focused follow-ups, and product boundaries                      |
+| [Roadmap](ROADMAP.md)                    | Product priorities, focused follow-ups, and product boundaries                      |
 | [Release](RELEASE.md)                    | Packaging, versioning, registry authentication, and publication                     |
 | [Security posture](SECURITY_POSTURE.md)  | Security controls and their verification limits                                     |
 

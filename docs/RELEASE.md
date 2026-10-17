@@ -1,8 +1,8 @@
 # Release guide
 
-The prepared version is **1.1.1 Preview**, with both `preview: true` in the manifest and explicit pre-release channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) records the release date and changes. Preparation does not publish the extension: merge the reviewed PR, complete the acceptance checks below, then authorize Marketplace publication. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
+The prepared version is **1.2.0**, with `preview: false` in the manifest and regular release-channel metadata in the VSIX. Its versioned [changelog section](../CHANGELOG.md) records the release date and changes. Preparation does not publish the extension: merge the reviewed PR, complete the acceptance checks below, then authorize Marketplace publication. The version sequence was reset before Marketplace publication; earlier version plans are preserved in [the historical changelog](CHANGELOG-legacy.md).
 
-Marketplace versions must be numeric. Its [odd-minor pre-release scheme](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions) is a recommendation, so this workflow accepts the requested 1.0.0 starting point. The [Preview badge](https://code.visualstudio.com/api/references/extension-manifest) and pre-release channel are separate settings. A later regular release must use a new version; a version published as a pre-release cannot be reused on the regular channel.
+Marketplace versions must be numeric. Version 1.2.0 follows the recommended [even-minor stable release scheme](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions). The [Preview badge](https://code.visualstudio.com/api/references/extension-manifest) and pre-release channel are separate settings. A later regular release must use a new version; a version published as a pre-release cannot be reused on the regular channel.
 
 ## Build and review
 
@@ -21,14 +21,14 @@ Inspect `artifacts/build/package-report.json` for the SHA-256 and bytes. The arc
 
 A matching `vX.Y.Z` tag triggers publication to both registries. The workflow can also run manually from `main` with a selected destination: `marketplace`, `openvsx`, or `both`. Manual runs rehearse by default; `publish=true` explicitly uploads the candidate and creates the GitHub release.
 
-The read-only build job checks the numeric version and Preview badge, performs the quality gates, packages, and tests that exact archive in real VS Code. Registry jobs download that candidate and compare its SHA-256 with the build report before publication. They must never rebuild the VSIX. Runs for the same version are serialized.
+The read-only build job checks the numeric version and requires the Preview badge to be disabled, performs the quality gates, packages, and tests that exact archive in real VS Code. Registry jobs download that candidate and compare its SHA-256 with the build report before publication. They must never rebuild the VSIX. Runs for the same version are serialized.
 
-The Marketplace job uses the protected `marketplace` environment and Microsoft Entra workload identity federation. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each selected registry verifies its own publishing access before uploading with `--pre-release`. The GitHub release is created after all selected registry jobs succeed; only that final job receives `contents: write`. A manual publication creates its tag at the tested workflow commit.
+The Marketplace job uses the protected `marketplace` environment and Microsoft Entra workload identity federation. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each selected registry verifies its own publishing access before uploading on the regular release channel. The GitHub release is created after all selected registry jobs succeed; only that final job receives `contents: write`. A manual publication creates its tag at the tested workflow commit.
 
 Run a complete rehearsal without uploading an extension or creating a GitHub release:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=v1.1.1 -f registry=marketplace -f publish=false -f verify_credentials=true
+gh workflow run release.yml --ref main -f tag=v1.2.0 -f registry=marketplace -f publish=false -f verify_credentials=true
 ```
 
 The `verify_credentials` input defaults to true. Set it to false only for a build rehearsal that does not establish credential readiness; publishing always verifies access. The two registry checks run independently, so an Open VSX setup failure does not hide the Marketplace result. The tested VSIX, hash report and release notes are retained as a workflow artifact for 14 days even if a registry check fails.
@@ -38,10 +38,10 @@ Before merge, a build-only rehearsal can run from the PR branch with `publish=fa
 For an authorized Marketplace-only release:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=v1.1.1 -f registry=marketplace -f publish=true
+gh workflow run release.yml --ref main -f tag=v1.2.0 -f registry=marketplace -f publish=true
 ```
 
-The unselected registry is skipped. The GitHub release is a pre-release and includes the tested VSIX. A tag created by the workflow's `GITHUB_TOKEN` does not trigger another publishing run.
+The unselected registry is skipped. The GitHub release is a stable release marked Latest and includes the tested VSIX. A tag created by the workflow's `GITHUB_TOKEN` does not trigger another publishing run.
 
 Registry publishes cannot be rolled back together. If one registry publishes and another fails, complete the missing upload using the retained, tested VSIX before announcing the release; do not blindly rerun successful uploads. Credential checks do not establish that the registries will accept the package itself.
 

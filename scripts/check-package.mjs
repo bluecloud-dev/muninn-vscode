@@ -37,12 +37,15 @@ const packaged = JSON.parse(entries.get('extension/package.json').toString());
 assert.equal(packaged.version, manifest.version);
 assert.equal(packaged.name, manifest.name);
 assert.equal(packaged.publisher, manifest.publisher);
-assert.equal(packaged.preview, true, 'Release candidate must retain the Marketplace Preview badge');
+assert.equal(packaged.preview, false, 'Stable releases must disable the Marketplace Preview badge');
 assert.match(packaged.version, /^\d+\.\d+\.\d+$/);
-assert.match(
-  entries.get('extension.vsixmanifest').toString(),
+const vsixManifest = entries.get('extension.vsixmanifest').toString();
+assert.doesNotMatch(
+  vsixManifest,
   /Microsoft\.VisualStudio\.Code\.PreRelease" Value="true"/,
+  'Stable releases must not use the pre-release channel',
 );
+assert.doesNotMatch(vsixManifest, /<GalleryFlags>[^<]*\bPreview\b/);
 for (const required of [
   'dist/extension.js',
   'media/generated/editor-webview.js',

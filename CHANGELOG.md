@@ -4,11 +4,19 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-17
+
 ### Added
 
 - Add editor-local 50–200% zoom, a visible percentage/reset control and responsive Fit to width. Reset restores the configured reading measure; view changes preserve source, selection and undo history.
 - Export HTML from the editor toolbar/More menu, editor-title menu and Command Palette, including synchronized unsaved edits, local image embedding and print styles for browser PDF output. Mermaid stays readable source in exports; unavailable assets are reported.
 - Theme-aware syntax colors for supported fenced code languages, with editor font settings, a clear language header and contained scrolling for long lines. Unsupported languages and blocks over 20,000 UTF-16 units remain editable as plain text.
+
+### Release
+
+- Version 1.2.0 is the first stable release, with the Marketplace Preview badge removed and regular release-channel distribution.
+- Requires VS Code 1.85.2 or later. Existing Markdown files, settings and extension identity remain compatible.
+- Manual screen-reader, OS-specific dialog, live Remote SSH/Codespaces and long-document performance checks remain separate from automated validation; see [testing](https://github.com/bluecloud-dev/muninn-vscode/blob/v1.2.0/docs/TESTING.md).
 
 ## [1.1.1] - 2026-10-11
 

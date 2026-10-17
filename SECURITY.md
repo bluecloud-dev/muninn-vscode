@@ -2,14 +2,13 @@
 
 ## Supported Versions
 
-Muninn is currently pre-release software. Security fixes target the default branch. The repository currently has no GitHub release; once preview packages are published, security fixes will also target the latest published preview release.
+Security fixes target the default branch and the latest published stable release.
 
-| Version                                | Supported |
-| -------------------------------------- | --------- |
-| `main`                                 | Yes       |
-| Latest published `2.x` preview, if any | Yes       |
-| Older preview builds                   | No        |
-| `1.x` and earlier                      | No        |
+| Version                         | Supported |
+| ------------------------------- | --------- |
+| `main`                          | Yes       |
+| Latest published stable release | Yes       |
+| Older releases and previews     | No        |
 
 ## Reporting a Vulnerability
 
