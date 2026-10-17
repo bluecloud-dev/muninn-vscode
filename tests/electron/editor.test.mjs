@@ -531,6 +531,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       for (let count = 0; count < 9; count++) await clickTool(editor, 'zoomIn', true);
       const paragraph = editor.locator('.ProseMirror > p').first();
       await clickZoomedContent(editor, paragraph, { x: 8, y: 8 }, 2);
+      // Windows word selection includes the following space; keep the same exact edit target.
+      if (await editor.evaluate(() => getSelection().toString() === 'Alpha ')) {
+        await page.keyboard.press('Shift+ArrowLeft');
+      }
       await eventually(
         () => editor.evaluate(() => getSelection().toString() === 'Alpha'),
         'Mouse selection did not select Alpha at 200%',
@@ -1439,8 +1443,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   });
 
   it('exports unsaved HTML through the native picker and renders printable offline output', async () => {
+    // Git may check fixtures out as CRLF; do not build a mixed-newline test document.
     const source =
-      fs.readFileSync('tests/fixtures/export/representative.md', 'utf8') +
+      fs.readFileSync('tests/fixtures/export/representative.md', 'utf8').replaceAll('\r\n', '\n') +
       '\n## Page flow\n\n' +
       Array.from(
         { length: 12 },
