@@ -133,15 +133,26 @@ async function resizeEditorPane(editor, nativeWindow, target) {
   );
 }
 async function command(label) {
-  await page.bringToFront();
-  const activeTab = page.locator('.tabs-container .tab.active').first();
-  if (await activeTab.count()) await activeTab.focus();
-  await page.keyboard.press(`${modifier}+Shift+P`);
+  const item = page.getByText(label, { exact: true }).first();
   await eventually(async () => {
-    await page.locator('.quick-input-widget input[type="text"]').fill('>' + label);
-    return page.getByText(label, { exact: true }).first().isVisible();
+    try {
+      await page.bringToFront();
+      const activeTab = page.locator('.tabs-container .tab.active').first();
+      if (await activeTab.count()) await activeTab.focus();
+      await page.keyboard.press(`${modifier}+Shift+P`);
+      await page
+        .locator('.quick-input-widget input[type="text"]')
+        .fill('>' + label, { timeout: 2500 });
+      // Retry palette setup before dispatch, so a late focus change cannot repeat a command.
+      await item.click({ trial: true, timeout: 1000 });
+      return true;
+    } catch (error) {
+      if (error.name !== 'TimeoutError') throw error;
+      await page.keyboard.press('Escape');
+      return false;
+    }
   }, 'Command unavailable: ' + label);
-  await page.getByText(label, { exact: true }).first().click();
+  await item.click();
 }
 async function visibleEditorFrame(name) {
   for (const frame of page.frames()) {
@@ -332,6 +343,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     });
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
+    page.on('pageerror', (error) => {
+      evidence.pageErrors ??= [];
+      evidence.pageErrors.push(error.stack ?? error.message);
+      writeEvidence();
+    });
     await page.locator('.monaco-workbench').waitFor();
     evidence.vscode = await app.evaluate(({ app }) => app.getVersion());
     writeEvidence();
@@ -350,6 +366,15 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     if (await panel.isVisible()) {
       await page.keyboard.press(`${modifier}+j`);
       await panel.waitFor({ state: 'hidden' });
+    }
+    // Retained webviews multiply trace work; each scenario owns its saved editors.
+    const savedTabs = page.locator('.tabs-container .tab:not(.dirty)');
+    if (await savedTabs.count()) {
+      await command('View: Close Saved Editors in Group');
+      await eventually(
+        async () => (await savedTabs.count()) === 0,
+        'Saved editors did not close before the next scenario',
+      );
     }
   });
   after(async () => {
@@ -385,8 +410,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await editor.locator('.ProseMirror').press(lineEnd);
     await editor.locator('.ProseMirror').pressSequentially('XY');
     editor = await save(editor, file, '# Reading\n\nAlphaXY\n');
-    await editor.locator('.ProseMirror').focus();
-    await page.keyboard.press(`${modifier}+z`);
+    await editor.locator('.ProseMirror').press(`${modifier}+z`);
     await eventually(async () => {
       editor = (await visibleEditorFrame('reading.md')) ?? editor;
       try {
@@ -1291,7 +1315,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await command('Muninn for VS Code: Open Source Editor');
     await page
       .getByRole('tab', { name: /Untitled/ })
-      .first()
+      .last()
       .click();
     await eventually(
       async () =>
@@ -1412,9 +1436,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
   it('creates a standard GFM task and keeps typing outside the hidden marker', async () => {
     const { editor, file } = await open('new-task.md', 'Alpha\n');
     await editor.locator('.ProseMirror p').click();
-    await page.keyboard.press(lineStart);
-    await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('ArrowRight');
+    await editor.locator('.ProseMirror').press(lineStart);
+    await editor.locator('.ProseMirror').press('ArrowRight');
+    await editor.locator('.ProseMirror').press('ArrowRight');
     await clickTool(editor, 'toggleTask');
     await editor.locator('.ProseMirror').pressSequentially('X');
     await save(editor, file, '* [ ] AlXpha\n');
