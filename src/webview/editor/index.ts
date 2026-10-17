@@ -20,7 +20,8 @@ import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
-import { applyContentWidth } from './content-width';
+import { createEditorViewport } from './editor-viewport';
+import { setButtonHelp } from './icon-button';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
 import {
@@ -115,6 +116,7 @@ const moreButton = document.querySelector<HTMLButtonElement>(
 )!;
 const toolbarMenu = document.querySelector<HTMLDivElement>('#muninn-toolbar-menu')!;
 let pendingToolbarState: EditorState | undefined;
+const viewport = createEditorViewport(editorShell, editorContainer);
 
 let view: EditorView | undefined;
 let lastMermaidInsertAt = 0;
@@ -744,6 +746,13 @@ const executeToolbarCommand = (command: string, menu?: string): void => {
   if (!view) return;
   const pending = menu ? pendingToolbarState : undefined;
   pendingToolbarState = undefined;
+  if (viewport.execute(command)) {
+    updateToolbarState();
+    announce(formatString(getString('zoomStatusTemplate'), viewport.zoomPercent), {
+      kind: 'status',
+    });
+    return;
+  }
   if (pending) {
     if (view.state.doc !== pending.doc) {
       announce(getString('pickerStaleMessage'), { kind: 'error' });
@@ -820,6 +829,15 @@ const isListActive = (listNodeType: NodeType): boolean => {
 };
 
 const updateToolbarState = (): void => {
+  const { zoomPercent, fitToWidth } = viewport;
+  updateToolbarPressedState('fitToWidth', fitToWidth);
+  const reset = toolbarButtons.get('resetZoom')!;
+  const percentage = zoomPercent + '%';
+  if (reset.textContent !== percentage) reset.textContent = percentage;
+  const zoomHelp = formatString(getString('zoomResetHelpTemplate'), zoomPercent);
+  setButtonHelp(reset, zoomHelp);
+  toolbarButtons.get('zoomIn')!.disabled = zoomPercent === 200;
+  toolbarButtons.get('zoomOut')!.disabled = zoomPercent === 50;
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
   updateToolbarPressedState('toggleItalic', isMarkActive(schema.marks.em));
   updateToolbarPressedState('toggleStrike', isMarkActive(schema.marks.strike));
@@ -837,8 +855,7 @@ const updateToolbarState = (): void => {
     headingLevel === undefined
       ? style
       : formatString(getString('toolbarBlockStyleCurrentTemplate'), style);
-  blockStyleButton.setAttribute('aria-label', help);
-  blockStyleButton.dataset.help = help;
+  setButtonHelp(blockStyleButton, help);
   toolbarButtons.get('undo')!.disabled = !view || !undo(view.state);
   toolbarButtons.get('redo')!.disabled = !view || !redo(view.state);
   updateToolbarPressedState(
@@ -996,7 +1013,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       const payload = message.payload;
       syncController.initialize(payload.markdown, payload.revision);
       setMermaidRenderingEnabled(payload.mermaidEnabled);
-      applyContentWidth(editorShell, payload.contentWidth);
+      viewport.setContentWidth(payload.contentWidth);
       setImageSources(payload.imageSources);
       applyHostMarkdown(payload.markdown, payload.fileName);
       announce(getString('statusConnected'), { kind: 'status' });
@@ -1086,7 +1103,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     case 'host.settingsChanged': {
       const payload = message.payload;
       setMermaidRenderingEnabled(payload.mermaidEnabled);
-      applyContentWidth(editorShell, payload.contentWidth);
+      viewport.setContentWidth(payload.contentWidth);
       return;
     }
     case 'host.insertLink': {

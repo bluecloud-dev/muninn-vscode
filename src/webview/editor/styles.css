@@ -28,6 +28,7 @@
   position: fixed;
   pointer-events: none;
   z-index: 10;
+  inline-size: max-content;
   max-inline-size: min(30rem, calc(100vw - 1rem));
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--vscode-editorHoverWidget-border);

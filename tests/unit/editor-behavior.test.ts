@@ -35,6 +35,11 @@ describe('bundled editor behavior with a delayed host', function () {
         source: dom.window as unknown as Window,
       }),
     );
+  const setting = (contentWidth: 'comfortable' | 'full' | number) =>
+    send({
+      type: 'host.settingsChanged',
+      payload: { mermaidEnabled: false, toolbarMode: 'basic', contentWidth },
+    });
   const applies = () =>
     messages.filter(
       (m): m is Extract<ViewToHostMessage, { type: 'view.applyDocument' }> =>
@@ -164,6 +169,150 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
     if (applies().length > 0) ack(applies().length - 1, applies().length);
   };
+
+  it('changes only the document zoom, shows its percentage and enforces 50–200% bounds', async () => {
+    const editor = open('Keep **this** exactly.\r\n');
+    const button = (command: string) => {
+      const control = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      );
+      assert.ok(control, command + ' is reachable from the toolbar');
+      return control;
+    };
+    const surface = dom.window.document.querySelector<HTMLElement>('#editor')!;
+    const original = editor.textContent;
+    assert.equal(button('resetZoom').textContent, '100%');
+    button('zoomIn').click();
+    assert.equal(surface.style.zoom, '1.1');
+    assert.equal(button('resetZoom').textContent, '110%');
+    assert.match(button('resetZoom').getAttribute('aria-label')!, /100%.*110%/);
+    for (let count = 0; count < 20; count++) button('zoomIn').click();
+    assert.equal(surface.style.zoom, '2');
+    assert.equal(button('zoomIn').disabled, true);
+    for (let count = 0; count < 30; count++) button('zoomOut').click();
+    assert.equal(surface.style.zoom, '0.5');
+    assert.equal(button('zoomOut').disabled, true);
+    button('resetZoom').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('zoomIn').disabled, false);
+    assert.equal(button('zoomOut').disabled, false);
+    assert.equal(dom.window.document.querySelector<HTMLElement>('.muninn-toolbar')!.style.zoom, '');
+    assert.equal(editor.textContent, original);
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+  });
+
+  it('fits responsively and resets to the latest configured reading width', async () => {
+    open('# Width\n\nKeep this.\n');
+    const button = (command: string) => {
+      const control = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      );
+      assert.ok(control, command);
+      return control;
+    };
+    const shell = dom.window.document.querySelector<HTMLElement>('#editor-shell')!;
+    const surface = dom.window.document.querySelector<HTMLElement>('#editor')!;
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '70ch');
+    button('zoomIn').click();
+    button('fitToWidth').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'true');
+    button('zoomIn').click();
+    setting(90);
+    await resize();
+    assert.equal(surface.style.zoom, '1.1');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    button('resetZoom').click();
+    assert.equal(surface.style.zoom, '1');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '90ch');
+    setting('full');
+    button('fitToWidth').click();
+    button('resetZoom').click();
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
+    setting('comfortable');
+    assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '70ch');
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+  });
+
+  it('preserves a text selection and history across local zoom and fit changes', async () => {
+    const source = 'Alpha beta gamma.\r\n';
+    const editor = open(source);
+    editor.focus();
+    const node = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(node, 6);
+    range.setEnd(node, 10);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    const click = (command: string) => {
+      const button = dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      )!;
+      button.focus();
+      button.click();
+    };
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) click(command);
+    await tick();
+    assert.equal(applies().length, 0);
+    click('toggleBold');
+    await tick();
+    assert.equal(applies()[0].payload.markdown, 'Alpha **beta** gamma.\r\n');
+    ack(0, 1);
+    click('zoomIn');
+    click('undo');
+    await tick();
+    assert.equal(applies()[1].payload.markdown, source);
+    ack(1, 2);
+    click('fitToWidth');
+    click('redo');
+    await tick();
+    assert.equal(applies()[2].payload.markdown, 'Alpha **beta** gamma.\r\n');
+  });
+
+  it('updates visible zoom help and retains unapplied table drafts', async () => {
+    const editor = open('| A |\n| --- |\n| Alpha |\n');
+    const button = (command: string) =>
+      dom.window.document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      )!;
+    button('zoomIn').click();
+    button('resetZoom').focus();
+    const tooltip = dom.window.document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    assert.match(tooltip.textContent!, /110%/);
+    button('resetZoom').click();
+    assert.equal(tooltip.textContent, 'Reset zoom to 100% (current: 100%)');
+    editor.querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!.click();
+    const draft = editor.querySelector<HTMLTextAreaElement>('textarea')!;
+    draft.value = 'unapplied zoom draft';
+    draft.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    draft.focus();
+    draft.setSelectionRange(2, 7);
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) button(command).click();
+    assert.deepEqual(
+      [draft.value, draft.selectionStart, draft.selectionEnd],
+      ['unapplied zoom draft', 2, 7],
+    );
+    await tick();
+    assert.equal(applies().length, 0);
+    open('Another view.\n');
+    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
+  });
 
   it('highlights fenced code without changing literal text or surrounding Markdown', async () => {
     const source =

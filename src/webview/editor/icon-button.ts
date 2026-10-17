@@ -1,6 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Muninn contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
+export const setButtonHelp = (button: HTMLButtonElement, label: string, help = label): void => {
+  button.setAttribute('aria-label', label);
+  button.dataset.help = help;
+  button.removeAttribute('title');
+  if (button.hasAttribute('aria-describedby')) {
+    const tooltip = document.querySelector<HTMLElement>('#muninn-control-help');
+    if (tooltip) tooltip.textContent = help;
+  }
+};
+
 export const setIconButton = (
   button: HTMLButtonElement,
   icon: string,
@@ -8,17 +18,11 @@ export const setIconButton = (
   help = label,
 ): void => {
   button.classList.add('muninn-icon-button');
-  button.setAttribute('aria-label', label);
-  button.dataset.help = help;
-  button.removeAttribute('title');
+  setButtonHelp(button, label, help);
   const glyph = document.createElement('span');
   glyph.className = 'codicon codicon-' + icon;
   glyph.setAttribute('aria-hidden', 'true');
   button.replaceChildren(glyph);
-  if (button.hasAttribute('aria-describedby')) {
-    const tooltip = document.querySelector<HTMLElement>('#muninn-control-help');
-    if (tooltip) tooltip.textContent = help;
-  }
 };
 
 export const attachIconHelp = (container: HTMLElement): void => {
@@ -56,16 +60,21 @@ export const attachIconHelp = (container: HTMLElement): void => {
   const position = (): void => {
     if (!current) return;
     const rect = current.getBoundingClientRect();
+    const surface = current.closest<HTMLElement>('#editor');
+    const surfaceWidth = surface?.getBoundingClientRect().width;
+    // VS Code can retain Chromium's unscaled CSS-zoom rectangles.
+    const scale = surfaceWidth ? surface!.parentElement!.clientWidth / surfaceWidth : 1;
     tooltip.style.left =
-      Math.max(8, Math.min(rect.left, window.innerWidth - tooltip.offsetWidth - 8)) + 'px';
+      Math.max(8, Math.min(rect.left * scale, window.innerWidth - tooltip.offsetWidth - 8)) + 'px';
     tooltip.style.top =
-      (rect.bottom + tooltip.offsetHeight + 8 < window.innerHeight
-        ? rect.bottom + 4
-        : Math.max(4, rect.top - tooltip.offsetHeight - 4)) + 'px';
+      (rect.bottom * scale + tooltip.offsetHeight + 8 < window.innerHeight
+        ? rect.bottom * scale + 4
+        : Math.max(4, rect.top * scale - tooltip.offsetHeight - 4)) + 'px';
   };
   const resizeObserver =
     typeof ResizeObserver === 'function' ? new ResizeObserver(position) : undefined;
   resizeObserver?.observe(container);
+  resizeObserver?.observe(tooltip);
   // Scroll changes the anchor position even while its intersection ratio stays constant.
   // eslint-disable-next-line unicorn/prefer-observer-apis
   container.addEventListener('scroll', position, { capture: true });

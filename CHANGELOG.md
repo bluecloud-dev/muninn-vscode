@@ -6,6 +6,7 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ### Added
 
+- Add editor-local 50–200% zoom, a visible percentage/reset control and responsive Fit to width. Reset restores the configured reading measure; view changes preserve source, selection and undo history.
 - Export HTML from the editor toolbar/More menu, editor-title menu and Command Palette, including synchronized unsaved edits, local image embedding and print styles for browser PDF output. Mermaid stays readable source in exports; unavailable assets are reported.
 - Theme-aware syntax colors for supported fenced code languages, with editor font settings, a clear language header and contained scrolling for long lines. Unsupported languages and blocks over 20,000 UTF-16 units remain editable as plain text.
 

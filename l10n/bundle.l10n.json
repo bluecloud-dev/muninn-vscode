@@ -152,5 +152,12 @@
   "Some images could not be embedded. Include any referenced image files when sharing this HTML.": "Some images could not be embedded. Include any referenced image files when sharing this HTML.",
   "Image: {0}": "Image: {0}",
   "Exported {0}. Open the HTML in a browser and choose Print → Save as PDF for PDF output.": "Exported {0}. Open the HTML in a browser and choose Print → Save as PDF for PDF output.",
-  "Could not export HTML: {0}": "Could not export HTML: {0}"
+  "Could not export HTML: {0}": "Could not export HTML: {0}",
+  "View": "View",
+  "Zoom in": "Zoom in",
+  "Zoom out": "Zoom out",
+  "Reset zoom to 100%": "Reset zoom to 100%",
+  "Reset zoom to 100% (current: {0}%)": "Reset zoom to 100% (current: {0}%)",
+  "Document zoom: {0}%": "Document zoom: {0}%",
+  "Fit to width": "Fit to width"
 }

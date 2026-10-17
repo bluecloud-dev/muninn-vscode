@@ -8,6 +8,13 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   commandLabelHeadings: 'Headings',
   commandLabelFileLink: 'File link',
   commandLabelExportHtml: 'Export HTML',
+  toolbarGroupViewLabel: 'View',
+  commandLabelFitToWidth: 'Fit to width',
+  commandLabelZoomIn: 'Zoom in',
+  commandLabelZoomOut: 'Zoom out',
+  commandLabelResetZoom: 'Reset zoom to 100%',
+  zoomResetHelpTemplate: 'Reset zoom to 100% (current: {0}%)',
+  zoomStatusTemplate: 'Document zoom: {0}%',
   statusSyncConflict:
     'The document changed elsewhere. Preserving your edits in a recovery document.',
   statusSyncPending: 'Edits are still synchronizing. Retry once synchronization finishes.',

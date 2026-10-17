@@ -31,3 +31,7 @@ Validation on Node 24.21.0: 319 unit tests, all coverage thresholds (83.93% stat
 Native evidence exercises toolbar cancellation, the palette command, a chosen destination different from the source, unsaved content, unchanged Markdown on disk, offline rendering, embedded SVG, Mermaid notice and print CSS. Chromium's PDF writer is used only by the test harness; the product uses ordinary browser printing. The four-page A4 PDF was text-checked and rendered for inspection, including final-paragraph presence and wrapped long code. Evidence: `artifacts/377-*` and `artifacts/e2e/stable/export.{html,png,pdf}`. The HTML golden fixture is reviewed test data, not a product rendering input.
 
 The existing dependency baseline has seven low/moderate advisories; this issue adds no dependency. Minimum-version native checks are part of the final three-issue verification. Windows/Linux native dialogs, assistive technology, browser-specific print UI and real remote providers remain separate acceptance checks.
+
+The supported minimum VS Code 1.85.2 build disables Electron's printing feature. Its installed export test still renders the actual HTML offline and checks print CSS; PDF generation/visual inspection use the current Chromium runtime. This test limitation does not change the supported user workflow: open the HTML in an ordinary browser and print there.
+
+The [final three-issue verification](editor-zoom.md#final-verification) records the combined archive and complete native/integration matrix.

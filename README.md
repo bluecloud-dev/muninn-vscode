@@ -19,6 +19,7 @@ This source targets **1.1.1 Preview**, distributed on the pre-release channel. S
 - **Capture notes:** **Muninn for VS Code: New Markdown Note** uses the native file dialog. **Insert File Link** connects existing files with ordinary relative Markdown.
 - **Review diagrams:** local, lazy-loaded Mermaid previews, gated by workspace trust.
 - **Read code:** fenced code uses the editor font, a language selector and theme-aware syntax colors. Long lines scroll within the block. Unknown languages and blocks over 20,000 characters remain editable as plain text.
+- **Adjust the reading view:** use **Zoom out**, the percentage/**Reset zoom** button, **Zoom in** and **Fit to width** in the toolbar or More. Local zoom runs from 50% to 200% in 10-point steps, independently of VS Code zoom. Fit uses the full pane at 100% and stays responsive; Reset restores 100% and your latest configured reading width. These controls affect only the current editor view, leaving Markdown and undo history unchanged.
 - **Share a document:** **Export HTML** in the toolbar/More menu, editor-title menu or Command Palette writes a standalone HTML snapshot, including accepted unsaved edits, through the native save picker. Open that file in a browser and choose **Print → Save as PDF** for PDF output. Print styles wrap code and keep headings with following content.
 - **Use Source:** open the same file in VS Code's Markdown text editor whenever you need the full source syntax.
 
