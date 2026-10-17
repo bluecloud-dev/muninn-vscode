@@ -8,7 +8,7 @@ Use the gates below for changes to the editor. Unit coverage thresholds are enfo
 | Unit + bundled DOM | `npm run coverage`                                          | Exact source edits, golden corpus, sync races, host validation, focused table DOM, recovery and sanitized SVG                                |
 | Extension host     | `npm test`                                                  | Real VS Code activation, default editor, commands, WorkspaceEdit/newline behavior                                                            |
 | Packaged UI        | `npm run package && npm run test:e2e`                       | Installed production VSIX, real typing/save/undo, toolbar, table source/grid/delete, Mermaid chunks/CSP, tasks, navigation, Source and notes |
-| Packaging          | `npm run package`                                           | Production minification, notices, size budgets, required/excluded archive files and pre-release metadata                                     |
+| Packaging          | `npm run package`                                           | Production minification, notices, size budgets, required/excluded archive files and stable release metadata                                  |
 | Policy             | `npm run check:no-telemetry`, `npm audit`                   | Source telemetry guard and dependency advisories                                                                                             |
 
 ## Regressions

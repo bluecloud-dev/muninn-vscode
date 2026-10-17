@@ -1,6 +1,6 @@
 # Muninn roadmap
 
-The checked-in package is version `1.1.1` with the Preview badge and pre-release distribution metadata. This file describes product direction; it does not claim a Marketplace release or record issue completion. [GitHub issues](https://github.com/bluecloud-dev/muninn-vscode/issues) are the live task tracker. Check each issue's current state, labels, and scope before starting work.
+The checked-in package is version `1.2.0` with stable release distribution metadata. This file describes product direction; it does not claim a Marketplace release or record issue completion. [GitHub issues](https://github.com/bluecloud-dev/muninn-vscode/issues) are the live task tracker. Check each issue's current state, labels, and scope before starting work.
 
 ## Current product boundary
 
@@ -11,13 +11,13 @@ Muninn is a desktop VS Code custom editor for ordinary CommonMark/GFM files. Its
 1. Keep source fidelity and document synchronization safe across actual edits, Save, Source, external changes, and recovery.
 2. Keep accessibility and keyboard behavior testable in the installed extension, with manual screen-reader, contrast, zoom, and platform acceptance before release.
 3. Keep the production VSIX, third-party notices, CI gates, release metadata, and user documentation aligned with the exact tested archive.
-4. Gather voluntary preview feedback through the status-bar issue action, native issue reporter, and GitHub issue forms. Use reproducible reports to choose the next work.
+4. Gather voluntary feedback through the status-bar issue action, native issue reporter, and GitHub issue forms. Use reproducible reports to choose the next work.
 
 ## Focused follow-ups
 
 Focus Mode and an Outline remain deferred. The current heading picker provides navigation. Revisit those features as a focused change with keyboard, narrow-editor, source-fidelity, and performance acceptance checks.
 
-Richer table operations, additional block commands, math, GFM callouts, HTML export, browser support, and compatibility with other editors need user evidence and fresh scope before implementation. Measure long-document latency and multi-tab memory before making performance changes or expanding platform claims.
+Richer table operations, additional block commands, math, GFM callouts, browser support, and compatibility with other editors need user evidence and fresh scope before implementation. Measure long-document latency and multi-tab memory before making performance changes or expanding platform claims.
 
 ## Product constraints
 

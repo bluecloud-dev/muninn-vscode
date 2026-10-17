@@ -56,7 +56,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Validate pre-release tag and manifest
+      - name: Validate stable release tag and manifest
         env:
           MANUAL_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: |
@@ -66,8 +66,8 @@ jobs:
           if (!/^v\d+\.\d+\.\d+$/.test(tag) || tag !== `v${version}`) {
             throw new Error(`Release tag ${tag || '<empty>'} must match package version v${version}`);
           }
-          if (preview !== true) {
-            throw new Error('This workflow publishes Preview pre-releases; keep preview: true in package.json');
+          if (preview !== false) {
+            throw new Error('This workflow publishes stable releases; set preview: false in package.json');
           }
           if (process.env.MANUAL_PUBLISH === 'true' && process.env.GITHUB_REF !== 'refs/heads/main') {
             throw new Error('Manual publishing must run from main');
@@ -207,7 +207,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
       - name: Publish to VS Code Marketplace
         if: github.event_name == 'push' || inputs.publish
-        run: node scripts/vsce-wrapper.js publish --azure-credential --pre-release --packagePath "$VSIX_PATH"
+        run: node scripts/vsce-wrapper.js publish --azure-credential --packagePath "$VSIX_PATH"
 
   openvsx:
     needs: build
@@ -252,7 +252,7 @@ jobs:
         if: github.event_name == 'push' || inputs.publish
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx --no-install ovsx publish --packagePath "$VSIX_PATH" --pre-release
+        run: npx --no-install ovsx publish --packagePath "$VSIX_PATH"
 
   github-release:
     needs: [build, marketplace, openvsx]
@@ -296,4 +296,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG_NAME" "$VSIX_PATH" --target "$GITHUB_SHA" --title "Muninn for VS Code $TAG_NAME Preview" --notes-file release-notes.md --prerelease
+        run: gh release create "$TAG_NAME" "$VSIX_PATH" --target "$GITHUB_SHA" --title "Muninn for VS Code $TAG_NAME" --notes-file release-notes.md --latest

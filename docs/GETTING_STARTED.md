@@ -2,7 +2,7 @@
 
 ## Use Muninn
 
-Install the pre-release VSIX through VS Code's **Extensions: Install from VSIX…** command. Open a `.md` or `.markdown` file. Muninn registers as a default editor and respects existing editor preferences. If a different editor opens, use **Reopen Editor With… → Muninn Markdown Editor**; choose **Configure default editor** there when you want to change your preference.
+Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode), or install a release VSIX through VS Code's **Extensions: Install from VSIX…** command. Open a `.md` or `.markdown` file. Muninn registers as a default editor and respects existing editor preferences. If a different editor opens, use **Reopen Editor With… → Muninn Markdown Editor**; choose **Configure default editor** there when you want to change your preference.
 
 Read and edit in one pane. Use **Headings** to move through a specification, follow Markdown links with a click or Tab then Enter, and use VS Code Find within the webview. The toolbar keeps one row and shows every control that fits. **More** contains the remaining tools and disappears when all tools fit. **Paragraph / Heading** opens local style choices beside the document, with Heading 1–3 and Paragraph; the label also reflects existing Heading 4–6 content. Choosing the current style leaves the document unchanged.
 

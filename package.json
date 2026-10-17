@@ -2,8 +2,8 @@
   "name": "muninn-vscode",
   "displayName": "%extension.displayName%",
   "publisher": "bluecloud-dev",
-  "version": "1.1.1",
-  "preview": true,
+  "version": "1.2.0",
+  "preview": false,
   "description": "%extension.description%",
   "license": "AGPL-3.0-only",
   "engines": {
@@ -43,7 +43,7 @@
       "description": "CI"
     },
     {
-      "url": "https://img.shields.io/github/v/release/bluecloud-dev/muninn-vscode?include_prereleases&label=release",
+      "url": "https://img.shields.io/github/v/release/bluecloud-dev/muninn-vscode?label=release",
       "href": "https://github.com/bluecloud-dev/muninn-vscode/releases",
       "description": "Latest release"
     },
@@ -528,7 +528,7 @@
     "test:e2e": "node --test --test-concurrency=1 tests/electron/*.test.mjs",
     "test:roundtrip": "npm run compile && node ./scripts/generate-roundtrip-report.js",
     "coverage": "npm run compile && node -r ./scripts/nyc-cpus-shim.js ./node_modules/nyc/bin/nyc.js node ./scripts/run-unit-tests.js",
-    "package": "node scripts/vsce-wrapper.js package --pre-release && node scripts/check-package.mjs",
+    "package": "node scripts/vsce-wrapper.js package && node scripts/check-package.mjs",
     "vscode:prepublish": "npm run compile && npm run bundle:production",
     "check:no-telemetry": "node scripts/check-no-telemetry.js",
     "bundle:production": "node esbuild.mjs --production"
