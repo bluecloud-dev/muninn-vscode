@@ -4,6 +4,13 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-18
+
+### Documentation
+
+- Add short GIF demos of document formatting and table editing to the README and Marketplace overview, captured from the installed extension in light and dark themes.
+- Keep demo media outside the extension package. Editor behavior and settings are unchanged from 1.2.0.
+
 ## [1.2.0] - 2026-10-17
 
 ### Added

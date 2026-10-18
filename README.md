@@ -4,6 +4,16 @@
 
 A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
+## See Muninn in action
+
+Read a document and format text directly in the same pane. [Replay demo](docs/demos/reading-and-editing.gif).
+
+![Muninn in VS Code's light theme: selecting text and making it bold beside a syntax-highlighted code block.](docs/demos/reading-and-editing.gif)
+
+Edit a table cell, then inspect its ordinary Markdown source. [Replay demo](docs/demos/table-editing.gif).
+
+![Muninn in VS Code's dark theme: changing a table's status from Draft to Done and opening the table's Markdown source.](docs/demos/table-editing.gif)
+
 ## Help improve Muninn
 
 Tell us where reading or editing Markdown feels awkward, or what would make Muninn more useful. [Report a bug](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=bug_report.yml) or [suggest an improvement](https://github.com/bluecloud-dev/muninn-vscode/issues/new?template=feature_request.yml). When a Muninn editor is active, click **Muninn: Report issue** in VS Code's status bar to open the native issue reporter. You can also use **Help: Report Issue…** or **Muninn for VS Code: Report an Issue** from the Command Palette.
@@ -12,7 +22,7 @@ Please describe the task you were doing and the result you expected. Include ste
 
 ## Start reading
 
-This source targets **1.2.0**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+This source targets **1.2.1**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a toolbar with local Paragraph/Heading choices and as many controls as fit; More contains only the remaining actions; standard GFM tasks and strikethrough; editable table cells with raw-source access.
