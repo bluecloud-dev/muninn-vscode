@@ -24,7 +24,7 @@ In the [sample README](docs/demos/source-preservation.md), changing `Draft` to `
  | Build   | Ready | Lin |
 ```
 
-The list's markers and indentation, code fence, table spacing, emphasis and reference link stay unchanged. Try it by copying the sample into a Git repository, committing it, editing the cell in Muninn and saving. Open the file's changes in Source Control to inspect the diff.
+The list's markers and indentation, code fence, table spacing, emphasis and reference link stay unchanged. Try it by copying the sample into a Git repository, committing it, editing the cell in Muninn and saving. Open the file's changes in Source Control to inspect the diff, or run `git diff -- source-preservation.md`. Older VS Code versions may use rendered panes for custom-editor comparisons; the Git command shows the source diff.
 
 This example is checked by automated tests, including save, undo/redo and reopen in the installed extension. It demonstrates this edit; edits that cannot preserve source safely still fall back to Source.
 

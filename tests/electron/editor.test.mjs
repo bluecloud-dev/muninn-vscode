@@ -1300,14 +1300,29 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await command('Muninn for VS Code: Open Source Editor');
     await page.locator('.monaco-editor .view-lines').first().waitFor();
     assert.equal(fs.readFileSync(file, 'utf8'), expected);
-    const diff = git('diff', '--no-ext-diff', '--', name);
+    const diff = git('diff', '--no-ext-diff', '--unified=20', '--', name);
     assert.deepEqual(
       diff.split('\n').filter((line) => /^[+-](?![+-])/.test(line)),
       ['-| Docs    | Draft | Ada |', '+| Docs    | Done | Ada |'],
     );
     fs.writeFileSync(path.join(artifactDirectory, 'source-preservation.diff'), diff);
-    await command('Git: Open Changes');
-    await page.locator('.monaco-diff-editor').waitFor();
+    // Open Git's exact output; older VS Code uses rendered panes for custom-editor comparisons.
+    const diffFile = path.join(workspace, 'source-preservation.diff');
+    fs.writeFileSync(diffFile, diff);
+    await page.keyboard.press(`${modifier}+P`);
+    await page.locator('.quick-input-widget input[type="text"]').fill(diffFile);
+    await page
+      .locator('.quick-input-list .monaco-list-row')
+      .filter({ hasText: 'source-preservation.diff' })
+      .first()
+      .click();
+    const diffEditor = page.locator('.monaco-editor[data-uri$="/source-preservation.diff"]');
+    await diffEditor.waitFor();
+    await eventually(
+      async () =>
+        /Draft/.test(await diffEditor.innerText()) && /Done/.test(await diffEditor.innerText()),
+      'Git diff was not rendered',
+    );
     await editorPane.screenshot({
       path: path.join(artifactDirectory, 'source-preservation-diff.png'),
     });
