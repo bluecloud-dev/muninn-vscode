@@ -2,6 +2,10 @@
 
 Use Node 24 and npm with the committed lockfile. The extension runtime targets VS Code 1.85.2+; the development Node requirement does not imply that the extension host needs Node 24.
 
+Build and typecheck scripts invoke TypeScript 7 through the `@typescript/native` npm alias. The regular `typescript` dependency remains on 6 for typescript-eslint's JavaScript API and peer range; remove this compatibility dependency when the linter supports TypeScript 7.
+
+The scoped `prosemirror-markdown` override shares our Markdown-it version to avoid bundling two parsers. Its public parser API remains compatible with v15; keep the source-fidelity, round-trip and packaged-editor checks when changing either dependency.
+
 Start with the [setup guide](GETTING_STARTED.md#development-setup) and [architecture](ARCHITECTURE.md). This workflow applies to all contributors.
 
 ```bash

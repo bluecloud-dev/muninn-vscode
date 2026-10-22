@@ -2,7 +2,7 @@
   "name": "muninn-vscode",
   "displayName": "%extension.displayName%",
   "publisher": "bluecloud-dev",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "preview": false,
   "description": "%extension.description%",
   "license": "AGPL-3.0-only",
@@ -619,6 +619,9 @@
         "diff": "^8.0.4",
         "serialize-javascript": "^7.0.5"
       }
+    },
+    "prosemirror-markdown": {
+      "markdown-it": "$markdown-it"
     }
   }
 }

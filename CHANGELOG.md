@@ -4,6 +4,23 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-22
+
+### Documentation
+
+- Demonstrate a single table-cell edit beside a nested list and fenced code, followed by the actual Git diff. Include a copyable sample and exact-source regression tests for save, undo/redo, reopen, line endings and table-source editing.
+
+### Dependencies
+
+- Integrate the dependency updates from #380, #381, #382, #383, #387, #388, #389 and #390. Use Markdown-it 15.0.3 throughout the editor, plus follow-redirects 1.16.1, to address the reported high-severity advisories.
+- Upgrade the TypeScript compiler to 7.0.2 while retaining TypeScript 6 for the ESLint parser's JavaScript API. Update the VS Code test runner, Playwright, JSDOM, linting and formatting tools.
+- Upgrade OpenSSF Scorecard to 2.5.0 and pin the action to its release commit.
+
+### Fixed
+
+- Adapt image and export URL handling to Markdown-it 15's attribute types.
+- Exclude local Impeccable configuration from packaged extensions and enforce that exclusion during package inspection.
+
 ## [1.2.1] - 2026-10-18
 
 ### Documentation

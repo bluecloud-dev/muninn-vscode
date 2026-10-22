@@ -75,7 +75,7 @@ export const exportHtml = async (document: vscode.TextDocument): Promise<void> =
           warnings.add(t('Mermaid diagrams are included as source code in this export.'));
         for (const token of tokens.flatMap((block) => block.children ?? [])) {
           if (token.type === 'link_open') {
-            const href = token.attrGet('href') ?? '';
+            const href = String(token.attrGet('href') ?? '');
             if (href.startsWith('#') || /^(?:https?:|mailto:)/i.test(href)) continue;
             const [relative, fragment] = href.split('#');
             const target = resolveMarkdownImageUri(document.uri, relative);
@@ -92,7 +92,7 @@ export const exportHtml = async (document: vscode.TextDocument): Promise<void> =
             continue;
           }
           if (token.type !== 'image') continue;
-          const source = token.attrGet('src') ?? '';
+          const source = String(token.attrGet('src') ?? '');
           const imageUri = resolveMarkdownImageUri(document.uri, source);
           const extension = imageUri
             ? path.posix.extname(imageUri.path).slice(1).toLowerCase()

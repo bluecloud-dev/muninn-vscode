@@ -970,7 +970,7 @@ const collectMarkdownImageSources = (markdown: string): string[] => {
       }
       const source = child.attrGet('src');
       if (source) {
-        sources.add(source);
+        sources.add(String(source));
       }
     }
   }
