@@ -1252,6 +1252,82 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     assert.equal(await editor.locator('pre code span').count(), 0);
   });
 
+  it('preserves the README demo through focused save, undo, redo, reopen and Git diff', async () => {
+    const source = fs.readFileSync('docs/demos/source-preservation.md', 'utf8');
+    const expected = source.replace('Draft', 'Done');
+    const name = 'source-preservation.md';
+    const git = (...args) => execFileSync('git', args, { cwd: workspace, encoding: 'utf8' });
+    git('-c', 'init.defaultBranch=main', 'init');
+    let { editor, file } = await open(name, source);
+    git('add', '--', name);
+    git(
+      '-c',
+      'user.name=Muninn demo',
+      '-c',
+      'user.email=demo@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'Demo before cell edit',
+    );
+    editor = await save(editor, file, source);
+    assert.equal(git('diff', '--', name), '');
+    const editorPane = page.locator('[id="workbench.parts.editor"]');
+    await editorPane.screenshot({
+      path: path.join(artifactDirectory, 'source-preservation-before.png'),
+    });
+    const cell = editor.locator('[data-table-row="1"][data-table-column="1"]');
+    await cell.fill('Done');
+    await cell.press(`${modifier}+s`);
+    await eventually(
+      () => fs.readFileSync(file, 'utf8') === expected,
+      'Focused demo cell was not saved exactly',
+    );
+    await editorPane.screenshot({
+      path: path.join(artifactDirectory, 'source-preservation-after.png'),
+    });
+    await clickTool(editor, 'undo');
+    editor = await save(editor, file, source);
+    await clickTool(editor, 'redo');
+    editor = await save(editor, file, expected);
+    await command('View: Close Saved Editors in Group');
+    ({ editor } = await open(name));
+    assert.equal(
+      await editor.locator('[data-table-row="1"][data-table-column="1"]').inputValue(),
+      'Done',
+    );
+    await command('Muninn for VS Code: Open Source Editor');
+    await page.locator('.monaco-editor .view-lines').first().waitFor();
+    assert.equal(fs.readFileSync(file, 'utf8'), expected);
+    const diff = git('diff', '--no-ext-diff', '--unified=20', '--', name);
+    assert.deepEqual(
+      diff.split('\n').filter((line) => /^[+-](?![+-])/.test(line)),
+      ['-| Docs    | Draft | Ada |', '+| Docs    | Done | Ada |'],
+    );
+    fs.writeFileSync(path.join(artifactDirectory, 'source-preservation.diff'), diff);
+    // Open Git's exact output; older VS Code uses rendered panes for custom-editor comparisons.
+    const diffFile = path.join(workspace, 'source-preservation.diff');
+    fs.writeFileSync(diffFile, diff);
+    await page.keyboard.press(`${modifier}+P`);
+    await page.locator('.quick-input-widget input[type="text"]').fill(diffFile);
+    await page
+      .locator('.quick-input-list .monaco-list-row')
+      .filter({ hasText: 'source-preservation.diff' })
+      .first()
+      .click();
+    const diffEditor = page.locator('.monaco-editor[data-uri$="/source-preservation.diff"]');
+    await diffEditor.waitFor();
+    await eventually(
+      async () =>
+        /Draft/.test(await diffEditor.innerText()) && /Done/.test(await diffEditor.innerText()),
+      'Git diff was not rendered',
+    );
+    await editorPane.screenshot({
+      path: path.join(artifactDirectory, 'source-preservation-diff.png'),
+    });
+  });
+
   it('saves focused table input immediately and supports grid actions, source apply, delete and undo', async () => {
     const source = '| Name | Score |\n| :--- | ---: |\n| Alice | 7 |\n';
     let { editor, file } = await open('table.md', source);

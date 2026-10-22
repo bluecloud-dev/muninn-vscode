@@ -38,6 +38,7 @@ export default [
       'unicorn/no-negated-array-predicate': 'off',
       'unicorn/no-return-array-push': 'off',
       'unicorn/no-unnecessary-global-this': 'off',
+      'unicorn/no-unnecessary-parameters': 'off',
       'unicorn/no-unreadable-for-of-expression': 'off',
       'unicorn/prefer-await': 'off',
       'unicorn/prefer-boolean-return': 'off',

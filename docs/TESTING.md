@@ -17,6 +17,8 @@ The golden corpus lives in `tests/unit/round-trip/fixtures/`. Never change fixtu
 
 `host-sync.test.ts` and `provider-behavior.test.ts` exercise delayed acknowledgments, stale/conflicting changes, no-ops, failed applies, false/delayed/timed-out flushes, delivery failure, close recovery and trust/resource boundaries. `editor-behavior.test.ts` runs the actual bundled editor in JSDOM with a delayed host, covering table command/grid parity, rejected and detached edits, focused-table targeting, raw-draft retention/reload and message validation/cleanup. It is not a replacement for native UI checks.
 
+The README's [source-preservation sample](demos/source-preservation.md) is shared by the bundled-editor and packaged UI tests. Cell edits assert the entire output, including adjacent nested lists, fenced code and reference links, with LF/CRLF, optional final newlines and optional outer table pipes. The native journey checks focused Save, undo/redo, reopen, Source and a one-row Git diff; it writes `source-preservation-{before,after,diff}.png` and `source-preservation.diff` under `artifacts/e2e/<version>/`. Keep the sample's deliberate formatting intact when updating the README demo.
+
 ## Native tests
 
 `tests/electron/editor.test.mjs` uses Playwright's Electron API and `@vscode/test-electron`. It installs the exact VSIX into temporary user/extension/shared-application directories, without an extension-development-path fallback. The harness waits for contribution registration and invokes the native Inspect Configuration command before opening fixtures; default-editor behavior is tested after activation. No injected application implementation or special production test command is used.

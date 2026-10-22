@@ -14,6 +14,7 @@ docs/**
 .claudeignore
 .remember/**
 .agents/**
+.impeccable/**
 .cursor/**
 .opencode/**
 .windsurf/**

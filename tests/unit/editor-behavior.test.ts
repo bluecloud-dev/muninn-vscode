@@ -673,6 +673,62 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   }
 
+  for (const eol of ['\n', '\r\n']) {
+    for (const finalNewline of [true, false]) {
+      for (const outerPipes of [true, false]) {
+        it(`preserves the demo around a cell edit and undo/redo (${JSON.stringify(eol)}, final newline: ${finalNewline}, outer pipes: ${outerPipes})`, async () => {
+          let source = fs.readFileSync('docs/demos/source-preservation.md', 'utf8');
+          if (!outerPipes) source = source.replaceAll(/^\| (.*) \|$/gm, '$1');
+          if (!finalNewline) source = source.replace(/\n$/, '');
+          source = source.replaceAll('\n', () => eol);
+          const expected = source.replace('Draft', 'Done');
+          const editor = open(source);
+          assert.equal(applies().length, 0);
+          const cell = editor.querySelector<HTMLInputElement>(
+            '[data-table-row="1"][data-table-column="1"]',
+          )!;
+          assert.equal(cell.value, 'Draft');
+          cell.focus();
+          cell.value = 'Done';
+          cell.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: 'Done' }));
+          await tick();
+          assert.equal(applies().at(-1)!.payload.markdown, expected);
+          ack(0, 1);
+          for (const [command, markdown] of [
+            ['undo', source],
+            ['redo', expected],
+          ] as const) {
+            send({ type: 'host.executeCommand', payload: { command } });
+            await tick();
+            assert.equal(applies().at(-1)!.payload.markdown, markdown);
+            ack(applies().length - 1, applies().length);
+          }
+          open(expected);
+          assert.equal(applies().length, 0);
+          assert.equal(
+            dom.window.document.querySelector<HTMLInputElement>(
+              '[data-table-row="1"][data-table-column="1"]',
+            )!.value,
+            'Done',
+          );
+        });
+      }
+    }
+  }
+
+  it('applies raw table source without rewriting the demo list, code or references', async () => {
+    const source = fs.readFileSync('docs/demos/source-preservation.md', 'utf8');
+    const editor = open(source);
+    editor.querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!.click();
+    const draft = editor.querySelector<HTMLTextAreaElement>('textarea')!;
+    draft.value = draft.value.replace('Draft', 'Done');
+    draft.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    assert.equal(applies().length, 0);
+    editor.querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!.click();
+    await tick();
+    assert.equal(applies().at(-1)!.payload.markdown, source.replace('Draft', 'Done'));
+  });
+
   it('keeps later typing and undo history when an earlier operation is acknowledged', async () => {
     const editor = open('Alpha\n');
     await append(editor, 'X');

@@ -79,7 +79,7 @@ assert.ok(
 for (const name of entries.keys()) {
   assert.doesNotMatch(
     name,
-    /(?:\.map$|package-lock\.json$|\/node_modules\/|\/graphify-out\/|\/artifacts\/|\/src\/|\/tests\/|\/\.agents\/)/,
+    /(?:\.map$|package-lock\.json$|\/node_modules\/|\/graphify-out\/|\/artifacts\/|\/src\/|\/tests\/|\/\.agents\/|\/\.impeccable\/)/,
   );
   if (name.startsWith('extension/media/')) assert.ok(name.startsWith('extension/media/generated/'));
 }

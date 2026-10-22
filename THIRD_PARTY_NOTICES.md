@@ -2216,7 +2216,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ---
 
-## entities@4.5.0
+## entities@8.1.0
 
 License: BSD-2-Clause
 
@@ -2454,7 +2454,7 @@ SOFTWARE.
 
 ---
 
-## linkify-it@5.0.2
+## linkify-it@6.1.0
 
 License: MIT
 
@@ -2566,7 +2566,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
-## markdown-it@14.3.2
+## markdown-it@15.0.3
 
 License: MIT
 
@@ -2646,7 +2646,7 @@ This software is provided by the copyright holders and contributors “as is” 
 
 ---
 
-## mdurl@2.0.0
+## mdurl@2.1.0
 
 License: MIT
 
@@ -3154,7 +3154,7 @@ SOFTWARE.
 
 ---
 
-## uc.micro@2.1.0
+## uc.micro@3.0.0
 
 License: MIT
 

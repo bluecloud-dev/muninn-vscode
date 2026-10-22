@@ -10,9 +10,23 @@ Read a document and format text directly in the same pane. [Replay demo](docs/de
 
 ![Muninn in VS Code's light theme: selecting text and making it bold beside a syntax-highlighted code block.](docs/demos/reading-and-editing.gif)
 
-Edit a table cell, then inspect its ordinary Markdown source. [Replay demo](docs/demos/table-editing.gif).
+Change one table cell beside a nested list and a fenced code block, then review the Git diff. [Replay demo](docs/demos/source-preservation.gif).
 
-![Muninn in VS Code's dark theme: changing a table's status from Draft to Done and opening the table's Markdown source.](docs/demos/table-editing.gif)
+![Muninn in VS Code: changing one table cell from Draft to Done, then showing the Git diff with the surrounding nested list and fenced code unchanged.](docs/demos/source-preservation.gif)
+
+In the [sample README](docs/demos/source-preservation.md), changing `Draft` to `Done` produces this diff:
+
+```diff
+ | Task    | Status | Owner |
+ | :------ | :----- | ----: |
+-| Docs    | Draft | Ada |
++| Docs    | Done | Ada |
+ | Build   | Ready | Lin |
+```
+
+The list's markers and indentation, code fence, table spacing, emphasis and reference link stay unchanged. Try it by copying the sample into a Git repository, committing it, editing the cell in Muninn and saving. Open the file's changes in Source Control to inspect the diff, or run `git diff -- source-preservation.md`. Older VS Code versions may use rendered panes for custom-editor comparisons; the Git command shows the source diff.
+
+This example is checked by automated tests, including save, undo/redo and reopen in the installed extension. It demonstrates this edit; edits that cannot preserve source safely still fall back to Source.
 
 ## Help improve Muninn
 
@@ -22,7 +36,7 @@ Please describe the task you were doing and the result you expected. Include ste
 
 ## Start reading
 
-This source targets **1.2.1**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+This source targets **1.2.2**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a toolbar with local Paragraph/Heading choices and as many controls as fit; More contains only the remaining actions; standard GFM tasks and strikethrough; editable table cells with raw-source access.
