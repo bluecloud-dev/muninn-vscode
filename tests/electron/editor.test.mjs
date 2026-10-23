@@ -1519,7 +1519,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       '| Value |\n| --- |\n| Clipboard text |\n',
     ],
   ])
-    for (const action of ['copy', 'paste']) {
+    for (const action of context === 'document'
+      ? ['copy', 'paste', 'copy between paragraphs', 'copy between soft lines']
+      : ['copy', 'paste']) {
       it('uses the native clipboard shortcut to ' + action + ' ' + context + ' text', async () => {
         await app.evaluate(({ clipboard }) => {
           globalThis.muninnOriginalClipboard = {
@@ -1533,20 +1535,55 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           await app.evaluate(({ clipboard }, action) => {
             clipboard.writeText(action === 'copy' ? 'Copy sentinel' : 'Clipboard text');
           }, action);
-          const { editor, file } = await open('native-' + context + '-' + action + '.md', source);
+          const betweenParagraphs = action.startsWith('copy between');
+          const separator = action === 'copy between soft lines' ? '\n' : '\n\n';
+          const { editor, file } = await open(
+            'native-' + context + '-' + action.replaceAll(' ', '-') + '.md',
+            betweenParagraphs ? 'Alpha clipboard' + separator + 'Destination\n' : source,
+          );
           const target = editor.locator(selector).first();
           await target.click();
+          if (betweenParagraphs) {
+            await page.keyboard.press(
+              process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
+            );
+          }
           await page.keyboard.press(lineStart);
-          await page.keyboard.press(selectLineEnd);
-          await page.keyboard.press(`${modifier}+${action === 'copy' ? 'c' : 'v'}`);
-          if (action === 'copy') {
+          if (betweenParagraphs) {
+            for (let i = 0; i < 'Alpha clipboard'.length; i++) {
+              await page.keyboard.press('Shift+ArrowRight');
+            }
+            assert.equal(await editor.evaluate(() => getSelection().toString()), 'Alpha clipboard');
+          } else {
+            await page.keyboard.press(selectLineEnd);
+          }
+          await page.keyboard.press(`${modifier}+${action === 'paste' ? 'v' : 'c'}`);
+          if (action !== 'paste') {
             await eventually(
               async () =>
                 (await app.evaluate(({ clipboard }) => clipboard.readText())) === 'Alpha clipboard',
               'Cmd/Ctrl+C did not copy the selected document text to the system clipboard',
               3000,
             );
-          } else {
+          }
+          if (betweenParagraphs) {
+            await page.keyboard.press(
+              process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End',
+            );
+            await page.keyboard.press(`${modifier}+v`);
+            await eventually(
+              async () =>
+                (await editor.locator('.ProseMirror').textContent()).replace(/\s+/g, '') ===
+                'AlphaclipboardDestinationAlphaclipboard',
+              'Cmd/Ctrl+C followed by Cmd/Ctrl+V did not copy text between document lines',
+              3000,
+            );
+            await save(
+              editor,
+              file,
+              'Alpha clipboard' + separator + 'DestinationAlpha clipboard\n',
+            );
+          } else if (action === 'paste') {
             await eventually(
               async () =>
                 (context === 'table' ? await target.inputValue() : await target.innerText()) ===
