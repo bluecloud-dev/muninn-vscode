@@ -4,6 +4,10 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+### Fixed
+
+- Convert every selected list item to a GFM checkbox item, including Select All, while preserving existing task states, list formatting and surrounding source.
+
 ## [1.2.2] - 2026-10-22
 
 ### Documentation

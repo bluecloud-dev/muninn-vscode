@@ -1509,6 +1509,87 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     assert.equal(fs.readFileSync(file, 'utf8'), source);
   });
 
+  for (const [context, source, selector, expected] of [
+    ['document', 'Alpha clipboard\n', '.ProseMirror p', 'Clipboard text\n'],
+    ['code', '~~~text\nAlpha clipboard\n~~~\n', 'pre code', '~~~text\nClipboard text\n~~~\n'],
+    [
+      'table',
+      '| Value |\n| --- |\n| Alpha clipboard |\n',
+      'tbody input',
+      '| Value |\n| --- |\n| Clipboard text |\n',
+    ],
+  ])
+    for (const action of ['copy', 'paste']) {
+      it('uses the native clipboard shortcut to ' + action + ' ' + context + ' text', async () => {
+        await app.evaluate(({ clipboard }) => {
+          globalThis.muninnOriginalClipboard = {
+            text: clipboard.readText(),
+            html: clipboard.readHTML(),
+            rtf: clipboard.readRTF(),
+            image: clipboard.readImage(),
+          };
+        });
+        try {
+          await app.evaluate(({ clipboard }, action) => {
+            clipboard.writeText(action === 'copy' ? 'Copy sentinel' : 'Clipboard text');
+          }, action);
+          const { editor, file } = await open('native-' + context + '-' + action + '.md', source);
+          const target = editor.locator(selector).first();
+          await target.click();
+          await page.keyboard.press(lineStart);
+          await page.keyboard.press(selectLineEnd);
+          await page.keyboard.press(`${modifier}+${action === 'copy' ? 'c' : 'v'}`);
+          if (action === 'copy') {
+            await eventually(
+              async () =>
+                (await app.evaluate(({ clipboard }) => clipboard.readText())) === 'Alpha clipboard',
+              'Cmd/Ctrl+C did not copy the selected document text to the system clipboard',
+              3000,
+            );
+          } else {
+            await eventually(
+              async () =>
+                (context === 'table' ? await target.inputValue() : await target.innerText()) ===
+                'Clipboard text',
+              'Cmd/Ctrl+V did not paste system clipboard text into the document',
+              3000,
+            );
+            await save(editor, file, expected);
+          }
+        } finally {
+          await app.evaluate(({ clipboard }) => {
+            clipboard.write(globalThis.muninnOriginalClipboard);
+            delete globalThis.muninnOriginalClipboard;
+          });
+        }
+      });
+    }
+
+  it('converts a selected list to checkboxes and preserves it through undo and redo', async () => {
+    const source = '+ **Alpha**\n+ Beta\n';
+    let { editor, file } = await open('selected-tasks.md', source);
+    await editor.locator('.ProseMirror li p').first().click();
+    // Avoid layout-dependent letter shortcuts when selecting the document bounds.
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+    await page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+Shift+ArrowDown' : 'Control+Shift+End',
+    );
+    assert.equal(
+      await editor.evaluate(() => getSelection().toString().replace(/\s+/g, ' ').trim()),
+      'Alpha Beta',
+    );
+    await clickTool(editor, 'toggleTask');
+    await eventually(
+      async () => (await editor.locator('.muninn-task-checkbox').count()) === 2,
+      'Task conversion did not add a checkbox to every selected item',
+    );
+    editor = await save(editor, file, '+ [ ] **Alpha**\n+ [ ] Beta\n');
+    await command('Muninn for VS Code: Undo');
+    editor = await save(editor, file, source);
+    await command('Muninn for VS Code: Redo');
+    await save(editor, file, '+ [ ] **Alpha**\n+ [ ] Beta\n');
+  });
+
   it('creates a standard GFM task and keeps typing outside the hidden marker', async () => {
     const { editor, file } = await open('new-task.md', 'Alpha\n');
     await editor.locator('.ProseMirror p').click();

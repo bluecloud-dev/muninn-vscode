@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { EditorState, TextSelection } from 'prosemirror-state';
+import { AllSelection, EditorState, TextSelection } from 'prosemirror-state';
 import { continueList, toggleTask } from '../../src/webview/editor/document-navigation';
 import {
   parseHostMarkdown,
@@ -39,6 +39,74 @@ const editWord = (source: string, before: string, after: string): string => {
 };
 
 describe('source-preserving edits', () => {
+  it('preserves nested completed and empty tasks when converting the surrounding list', () => {
+    const source = '+ Parent\n  + [X] Done\n  + [ ]\n+ Beta\n';
+    let state = EditorState.create({ doc: parseHostMarkdown(source) });
+    state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+    toggleTask(state, (tr) => {
+      state = state.apply(tr);
+    });
+    assert.equal(
+      serializeToHostMarkdown(state.doc),
+      '+ [ ] Parent\n  + [X] Done\n  + [ ]\n+ [ ] Beta\n',
+    );
+  });
+  it('converts a whole list selected with Select All into checkbox items', () => {
+    let state = EditorState.create({ doc: parseHostMarkdown('- Alpha\n- Beta\n') });
+    state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+    assert.equal(
+      toggleTask(state, (tr) => {
+        state = state.apply(tr);
+      }),
+      true,
+    );
+    assert.equal(serializeToHostMarkdown(state.doc), '- [ ] Alpha\n- [ ] Beta\n');
+  });
+  for (const eol of ['\n', '\r\n']) {
+    for (const marker of ['+', '7)']) {
+      it(
+        'converts selected list items without changing surrounding bytes: ' +
+          JSON.stringify({ eol, marker }),
+        () => {
+          const second = marker === '+' ? '+' : '8)';
+          const third = marker === '+' ? '+' : '9)';
+          const source = [
+            'Before _unchanged_',
+            '',
+            marker + ' **Alpha**',
+            second + ' Beta',
+            third + ' Tail',
+            '',
+            'After  ',
+            'unchanged',
+            '',
+          ].join(eol);
+          let state = EditorState.create({ doc: parseHostMarkdown(source) });
+          const paragraphs: number[] = [];
+          state.doc.descendants((node, pos) => {
+            if (node.type.name === 'paragraph' && ['Alpha', 'Beta'].includes(node.textContent))
+              paragraphs.push(pos);
+          });
+          state = state.apply(
+            state.tr.setSelection(
+              TextSelection.create(state.doc, paragraphs[0] + 1, paragraphs[1] + 5),
+            ),
+          );
+          assert.equal(
+            toggleTask(state, (tr) => {
+              state = state.apply(tr);
+            }),
+            true,
+          );
+          assert.equal(
+            serializeToHostMarkdown(state.doc),
+            source.replace('**Alpha**', '[ ] **Alpha**').replace('Beta', '[ ] Beta'),
+          );
+          assert.equal(state.selection.empty, false);
+        },
+      );
+    }
+  }
   for (const eol of ['\n', '\r\n']) {
     it(
       'preserves the final newline after lifting the last empty task: ' + JSON.stringify(eol),

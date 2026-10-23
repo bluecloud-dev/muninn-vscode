@@ -143,6 +143,24 @@ export const continueList: Command = (state, dispatch) => {
 
 export const toggleTask: Command = (state, dispatch) => {
   const { $from } = state.selection;
+  if (!state.selection.empty) {
+    const tr = state.tr;
+    state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos, parent, index) => {
+      if (
+        node.type.name === 'paragraph' &&
+        parent?.type.name === 'list_item' &&
+        index === 0 &&
+        pos + 1 < state.selection.to &&
+        !/^\[[ xX]\](?: |$)/.test(node.textContent)
+      ) {
+        tr.insert(tr.mapping.map(pos + 1), state.schema.text('[ ] '));
+      }
+    });
+    if (tr.docChanged) {
+      dispatch?.(tr);
+      return true;
+    }
+  }
   if ($from.parent.type.name !== 'paragraph') return false;
   const start = $from.start();
   const text = $from.parent.textContent;

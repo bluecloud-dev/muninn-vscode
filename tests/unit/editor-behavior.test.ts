@@ -1129,6 +1129,19 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   });
 
+  it('converts every selected list item to a checkbox without nesting another list', async () => {
+    const editor = open('- Alpha\n- Beta\n');
+    const paragraphs = editor.querySelectorAll('li p');
+    await selectBlocks(editor, paragraphs[0], paragraphs[1]);
+    dom.window.document
+      .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="toggleTask"]')!
+      .click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, '- [ ] Alpha\n- [ ] Beta\n');
+    assert.equal(editor.querySelectorAll('.muninn-task-checkbox').length, 2);
+    assert.equal(editor.querySelectorAll('li li').length, 0);
+  });
+
   it('turns GFM tasks into interactive checkboxes without normalizing their source', async () => {
     open('- [ ] Alpha\n- [x] Beta\n');
     const checkbox = dom.window.document.querySelector<HTMLInputElement>('.muninn-task-checkbox')!;
