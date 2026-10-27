@@ -1388,11 +1388,20 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       'Native Save applied or lost the raw table draft',
     );
     assert.equal(await textarea.inputValue(), '| Name |\n| --- |\n| Gamma |');
+    const untitledTabs = page.getByRole('tab', { name: /Untitled/ });
+    const existing = await untitledTabs.evaluateAll((tabs) =>
+      tabs.map((tab) => tab.getAttribute('data-resource-name')),
+    );
     await command('Muninn for VS Code: Open Source Editor');
-    await page
-      .getByRole('tab', { name: /Untitled/ })
-      .last()
-      .click();
+    let recoveryName;
+    await eventually(async () => {
+      const names = await untitledTabs.evaluateAll((tabs) =>
+        tabs.map((tab) => tab.getAttribute('data-resource-name')),
+      );
+      recoveryName = names.find((name) => name && !existing.includes(name));
+      return Boolean(recoveryName);
+    }, 'No new table draft recovery tab appeared');
+    await page.locator(`[role="tab"][data-resource-name="${recoveryName}"]`).click();
     await eventually(
       async () =>
         (await page.locator('.monaco-editor .view-lines').allTextContents())
