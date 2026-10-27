@@ -617,11 +617,14 @@
     "@vscode/test-cli": {
       "mocha": {
         "diff": "^8.0.4",
-        "serialize-javascript": "^7.0.5"
+        "serialize-javascript": "^7.1.4"
       }
     },
     "prosemirror-markdown": {
       "markdown-it": "$markdown-it"
+    },
+    "@azure/identity": {
+      "@azure/msal-node": "^7.1.1"
     }
   }
 }

@@ -1634,7 +1634,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## dompurify@3.4.16
+## dompurify@3.4.17
 
 License: (MPL-2.0 OR Apache-2.0)
 
