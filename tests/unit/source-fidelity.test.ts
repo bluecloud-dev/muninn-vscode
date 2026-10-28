@@ -102,6 +102,7 @@ describe('source-preserving edits', () => {
     '[Alpha][target]\n\n[target]: https://example.com\n',
     'Alpha &amp; Beta\n',
     'Alpha\r\nBeta\r\n',
+    'Alpha\r\nBeta\nDelta\r\n',
     'Alpha\n\n\nBeta\n',
     '---\ntitle: preserve\n---\n\nAlpha\n',
     '> Alpha\n> Beta\n',
@@ -129,6 +130,26 @@ describe('source-preserving edits', () => {
         ['# Reading ###', '', 'Alpha', '', 'Beta', '', '_Untouched_  '].join(eol),
       );
     });
+    for (const ending of [eol, '']) {
+      it(
+        'edits a large document without rewriting its line endings: ' +
+          JSON.stringify(eol) +
+          (ending ? ' with' : ' without') +
+          ' a final newline',
+        () => {
+          const paragraphs = Array.from(
+            { length: 600 },
+            (_, index) => `Line number ${index} of text.`,
+          );
+          const source = paragraphs.join(eol + eol) + ending;
+          assert.ok(source.length > 15_000);
+          assert.equal(
+            editWord(source, 'number 10 of', 'number 10X of'),
+            source.replace('number 10 of', 'number 10X of'),
+          );
+        },
+      );
+    }
   }
 
   it('keeps intermediate trailing spaces while typing and subsequent undo edits', () => {

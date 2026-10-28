@@ -179,6 +179,8 @@ export class SourceFidelityError extends Error {
 }
 
 let cachedSource: string | undefined;
+let cachedText = '';
+let cachedCrlf = false;
 let cachedOriginal: ProseMirrorNode | undefined;
 let cachedCanonical = '';
 let cachedDocument: ProseMirrorNode | undefined;
@@ -213,6 +215,10 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
   if (typeof source !== 'string') return markdownSerializer.serialize(document);
   if (cachedSource !== source || cachedDocument !== metadata?.document || !cachedOriginal) {
     cachedSource = source;
+    // VS Code keeps one EOL per document. Map CRLF source as LF so the canonical LF
+    // serialization does not differ on every line; a stray LF keeps the exact mapping.
+    cachedCrlf = source.includes('\r\n') && !/(?:^|[^\r])\n/.test(source);
+    cachedText = cachedCrlf ? source.replaceAll('\r\n', '\n') : source;
     cachedDocument = metadata?.document;
     cachedOriginal = cachedDocument ?? markdownParser.parse(source);
     cachedCanonical = markdownSerializer.serialize(cachedOriginal);
@@ -224,7 +230,7 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
     }
     let offset = 0;
     protectedRanges = [];
-    for (const [line, text] of source.split('\n').entries()) {
+    for (const [line, text] of cachedText.split('\n').entries()) {
       // Reference definitions and other non-rendered source must survive rich edits.
       if (!covered.has(line) && text.trim())
         protectedRanges.push({ from: offset, to: offset + text.length });
@@ -233,9 +239,9 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
   }
   if (cachedOriginal.content.eq(document.content)) return source;
   const canonical = markdownSerializer.serialize(document);
-  const syntaxChanges = textChanges(cachedCanonical, source);
+  const syntaxChanges = textChanges(cachedCanonical, cachedText);
   const intendedChanges = textChanges(cachedCanonical, canonical);
-  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const eol = !cachedCrlf && source.includes('\r\n') ? '\r\n' : '\n';
 
   for (const association of [-1, 1] as const) {
     const edits: TextChange[] = [];
@@ -255,9 +261,10 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
     }
     if (!valid) continue;
     try {
-      let candidate = applyTextChanges(source, edits);
+      let candidate = applyTextChanges(cachedText, edits);
       // Removing the last list marker must not remove the document's final newline.
-      if (source.endsWith('\n') && !candidate.endsWith('\n')) candidate += eol;
+      if (cachedText.endsWith('\n') && !candidate.endsWith('\n')) candidate += eol;
+      if (cachedCrlf) candidate = candidate.replaceAll('\n', '\r\n');
       const parsed = markdownParser.parse(candidate);
       if (
         parsed.content.eq(document.content) ||
