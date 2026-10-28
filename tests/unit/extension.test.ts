@@ -107,6 +107,7 @@ describe('extension activation', () => {
 
     const outputChannel = createOutputChannel();
     const appendLine = sinon.stub(outputChannel, 'appendLine');
+    const clear = sinon.stub(outputChannel, 'clear');
     sinon.stub(vscode.window, 'createOutputChannel').returns(outputChannel);
 
     sinon.stub(vscode.workspace, 'getConfiguration').returns({
@@ -139,7 +140,10 @@ describe('extension activation', () => {
 
     inspectCallback();
 
-    expect(appendLine.called).to.equal(true);
+    // The provider logs errors to the same channel; inspection must not erase them.
+    expect(clear.called).to.equal(false);
+    expect(appendLine.firstCall.args[0]).to.match(/^-+$/);
+    expect(appendLine.secondCall.args[0]).to.equal('Muninn for VS Code configuration');
 
     const reportIssueCommand = registerCommandStub
       .getCalls()

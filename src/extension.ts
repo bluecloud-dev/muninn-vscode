@@ -79,7 +79,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const logConfigInspection = (resource?: vscode.Uri): void => {
     const inspection = configService.inspect(resource);
-    outputChannel.clear();
+    // The editor logs errors to this channel too, so separate the report instead of clearing.
+    outputChannel.appendLine('-'.repeat(40));
     outputChannel.appendLine(t('Muninn for VS Code configuration'));
     outputChannel.appendLine(t('Workspace trusted: {0}', String(vscode.workspace.isTrusted)));
     outputChannel.appendLine(t('Resource: {0}', resource?.toString() ?? 'global'));
