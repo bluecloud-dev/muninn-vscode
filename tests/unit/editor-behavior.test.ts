@@ -1294,10 +1294,13 @@ describe('bundled editor behavior with a delayed host', function () {
   });
 
   it('routes links through the host and creates unique Unicode heading anchors', () => {
-    const editor = open('# Étape\n\n# Étape\n\n[Spec](design%20notes.md)\n');
+    const editor = open(
+      '# Étape\n\n# Étape\n\n# Héllo *world*\n\n# Héllo *world*\n\n# Use `foo()` now\n\n# ![logo](x.png) Title\n\n[Spec](design%20notes.md)\n',
+    );
+    // HTML export asserts these same ids for the same headings.
     assert.deepEqual(
       [...editor.querySelectorAll('h1')].map((h) => h.id),
-      ['étape', 'étape-1'],
+      ['étape', 'étape-1', 'héllo-world', 'héllo-world-1', 'use-foo-now', 'title'],
     );
     editor
       .querySelector('a')!

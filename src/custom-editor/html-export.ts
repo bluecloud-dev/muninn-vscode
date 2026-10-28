@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import MarkdownIt from 'markdown-it';
 import frontMatterPlugin from 'markdown-it-front-matter';
 import { t } from '../utils/l10n';
-import { headingSlug } from '../shared/heading-slug';
+import { headingSlug, headingTokenText } from '../shared/heading-slug';
 import {
   ALLOWED_IMAGE_EXTENSIONS,
   getMarkdownImagePath,
@@ -48,16 +48,13 @@ export const exportHtml = async (document: vscode.TextDocument): Promise<void> =
         let foundTitle = false;
         for (const [index, token] of tokens.entries()) {
           if (token.type !== 'heading_open') continue;
-          const text = parser.renderer.renderInlineAsText(
-            tokens[index + 1].children ?? [],
-            parser.options,
-            {},
-          );
+          const inline = tokens[index + 1].children ?? [];
+          const text = parser.renderer.renderInlineAsText(inline, parser.options, {});
           if (!foundTitle && token.tag === 'h1') {
             title = text;
             foundTitle = true;
           }
-          const base = headingSlug(text);
+          const base = headingSlug(headingTokenText(inline));
           let slug = base;
           let suffix = 0;
           while (headingIds.has(slug)) slug = base + '-' + ++suffix;

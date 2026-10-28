@@ -241,7 +241,7 @@ describe('custom editor host lifecycle', () => {
 
   it('preserves heading anchors and safe links while rebasing local destinations', async () => {
     const f = await fixture(
-      '# Héllo *world*\n\n# Héllo *world*\n\n[Anchor](#héllo-world-1) [Local](guide.md#intro) [Web](https://example.org) [Mail](mailto:test@example.org) [Command](command:workbench.action.closeWindow)\n',
+      '# Héllo *world*\n\n# Héllo *world*\n\n# Use `foo()` now\n\n# ![logo](x.png) Title\n\n[Anchor](#héllo-world-1) [Local](guide.md#intro) [Web](https://example.org) [Mail](mailto:test@example.org) [Command](command:workbench.action.closeWindow)\n',
     );
     sinon
       .stub(vscode.window, 'showSaveDialog')
@@ -252,7 +252,7 @@ describe('custom editor host lifecycle', () => {
     assert.equal(output.title, 'Héllo world');
     assert.deepEqual(
       [...output.querySelectorAll('h1')].map((heading) => heading.id),
-      ['héllo-world', 'héllo-world-1'],
+      ['héllo-world', 'héllo-world-1', 'use-foo-now', 'title'],
     );
     assert.deepEqual(
       [...output.querySelectorAll('a')].map((link) => link.getAttribute('href') ?? undefined),
