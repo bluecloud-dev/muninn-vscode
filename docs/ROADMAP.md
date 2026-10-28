@@ -1,6 +1,6 @@
 # Muninn roadmap
 
-The checked-in package is version `1.2.1` with stable release distribution metadata. This file describes product direction; it does not claim a Marketplace release or record issue completion. [GitHub issues](https://github.com/bluecloud-dev/muninn-vscode/issues) are the live task tracker. Check each issue's current state, labels, and scope before starting work.
+The checked-in package is version `1.4.0` with stable release distribution metadata. This file describes product direction; it does not claim a Marketplace release or record issue completion. [GitHub issues](https://github.com/bluecloud-dev/muninn-vscode/issues) are the live task tracker. Check each issue's current state, labels, and scope before starting work.
 
 ## Current product boundary
 
