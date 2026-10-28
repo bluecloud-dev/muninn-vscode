@@ -309,7 +309,9 @@ const getWordSelection = (state: EditorState): TextSelection | undefined => {
     return undefined;
   }
 
-  const text = parent.textContent;
+  // One placeholder per inline leaf (hard break, image) keeps text offsets
+  // equal to document offsets and treats the leaf as a word boundary.
+  const text = parent.textBetween(0, parent.content.size, undefined, '￼');
   if (text.length === 0) {
     return undefined;
   }

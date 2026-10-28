@@ -725,6 +725,41 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)?.payload.markdown, '- First\n- Next\n');
   });
 
+  for (const [name, source, expected] of [
+    ['a hard break', 'first line\\\nsecond word here\n', 'first line\\\nsecond **word** here\n'],
+    [
+      'an inline image',
+      'See ![logo](x.png) the word here\n',
+      'See ![logo](x.png) the **word** here\n',
+    ],
+  ]) {
+    it('bolds the whole word at a collapsed caret after ' + name, async () => {
+      const editor = open(source);
+      editor.focus();
+      const text = [...editor.querySelector('p')!.childNodes].findLast(
+        (node) => node instanceof dom.window.Text,
+      )!;
+      const range = dom.window.document.createRange();
+      range.setStart(text, text.textContent!.indexOf('word') + 2);
+      range.collapse(true);
+      dom.window.getSelection()!.removeAllRanges();
+      dom.window.getSelection()!.addRange(range);
+      dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+      await tick();
+      editor.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', {
+          key: 'b',
+          code: 'KeyB',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await tick();
+      assert.equal(applies().at(-1)?.payload.markdown, expected);
+    });
+  }
+
   it('preserves remote Markdown bytes during a subsequent unrelated local edit', async () => {
     const editor = open('Alpha\n');
     send({
