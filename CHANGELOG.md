@@ -4,6 +4,12 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-28
+
+### Release
+
+- Version 1.4.0 is a regular stable release that follows the even-minor release scheme. Requires VS Code 1.85.2 or later; existing Markdown files, settings and extension identity remain compatible.
+
 ### Added
 
 - Choose any zoom level from 50% to 200% in a menu opened from the percentage button. A choice, including 100%, leaves Fit to width and applies the configured reading width.
