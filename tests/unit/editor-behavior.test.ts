@@ -58,7 +58,11 @@ describe('bundled editor behavior with a delayed host', function () {
   });
   afterEach(() => dom?.window.close());
 
-  const open = (markdown: string, retainedState?: unknown): HTMLElement => {
+  const open = (
+    markdown: string,
+    retainedState?: unknown,
+    strings?: Record<string, string>,
+  ): HTMLElement => {
     dom?.window.close();
     messages = [];
     savedState = retainedState;
@@ -115,6 +119,7 @@ describe('bundled editor behavior with a delayed host', function () {
           savedState = structuredClone(state);
         },
       }),
+      __MUNINN_WEBVIEW_STRINGS__: strings,
     });
     win.eval(bundle);
     send({
@@ -506,6 +511,22 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
     assert.equal(language.value, '');
     assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, /Use Source/);
+  });
+
+  it('offers localized plain text and no placeholder language in the picker', () => {
+    const editor = open('```Kotlin\nval a = 1\n```\n', undefined, {
+      codeBlockLanguagePlainText: 'Texte brut',
+      codeBlockLanguageUnsupportedTemplate: 'Non pris en charge ({0})',
+    });
+    const options = [
+      ...editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!.options,
+    ].map((option) => [option.value, option.textContent]);
+    assert.deepEqual(options[0], ['', 'Texte brut']);
+    assert.deepEqual(options.at(-1), ['kotlin', 'Non pris en charge (kotlin)']);
+    assert.equal(
+      options.filter(([value]) => value === 'unsupported' || value === 'kotlin').length,
+      1,
+    );
   });
 
   it('keeps unknown, omitted and Mermaid code languages editable as plain text', async () => {

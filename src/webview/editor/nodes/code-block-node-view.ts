@@ -43,7 +43,10 @@ const getCodeBlockLanguage = (node: ProseMirrorNode): string =>
   getCodeFenceLanguage(getCodeBlockParameters(node));
 
 const buildCodeLanguageOptions = (currentLanguage: string): ReadonlyArray<CodeLanguageOption> => {
-  const options = [...CODE_LANGUAGE_OPTIONS];
+  const options = [
+    { value: '', label: getString('codeBlockLanguagePlainText') },
+    ...CODE_LANGUAGE_OPTIONS,
+  ];
   if (currentLanguage.length > 0 && !options.some((option) => option.value === currentLanguage)) {
     options.push({
       value: currentLanguage,

@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Muninn contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-export const TABLE_FENCE_LANGUAGE = 'muninn-table';
 export const DEFAULT_TABLE_SOURCE = '| Column 1 | Column 2 |\n| --- | --- |\n| Value 1 | Value 2 |';
 
 type Cell = { value: string; from: number; to: number };
-type TableSource = { lines: string[]; headers: string[]; rows: string[][]; eol: string };
+type TableSource = { lines: string[]; eol: string };
 export type MarkdownTable = {
   headers: string[];
   rows: string[][];
@@ -95,12 +94,7 @@ export const parseMarkdownTable = (source: string): MarkdownTable => {
     headers,
     rows,
     alignments,
-    source: {
-      lines,
-      headers: [...headers],
-      rows: rows.map((row) => [...row]),
-      eol: source.includes('\r\n') ? '\r\n' : '\n',
-    },
+    source: { lines, eol: source.includes('\r\n') ? '\r\n' : '\n' },
   };
 };
 
