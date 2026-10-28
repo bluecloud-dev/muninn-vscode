@@ -29,6 +29,8 @@ describe('custom editor host lifecycle', () => {
     let willSave: (event: vscode.TextDocumentWillSaveEvent) => unknown = noop;
     let flushResult: boolean | undefined = true;
     const messages: HostToViewMessage[] = [];
+    let webviewOptions: vscode.WebviewOptions = {};
+    const optionUpdates: vscode.WebviewOptions[] = [];
     const uri = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace/spec.md');
     const document = {
       uri,
@@ -87,7 +89,14 @@ describe('custom editor host lifecycle', () => {
     const panel = {
       webview: {
         html: '',
-        options: {},
+        // VS Code reloads the webview whenever its options are reassigned.
+        get options() {
+          return webviewOptions;
+        },
+        set options(value: vscode.WebviewOptions) {
+          webviewOptions = value;
+          optionUpdates.push(value);
+        },
         cspSource: 'https://local.resources',
         asWebviewUri: (value: vscode.Uri) => value,
         onDidReceiveMessage: (listener: (value: unknown) => unknown) => {
@@ -124,6 +133,7 @@ describe('custom editor host lifecycle', () => {
       panel,
       document,
       messages,
+      optionUpdates,
       logger,
       applyEdit,
       close: () => close(),
@@ -386,6 +396,46 @@ describe('custom editor host lifecycle', () => {
     f.trust();
     await tick();
     assert.equal(f.messages.at(-1)!.type, 'host.settingsChanged');
+  });
+
+  it('grows image resource roots only when a new folder appears, keeping the webview loaded', async () => {
+    const f = await fixture('![Seed](figures/seed.png)\n\n![A](a.png)\n');
+    const roots = () => f.panel.webview.options.localResourceRoots!.map(String);
+    const workspaceRoot = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace');
+    const folder = (name?: string) =>
+      (name ? vscode.Uri.joinPath(workspaceRoot, name) : workspaceRoot).toString();
+    assert.equal(f.optionUpdates.length, 1);
+    assert.ok(roots().includes(folder('figures')));
+    assert.equal(new Set(roots()).size, roots().length);
+
+    let revision = 0;
+    const apply = async (markdown: string) => {
+      await f.send({
+        type: 'view.applyDocument',
+        payload: { markdown, revision, operationId: revision + 1 },
+      });
+      revision++;
+    };
+    await apply('![A](a.png)\n\n![B](b.png)\n');
+    await apply('No images\n');
+    assert.equal(f.optionUpdates.length, 1);
+
+    await apply('![C](assets/c.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
+    assert.ok(roots().includes(folder('assets')));
+    assert.ok(roots().includes(folder('figures')));
+    assert.equal(roots().filter((root) => root === folder()).length, 1);
+    const applied = f.messages.findLast((message) => message.type === 'host.applyResult');
+    assert.equal(applied?.type, 'host.applyResult');
+    if (applied?.type === 'host.applyResult')
+      assert.equal(
+        applied.payload.imageSources['assets/c.png'],
+        vscode.Uri.joinPath(workspaceRoot, 'assets', 'c.png').toString(),
+      );
+
+    await apply('Plain again\n');
+    f.external('![D](assets/d.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
   });
 
   it('acknowledges each accepted operation, including no-ops, without an extra self echo', async () => {

@@ -151,9 +151,14 @@ export class MuninnCustomEditorProvider
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
   ): Promise<void> {
+    // Seed image folders so opening a document with images does not reload the webview.
+    const imageSources = collectMarkdownImageSources(document.getText());
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: this.getLocalResourceRoots(document.uri),
+      localResourceRoots: uniqueUris([
+        ...this.getLocalResourceRoots(document.uri),
+        ...getImageResourceRoots(document.uri, imageSources),
+      ]),
     };
     webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
 
@@ -892,15 +897,15 @@ export class MuninnCustomEditorProvider
         sources,
         map: this.createImageUriMap(sources, session.document.uri, session.panel.webview),
       };
-      const resourceRoots = this.getLocalResourceRoots(session.document.uri);
-      for (const source of sources) {
-        const uri = resolveMarkdownImageUri(session.document.uri, source);
-        if (uri) resourceRoots.push(vscode.Uri.joinPath(uri, '..'));
-      }
-      session.panel.webview.options = {
-        ...session.panel.webview.options,
-        localResourceRoots: resourceRoots,
-      };
+      // Reassigning options reloads the webview and discards undo history, so roots only grow.
+      const options = session.panel.webview.options;
+      const roots = options.localResourceRoots ?? [];
+      const allowed = new Set(roots.map((root) => root.toString()));
+      const missing = uniqueUris(getImageResourceRoots(session.document.uri, sources)).filter(
+        (root) => !allowed.has(root.toString()),
+      );
+      if (missing.length > 0)
+        session.panel.webview.options = { ...options, localResourceRoots: [...roots, ...missing] };
     }
     return { ...payload, imageSources: session.imageCache.map };
   }
@@ -958,6 +963,16 @@ const createNonce = (): string => randomBytes(16).toString('hex');
 
 const getDocumentFileName = (document: vscode.TextDocument): string =>
   path.posix.basename(document.uri.path).trim();
+
+const uniqueUris = (uris: readonly vscode.Uri[]): vscode.Uri[] => [
+  ...new Map(uris.map((uri) => [uri.toString(), uri])).values(),
+];
+
+const getImageResourceRoots = (documentUri: vscode.Uri, sources: string[]): vscode.Uri[] =>
+  sources.flatMap((source) => {
+    const uri = resolveMarkdownImageUri(documentUri, source);
+    return uri ? [vscode.Uri.joinPath(uri, '..')] : [];
+  });
 
 const collectMarkdownImageSources = (markdown: string): string[] => {
   if (!markdown.includes('![')) return [];
