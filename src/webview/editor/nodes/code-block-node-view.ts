@@ -207,6 +207,7 @@ class GenericCodeBlockNodeView implements NodeView {
 
   private async renderMermaidPreview(serialAtStart: number): Promise<void> {
     if (getCodeBlockLanguage(this.node) !== 'mermaid') {
+      this.renderedSource = undefined;
       this.mermaidPreview.hidden = true;
       this.mermaidPreview.innerHTML = '';
       return;
@@ -220,6 +221,7 @@ class GenericCodeBlockNodeView implements NodeView {
     const source = this.node.textContent.trim();
     if (source === this.renderedSource) return;
     if (source.length === 0) {
+      this.renderedSource = undefined;
       this.mermaidPreview.hidden = true;
       this.mermaidPreview.innerHTML = '';
       return;

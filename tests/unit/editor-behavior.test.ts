@@ -1432,6 +1432,41 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   });
 
+  it('shows the Mermaid preview again after a language toggle and after restoring cleared source', async () => {
+    const source = '~~~mermaid\ngraph TD\nA --> B\n~~~\n';
+    open(source);
+    send({
+      type: 'host.settingsChanged',
+      payload: { mermaidEnabled: true, toolbarMode: 'basic', contentWidth: 'comfortable' },
+    });
+    const preview = dom.window.document.querySelector<HTMLElement>(
+      '.muninn-code-node-mermaid-preview',
+    )!;
+    const settle = async (hidden: boolean) => {
+      for (let attempt = 0; attempt < 100 && preview.hidden !== hidden; attempt++) await tick();
+      await new Promise((resolve) => setTimeout(resolve, 140));
+      assert.equal(preview.hidden, hidden);
+    };
+    await settle(false);
+    const language = dom.window.document.querySelector<HTMLSelectElement>(
+      '.muninn-code-node-language',
+    )!;
+    for (const value of ['', 'mermaid']) {
+      language.value = value;
+      language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      await settle(value === '');
+      ack(applies().length - 1, applies().length);
+    }
+    for (const [index, markdown] of ['~~~mermaid\n~~~\n', source].entries()) {
+      send({
+        type: 'host.documentChanged',
+        payload: { markdown, revision: applies().length + index + 1, imageSources: {} },
+      });
+      assert.equal(preview.isConnected, true);
+      await settle(index === 0);
+    }
+  });
+
   it('turns GFM tasks into interactive checkboxes without normalizing their source', async () => {
     open('- [ ] Alpha\n- [x] Beta\n');
     const checkbox = dom.window.document.querySelector<HTMLInputElement>('.muninn-task-checkbox')!;
