@@ -517,6 +517,9 @@ const insertCodeBlock = (): boolean => {
   return true;
 };
 
+// The host input box stays open when focus leaves it, so its reply targets the requesting state.
+let pendingLinkState: EditorState | undefined;
+
 const requestLinkInput = (): boolean => {
   if (!view) {
     return false;
@@ -527,6 +530,7 @@ const requestLinkInput = (): boolean => {
     return false;
   }
 
+  pendingLinkState = state;
   const { from, to } = state.selection;
   const selectedText = from === to ? undefined : state.doc.textBetween(from, to, ' ');
 
@@ -543,6 +547,18 @@ const requestLinkInput = (): boolean => {
 const insertLinkFromHost = (href: string, text?: string): boolean => {
   if (!view) {
     return false;
+  }
+
+  const pending = pendingLinkState;
+  pendingLinkState = undefined;
+  if (pending && view.state.doc !== pending.doc) {
+    // Handled without an edit; the stale notice must not be replaced by a failure.
+    announce(getString('pickerStaleMessage'), { kind: 'error' });
+    view.focus();
+    return true;
+  }
+  if (pending && !view.state.selection.eq(pending.selection)) {
+    view.dispatch(view.state.tr.setSelection(pending.selection));
   }
 
   const linkMark = schema.marks.link.create({ href });
@@ -1082,6 +1098,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       return;
     }
     case 'host.linkInputCanceled': {
+      pendingLinkState = undefined;
       announce('', { kind: 'status' });
       view?.focus();
       return;

@@ -1619,6 +1619,74 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
   });
 
+  const requestLinkFor = async (editor: HTMLElement, from: number, to: number): Promise<void> => {
+    editor.focus();
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, from);
+    range.setEnd(text, to);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    dom.window.document
+      .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="insertLink"]')!
+      .click();
+    await tick();
+  };
+
+  it('applies a host link to the selection that requested it', async () => {
+    const editor = open('Alpha beta gamma\n');
+    await requestLinkFor(editor, 6, 10);
+    assert.deepEqual(structuredClone(messages.at(-1)), {
+      type: 'view.requestLinkInput',
+      payload: { selectedText: 'beta' },
+    });
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, 16);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    send({ type: 'host.insertLink', payload: { href: 'https://example.com', text: 'beta' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Alpha [beta](https://example.com) gamma\n');
+  });
+
+  it('forgets a canceled link request before a later file link', async () => {
+    const editor = open('Alpha beta\n');
+    await requestLinkFor(editor, 6, 10);
+    send({ type: 'host.linkInputCanceled' });
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, 10);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    send({ type: 'host.insertLink', payload: { href: 'note.md', text: 'note.md' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Alpha beta[note.md](note.md)\n');
+  });
+
+  it('does not apply a host link after the document changed', async () => {
+    const editor = open('Alpha beta\n');
+    await requestLinkFor(editor, 6, 10);
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'Alpha beta!\n', revision: 1, imageSources: {} },
+    });
+    send({ type: 'host.insertLink', payload: { href: 'https://example.com', text: 'beta' } });
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(editor.querySelector('p')!.textContent, 'Alpha beta!');
+    assert.match(
+      dom.window.document.querySelector('#status-alert')!.textContent!,
+      /document changed/,
+    );
+  });
+
   it('keeps table actions as named icons and restores editor focus after deletion', () => {
     const editor = open('| Name |\n| --- |\n| Alpha |\n');
     const toggle = editor.querySelector<HTMLButtonElement>(
