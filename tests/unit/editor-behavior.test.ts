@@ -8,6 +8,10 @@ import { JSDOM } from 'jsdom';
 import type { HostToViewMessage, ViewToHostMessage } from '../../src/custom-editor/protocol';
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 15));
+const isTableDraft = (
+  message: ViewToHostMessage,
+): message is Extract<ViewToHostMessage, { type: 'view.tableDraft' }> =>
+  message.type === 'view.tableDraft';
 const rect = () => ({
   left: 0,
   right: 10,
@@ -1384,6 +1388,39 @@ describe('bundled editor behavior with a delayed host', function () {
     apply.click();
     await tick();
     assert.equal(applies().at(-1)?.payload.markdown, 'Intro\n\n| Name |\n| --- |\n| Delta |\n');
+  });
+
+  it('keeps a retained stale table draft when the table returns to its base', async () => {
+    const original = 'Intro\n\n| Name |\n| --- |\n| Alpha |\n';
+    open(original);
+    const toggle = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-toggle-source"]',
+    )!;
+    toggle.click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    const stale = '| Name |\n| --- |\n| Beta |';
+    textarea.value = stale;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    const staleKey = messages.findLast(isTableDraft)!.payload.key;
+    for (const [markdown, revision] of [
+      ['Intro\n\n| Name |\n| --- |\n| Gamma |\n', 1],
+      [original, 2],
+    ] as const) {
+      if (revision === 2) {
+        dom.window.document
+          .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+          .click();
+        await tick();
+        toggle.click();
+      }
+      send({ type: 'host.documentChanged', payload: { markdown, revision, imageSources: {} } });
+    }
+    toggle.click();
+    textarea.value = '| Name |\n| --- |\n| Delta |';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    const retained = messages.filter(isTableDraft).filter((m) => m.payload.key === staleKey);
+    assert.equal(retained.at(-1)?.payload.markdown, stale);
+    assert.notEqual(messages.findLast(isTableDraft)?.payload.key, staleKey);
   });
 
   it('restores a raw table draft started after a grid edit and applies it exactly', async () => {

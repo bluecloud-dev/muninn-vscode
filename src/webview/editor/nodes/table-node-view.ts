@@ -223,7 +223,7 @@ class TableNodeView implements NodeView {
     });
     this.sourceTextarea.addEventListener('input', () => {
       this.sourceDraft = this.sourceTextarea.value;
-      if (!this.sourceDirty) this.startDraft();
+      if (!this.sourceDirty) this.startDraft(true);
       this.sourceDirty = this.sourceDraft !== this.normalizedCurrentSource;
       writeTableDraft(this.draftKey, this.sourceDirty ? this.sourceDraft : undefined);
       this.clearSourceFeedback();
@@ -456,9 +456,13 @@ class TableNodeView implements NodeView {
     this.setSourceVisibility(!this.sourceVisible);
   }
 
-  private startDraft(): void {
+  private startDraft(fresh = false): void {
     this.draftBase = getTableSource(this.node);
-    this.draftKey = JSON.stringify([this.resolveCurrentNodePosition(), this.draftBase]);
+    const position = this.resolveCurrentNodePosition();
+    this.draftKey = JSON.stringify([position, this.draftBase]);
+    // A retained stale draft can share this key once its table returns to the same base.
+    for (let copy = 1; fresh && readTableDraft(this.draftKey) !== undefined; copy++)
+      this.draftKey = JSON.stringify([position, this.draftBase, copy]);
     this.staleDraftReported = false;
   }
 
