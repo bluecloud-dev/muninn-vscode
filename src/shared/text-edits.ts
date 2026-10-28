@@ -11,12 +11,16 @@ const lowSurrogate = /^[\uDC00-\uDFFF]$/;
 /** UTF-16 offsets match VS Code and ProseMirror; diff counts Unicode code points. */
 export const textChanges = (before: string, after: string): TextChange[] => {
   if (before === after) return [];
-  const changes = diffChars(before, after, { timeout: 80, maxEditLength: 20_000 });
+  // diffChars extracts the common prefix first, so skipping it keeps its result; skipping a
+  // common suffix would change how ties align. Scanning compares UTF-16 units: keep pairs whole.
+  let from = 0;
+  while (from < before.length && from < after.length && before[from] === after[from]) from++;
+  if (from > 0 && highSurrogate.test(before[from - 1])) from--;
+  const changes = diffChars(before.slice(from), after.slice(from), {
+    timeout: 80,
+    maxEditLength: 20_000,
+  });
   if (!changes) {
-    let from = 0;
-    while (from < before.length && from < after.length && before[from] === after[from]) from++;
-    // Scanning compares UTF-16 units; never leave half of a surrogate pair outside the change.
-    if (from > 0 && highSurrogate.test(before[from - 1])) from--;
     let oldEnd = before.length;
     let newEnd = after.length;
     while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
@@ -30,7 +34,7 @@ export const textChanges = (before: string, after: string): TextChange[] => {
     return [{ from, to: oldEnd, insert: after.slice(from, newEnd) }];
   }
   const edits: TextChange[] = [];
-  let offset = 0;
+  let offset = from;
   let pending: TextChange | undefined;
   for (const change of changes) {
     if (!change.added && !change.removed) {

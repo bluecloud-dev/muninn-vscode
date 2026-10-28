@@ -4,9 +4,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { characterDiff } from 'diff';
 import { EditorState, TextSelection } from 'prosemirror-state';
+import sinon from 'sinon';
 import { continueList, toggleTask } from '../../src/webview/editor/document-navigation';
 import {
+  markdownSerializer,
   parseHostMarkdown,
   serializeToHostMarkdown,
   schema,
@@ -165,6 +168,26 @@ describe('source-preserving edits', () => {
     assert.equal(serializeToHostMarkdown(transaction.doc), '# Reading\n\nAlpha\n');
   });
 
+  it('serializes each typed character once after the first edit', () => {
+    const serialize = sinon.spy(markdownSerializer, 'serialize');
+    try {
+      let state = EditorState.create({ doc: parseHostMarkdown('# Reading\n\nAlpha\n') });
+      const counts: number[] = [];
+      for (const addition of ['B', 'e', 't', 'a']) {
+        serialize.resetHistory();
+        const transaction = state.tr.insertText(addition, state.doc.content.size - 1);
+        const markdown = serializeToHostMarkdown(transaction.doc);
+        state = state.apply(transaction);
+        setDocumentSource(state.doc, markdown);
+        counts.push(serialize.callCount);
+      }
+      assert.deepEqual(counts.slice(1), [1, 1, 1]);
+      assert.equal(serializeToHostMarkdown(state.doc), '# Reading\n\nAlphaBeta\n');
+    } finally {
+      serialize.restore();
+    }
+  });
+
   it('preserves original table alignment, spacing and escaped pipes after a cell edit', () => {
     const source = '| A   | B |\n| :--- | ---: |\n| a \\| b | old |';
     const model = parseMarkdownTable(source);
@@ -212,6 +235,24 @@ describe('text synchronization changes', () => {
       assert.equal(loneSurrogate.test(before.slice(changes[0].from, changes[0].to)), false);
       assert.equal(loneSurrogate.test(changes[0].insert), false);
       assert.equal(applyTextChanges(before, changes) === after, true);
+    }
+  });
+  it('skips the common prefix before diffing without changing the alignment', () => {
+    const diff = sinon.spy(characterDiff, 'diff');
+    try {
+      const before = 'a'.repeat(100_000) + 'Xb';
+      const after = 'a'.repeat(100_000) + 'YZb';
+      assert.deepEqual(textChanges(before, after), [{ from: 100_000, to: 100_001, insert: 'YZ' }]);
+      assert.deepEqual(diff.firstCall.args.slice(0, 2), ['Xb', 'YZb']);
+      // A lifted list item keeps the marker space that diffChars aligns first.
+      assert.deepEqual(textChanges('- Parent\n  + Child\n  + ', '- Parent\n  + Child\n- '), [
+        { from: 19, to: 19, insert: '-' },
+        { from: 20, to: 23, insert: '' },
+      ]);
+      assert.deepEqual(textChanges('a😀b', 'a😁b'), [{ from: 1, to: 3, insert: '😁' }]);
+      assert.deepEqual(textChanges('a😀b', 'a😀'), [{ from: 3, to: 4, insert: '' }]);
+    } finally {
+      diff.restore();
     }
   });
   it('merges independent agent and local edits', () => {

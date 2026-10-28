@@ -976,8 +976,8 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
         const nextState = view.state.apply(transaction);
         if (nextMarkdown !== undefined) setDocumentSource(nextState.doc, nextMarkdown);
         view.updateState(nextState);
-        if (transaction.docChanged) {
-          const markdown = serializeMarkdownForHost();
+        if (nextMarkdown !== undefined) {
+          const markdown = nextMarkdown;
           retained.draft = { markdown, baseMarkdown: syncController.getBaseMarkdown() };
           preserveState();
           vscode.postMessage({

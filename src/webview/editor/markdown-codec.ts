@@ -183,7 +183,10 @@ let cachedText = '';
 let cachedCrlf = false;
 let cachedOriginal: ProseMirrorNode | undefined;
 let cachedCanonical = '';
+let cachedSyntaxChanges: TextChange[] | undefined;
 let cachedDocument: ProseMirrorNode | undefined;
+// An accepted edit's document becomes the next baseline; keep its serialization with it.
+const canonicalSerializations = new WeakMap<ProseMirrorNode, string>();
 let protectedRanges: { from: number; to: number }[] = [];
 
 // Markdown cannot encode empty paragraphs or trailing text spaces as distinct AST nodes.
@@ -221,7 +224,9 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
     cachedText = cachedCrlf ? source.replaceAll('\r\n', '\n') : source;
     cachedDocument = metadata?.document;
     cachedOriginal = cachedDocument ?? markdownParser.parse(source);
-    cachedCanonical = markdownSerializer.serialize(cachedOriginal);
+    cachedCanonical =
+      canonicalSerializations.get(cachedOriginal) ?? markdownSerializer.serialize(cachedOriginal);
+    cachedSyntaxChanges = undefined;
     const covered = new Set<number>();
     for (const token of markdownItParser.parse(source, {})) {
       if (token.level === 0 && token.map) {
@@ -239,7 +244,8 @@ export const serializeToHostMarkdown = (document: ProseMirrorNode): string => {
   }
   if (cachedOriginal.content.eq(document.content)) return source;
   const canonical = markdownSerializer.serialize(document);
-  const syntaxChanges = textChanges(cachedCanonical, cachedText);
+  canonicalSerializations.set(document, canonical);
+  const syntaxChanges = (cachedSyntaxChanges ??= textChanges(cachedCanonical, cachedText));
   const intendedChanges = textChanges(cachedCanonical, canonical);
   const eol = !cachedCrlf && source.includes('\r\n') ? '\r\n' : '\n';
 
