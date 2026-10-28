@@ -1202,6 +1202,54 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal((dom.window.document.activeElement as HTMLElement).dataset.tableRow, '0');
   });
 
+  for (const draft of ['| Name |\n| --- |\n| Beta |\n\n', '  | Name |\n  | --- |\n  | Beta |\n']) {
+    it('applies raw table source with surrounding layout: ' + JSON.stringify(draft), async () => {
+      open('Before\n\n| Name |\n| --- |\n| Alpha |\n\nAfter\n');
+      dom.window.document
+        .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+        .click();
+      const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+      textarea.value = draft;
+      textarea.dispatchEvent(new dom.window.Event('input'));
+      dom.window.document
+        .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+        .click();
+      await tick();
+      assert.equal(applies().length, 1);
+      assert.equal(
+        applies()[0].payload.markdown,
+        'Before\n\n| Name |\n| --- |\n| Beta |\n\nAfter\n',
+      );
+      assert.deepEqual((savedState as { tableDrafts: unknown }).tableDrafts, {});
+    });
+  }
+
+  it('rejects an empty raw table draft without inserting placeholder content', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = ' \n';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+      .click();
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(textarea.getAttribute('aria-invalid'), 'true');
+    assert.match(
+      dom.window.document.querySelector('[data-testid="muninn-table-source-feedback"]')!
+        .textContent!,
+      /header row.*separator row/i,
+    );
+    assert.equal(textarea.value, ' \n');
+    assert.equal(
+      dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+      'Alpha',
+    );
+  });
+
   for (const draft of ['| Name |\n| --- |\n| Beta |', '| unfinished draft']) {
     it(
       'retains unapplied raw source through Source and reload: ' + JSON.stringify(draft),

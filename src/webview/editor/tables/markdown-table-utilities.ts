@@ -127,8 +127,16 @@ export const serializeMarkdownTable = (table: MarkdownTable): string => {
   ].join(table.source?.eol ?? '\n');
 };
 
+// Match the parser's captured table: no trailing blank lines and no shared indentation.
 export const normalizeTableSource = (source: string): string => {
-  if (!source.trim()) return DEFAULT_TABLE_SOURCE;
-  parseMarkdownTable(source);
-  return source;
+  const lines = source.split(/\r?\n/);
+  while (lines.length > 0 && !lines.at(-1)!.trim()) lines.pop();
+  let indentation = /^[\t ]*/.exec(lines[0] ?? '')![0];
+  for (const line of lines)
+    while (line.trim() && !line.startsWith(indentation)) indentation = indentation.slice(0, -1);
+  const normalized = lines
+    .map((line) => line.slice(indentation.length))
+    .join(source.includes('\r\n') ? '\r\n' : '\n');
+  parseMarkdownTable(normalized);
+  return normalized;
 };
