@@ -3,7 +3,10 @@
 
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { attachAdaptiveToolbar } from '../../src/webview/editor/adaptive-toolbar';
+import {
+  attachAdaptiveToolbar,
+  type ToolbarMenuItem,
+} from '../../src/webview/editor/adaptive-toolbar';
 
 describe('adaptive toolbar layout and menus', () => {
   let dom: JSDOM;
@@ -16,6 +19,7 @@ describe('adaptive toolbar layout and menus', () => {
   let resizeCallbacks: Set<() => void>;
   let calls: [string, string | undefined][];
   let opens: number;
+  let styleChoices: ToolbarMenuItem[];
   const previous = new Map<string, PropertyDescriptor | undefined>();
   const settle = () =>
     new Promise<void>((resolve) => dom.window.requestAnimationFrame(() => resolve()));
@@ -32,6 +36,10 @@ describe('adaptive toolbar layout and menus', () => {
   beforeEach(async () => {
     width = 700;
     calls = [];
+    styleChoices = [
+      { command: 'setParagraph', label: 'Paragraph', role: 'menuitemradio', checked: true },
+      { command: 'setHeading1', label: 'Heading 1', role: 'menuitemradio' },
+    ];
     opens = 0;
     resizeCallbacks = new Set();
     dom = new JSDOM(
@@ -120,11 +128,7 @@ describe('adaptive toolbar layout and menus', () => {
       },
       execute: (command, kind) => calls.push([command, kind]),
       getMenu: (command) => {
-        if (command === 'chooseBlockStyle')
-          return [
-            { command: 'setParagraph', label: 'Paragraph', role: 'menuitemradio', checked: true },
-            { command: 'setHeading1', label: 'Heading 1', role: 'menuitemradio' },
-          ];
+        if (command === 'chooseBlockStyle') return styleChoices;
         if (command === 'chooseTableAction')
           return [
             { command: 'insertTable', label: 'Insert new table' },
@@ -254,6 +258,37 @@ describe('adaptive toolbar layout and menus', () => {
     style.click();
     menu.querySelectorAll<HTMLButtonElement>('button')[1].click();
     assert.deepEqual(calls, [['setHeading1', 'chooseBlockStyle']]);
+  });
+
+  it('centers the checked row of a long radio menu without scrolling for focus', () => {
+    styleChoices = Array.from({ length: 16 }, (_, index) => ({
+      command: 'level' + index,
+      label: String(index),
+      role: 'menuitemradio',
+      checked: index === 10,
+    }));
+    const rowHeight = 40;
+    Object.defineProperties(dom.window.HTMLElement.prototype, {
+      offsetTop: {
+        configurable: true,
+        get(this: HTMLElement) {
+          return 8 + [...this.parentElement!.children].indexOf(this) * rowHeight;
+        },
+      },
+      offsetHeight: { configurable: true, get: () => rowHeight },
+    });
+    Object.defineProperty(menu, 'clientHeight', { configurable: true, value: 120 });
+    const focusOptions: (FocusOptions | undefined)[] = [];
+    const focus = dom.window.HTMLElement.prototype.focus;
+    dom.window.HTMLElement.prototype.focus = function (this: HTMLElement, options) {
+      if (menu.contains(this)) focusOptions.push(options);
+      focus.call(this, options);
+    };
+    buttons.get('chooseBlockStyle')!.click();
+    const checked = menu.querySelector<HTMLButtonElement>('[aria-checked="true"]')!;
+    assert.equal(dom.window.document.activeElement, checked);
+    assert.deepEqual(focusOptions, [{ preventScroll: true }]);
+    assert.equal(menu.scrollTop, 8 + 10 * rowHeight - (120 - rowHeight) / 2);
   });
 
   it('opens nested overflow choices once, reflects disabled and checked states, and dismisses outside', async () => {

@@ -110,6 +110,8 @@ export class MuninnCustomEditorProvider
   private nextImageInsertId = 1;
   private readonly pendingAnchors = new Map<string, string>();
   private readonly pendingImageInsertions = new Map<number, PendingImageInsert>();
+  // Image inserts run concurrently; names chosen but not yet written are reserved here.
+  private readonly reservedImageUris = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -142,6 +144,7 @@ export class MuninnCustomEditorProvider
       }
     }
     this.pendingImageInsertions.clear();
+    this.reservedImageUris.clear();
     this.pendingAnchors.clear();
     this.sessions.clear();
     this.sessionsByUri.clear();
@@ -151,9 +154,14 @@ export class MuninnCustomEditorProvider
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
   ): Promise<void> {
+    // Seed image folders so opening a document with images does not reload the webview.
+    const imageSources = collectMarkdownImageSources(document.getText());
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: this.getLocalResourceRoots(document.uri),
+      localResourceRoots: uniqueUris([
+        ...this.getLocalResourceRoots(document.uri),
+        ...getImageResourceRoots(document.uri, imageSources),
+      ]),
     };
     webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
 
@@ -582,7 +590,8 @@ export class MuninnCustomEditorProvider
       });
       await vscode.window.showTextDocument(copy, { preview: false });
       session.draft = undefined;
-      await vscode.window.showWarningMessage(
+      // A notification may never settle (timeout, Do Not Disturb); the editor must not wait for it.
+      void vscode.window.showWarningMessage(
         t(
           'The document changed elsewhere. Your edits are preserved in a separate unsaved Markdown document.',
         ),
@@ -816,6 +825,8 @@ export class MuninnCustomEditorProvider
       }
       this.logger.error(t('Image insertion failed.'), error);
       await this.rejectImageForSession(session, t('Could not add image. Please retry.'));
+    } finally {
+      if (imageUri) this.reservedImageUris.delete(imageUri.toString());
     }
   }
 
@@ -844,8 +855,19 @@ export class MuninnCustomEditorProvider
         await vscode.workspace.fs.stat(candidate);
         suffix += 1;
       } catch (error: unknown) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'FileNotFound')
-          return candidate;
+        if (
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'FileNotFound'
+        ) {
+          if (!this.reservedImageUris.has(candidate.toString())) {
+            this.reservedImageUris.add(candidate.toString());
+            return candidate;
+          }
+          suffix += 1;
+          continue;
+        }
         throw error;
       }
     }
@@ -892,15 +914,15 @@ export class MuninnCustomEditorProvider
         sources,
         map: this.createImageUriMap(sources, session.document.uri, session.panel.webview),
       };
-      const resourceRoots = this.getLocalResourceRoots(session.document.uri);
-      for (const source of sources) {
-        const uri = resolveMarkdownImageUri(session.document.uri, source);
-        if (uri) resourceRoots.push(vscode.Uri.joinPath(uri, '..'));
-      }
-      session.panel.webview.options = {
-        ...session.panel.webview.options,
-        localResourceRoots: resourceRoots,
-      };
+      // Reassigning options reloads the webview and discards undo history, so roots only grow.
+      const options = session.panel.webview.options;
+      const roots = options.localResourceRoots ?? [];
+      const allowed = new Set(roots.map((root) => root.toString()));
+      const missing = uniqueUris(getImageResourceRoots(session.document.uri, sources)).filter(
+        (root) => !allowed.has(root.toString()),
+      );
+      if (missing.length > 0)
+        session.panel.webview.options = { ...options, localResourceRoots: [...roots, ...missing] };
     }
     return { ...payload, imageSources: session.imageCache.map };
   }
@@ -958,6 +980,16 @@ const createNonce = (): string => randomBytes(16).toString('hex');
 
 const getDocumentFileName = (document: vscode.TextDocument): string =>
   path.posix.basename(document.uri.path).trim();
+
+const uniqueUris = (uris: readonly vscode.Uri[]): vscode.Uri[] => [
+  ...new Map(uris.map((uri) => [uri.toString(), uri])).values(),
+];
+
+const getImageResourceRoots = (documentUri: vscode.Uri, sources: string[]): vscode.Uri[] =>
+  sources.flatMap((source) => {
+    const uri = resolveMarkdownImageUri(documentUri, source);
+    return uri ? [vscode.Uri.joinPath(uri, '..')] : [];
+  });
 
 const collectMarkdownImageSources = (markdown: string): string[] => {
   if (!markdown.includes('![')) return [];

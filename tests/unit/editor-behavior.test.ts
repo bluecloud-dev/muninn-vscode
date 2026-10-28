@@ -8,6 +8,10 @@ import { JSDOM } from 'jsdom';
 import type { HostToViewMessage, ViewToHostMessage } from '../../src/custom-editor/protocol';
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 15));
+const isTableDraft = (
+  message: ViewToHostMessage,
+): message is Extract<ViewToHostMessage, { type: 'view.tableDraft' }> =>
+  message.type === 'view.tableDraft';
 const rect = () => ({
   left: 0,
   right: 10,
@@ -58,7 +62,11 @@ describe('bundled editor behavior with a delayed host', function () {
   });
   afterEach(() => dom?.window.close());
 
-  const open = (markdown: string, retainedState?: unknown): HTMLElement => {
+  const open = (
+    markdown: string,
+    retainedState?: unknown,
+    strings?: Record<string, string>,
+  ): HTMLElement => {
     dom?.window.close();
     messages = [];
     savedState = retainedState;
@@ -115,6 +123,7 @@ describe('bundled editor behavior with a delayed host', function () {
           savedState = structuredClone(state);
         },
       }),
+      __MUNINN_WEBVIEW_STRINGS__: strings,
     });
     win.eval(bundle);
     send({
@@ -170,6 +179,86 @@ describe('bundled editor behavior with a delayed host', function () {
     if (applies().length > 0) ack(applies().length - 1, applies().length);
   };
 
+  const chooseZoom = (percent: number): void => {
+    const button = dom.window.document.querySelector<HTMLButtonElement>(
+      '.muninn-toolbar [data-command="chooseZoom"]',
+    )!;
+    button.focus();
+    button.click();
+    dom.window.document
+      .querySelector<HTMLButtonElement>(
+        '#muninn-toolbar-menu [data-command="setZoom' + percent + '"]',
+      )!
+      .click();
+  };
+
+  it('offers every zoom level from the percentage menu and leaves fit on a choice', async () => {
+    const editor = open('Keep **this** exactly.\r\n');
+    const document = dom.window.document;
+    const button = (command: string) =>
+      document.querySelector<HTMLButtonElement>(
+        '.muninn-toolbar [data-command="' + command + '"]',
+      )!;
+    const menu = document.querySelector<HTMLElement>('#muninn-toolbar-menu')!;
+    const zoom = button('chooseZoom');
+    const rows = () => [...menu.querySelectorAll<HTMLButtonElement>('button')];
+    const key = (target: Element, value: string) =>
+      target.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }),
+      );
+    assert.equal(zoom.getAttribute('aria-haspopup'), 'menu');
+    assert.equal(zoom.getAttribute('aria-expanded'), 'false');
+    assert.equal(zoom.textContent, '100%');
+    assert.equal(zoom.getAttribute('aria-label'), 'Zoom level: 100%');
+    zoom.focus();
+    zoom.click();
+    assert.equal(menu.hidden, false);
+    assert.equal(zoom.getAttribute('aria-expanded'), 'true');
+    assert.deepEqual(
+      rows().map((row) => [row.getAttribute('role'), row.textContent]),
+      Array.from({ length: 16 }, (_, index) => ['menuitemradio', 50 + index * 10 + '%']),
+    );
+    assert.deepEqual(
+      rows()
+        .filter((row) => row.getAttribute('aria-checked') === 'true')
+        .map((row) => row.textContent),
+      ['100%'],
+    );
+    assert.equal(document.activeElement!.textContent, '100%');
+    key(document.activeElement!, 'Escape');
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, zoom);
+    for (let count = 0; count < 3; count++) button('zoomIn').click();
+    zoom.focus();
+    key(zoom, 'ArrowDown');
+    assert.equal(document.activeElement!.textContent, '130%');
+    assert.equal(document.activeElement!.getAttribute('aria-checked'), 'true');
+    key(document.activeElement!, 'Escape');
+    button('fitToWidth').click();
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'true');
+    chooseZoom(150);
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, zoom);
+    assert.equal(document.querySelector<HTMLElement>('#editor')!.style.zoom, '1.5');
+    assert.equal(
+      document
+        .querySelector<HTMLElement>('#editor-shell')!
+        .style.getPropertyValue('--muninn-content-width'),
+      '70ch',
+    );
+    assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
+    assert.equal(zoom.textContent, '150%');
+    assert.equal(zoom.getAttribute('aria-label'), 'Zoom level: 150%');
+    assert.equal(document.querySelector('#status')!.textContent, 'Document zoom: 150%');
+    assert.equal(editor.textContent, 'Keep this exactly.');
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(
+      messages.some((message) => message.type === 'view.executeCommand'),
+      false,
+    );
+  });
+
   it('changes only the document zoom, shows its percentage and enforces 50–200% bounds', async () => {
     const editor = open('Keep **this** exactly.\r\n');
     const button = (command: string) => {
@@ -181,24 +270,24 @@ describe('bundled editor behavior with a delayed host', function () {
     };
     const surface = dom.window.document.querySelector<HTMLElement>('#editor')!;
     const original = editor.textContent;
-    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('chooseZoom').textContent, '100%');
     button('zoomIn').click();
     assert.equal(surface.style.zoom, '1.1');
-    assert.equal(button('resetZoom').textContent, '110%');
-    assert.match(button('resetZoom').getAttribute('aria-label')!, /100%.*110%/);
+    assert.equal(button('chooseZoom').textContent, '110%');
+    assert.equal(button('chooseZoom').getAttribute('aria-label'), 'Zoom level: 110%');
     button('zoomIn').focus();
     for (let count = 0; count < 20; count++) button('zoomIn').click();
     assert.equal(surface.style.zoom, '2');
     assert.equal(button('zoomIn').disabled, true);
-    assert.equal(dom.window.document.activeElement, button('resetZoom'));
+    assert.equal(dom.window.document.activeElement, button('chooseZoom'));
     button('zoomOut').focus();
     for (let count = 0; count < 30; count++) button('zoomOut').click();
     assert.equal(surface.style.zoom, '0.5');
     assert.equal(button('zoomOut').disabled, true);
-    assert.equal(dom.window.document.activeElement, button('resetZoom'));
-    button('resetZoom').click();
+    assert.equal(dom.window.document.activeElement, button('chooseZoom'));
+    chooseZoom(100);
     assert.equal(surface.style.zoom, '1');
-    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('chooseZoom').textContent, '100%');
     assert.equal(button('zoomIn').disabled, false);
     assert.equal(button('zoomOut').disabled, false);
     assert.equal(dom.window.document.querySelector<HTMLElement>('.muninn-toolbar')!.style.zoom, '');
@@ -233,13 +322,13 @@ describe('bundled editor behavior with a delayed host', function () {
     await resize();
     assert.equal(surface.style.zoom, '1.1');
     assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
-    button('resetZoom').click();
+    chooseZoom(100);
     assert.equal(surface.style.zoom, '1');
     assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
     assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '90ch');
     setting('full');
     button('fitToWidth').click();
-    button('resetZoom').click();
+    chooseZoom(100);
     assert.equal(shell.style.getPropertyValue('--muninn-content-width'), 'none');
     setting('comfortable');
     assert.equal(shell.style.getPropertyValue('--muninn-content-width'), '70ch');
@@ -270,7 +359,8 @@ describe('bundled editor behavior with a delayed host', function () {
       button.focus();
       button.click();
     };
-    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) click(command);
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut']) click(command);
+    chooseZoom(100);
     await tick();
     assert.equal(applies().length, 0);
     click('toggleBold');
@@ -295,18 +385,19 @@ describe('bundled editor behavior with a delayed host', function () {
         '.muninn-toolbar [data-command="' + command + '"]',
       )!;
     button('zoomIn').click();
-    button('resetZoom').focus();
+    button('chooseZoom').focus();
     const tooltip = dom.window.document.querySelector<HTMLElement>('[role="tooltip"]')!;
-    assert.match(tooltip.textContent!, /110%/);
-    button('resetZoom').click();
-    assert.equal(tooltip.textContent, 'Reset zoom to 100% (current: 100%)');
+    assert.equal(tooltip.textContent, 'Zoom level: 110%');
+    chooseZoom(100);
+    assert.equal(tooltip.textContent, 'Zoom level: 100%');
     editor.querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!.click();
     const draft = editor.querySelector<HTMLTextAreaElement>('textarea')!;
     draft.value = 'unapplied zoom draft';
     draft.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     draft.focus();
     draft.setSelectionRange(2, 7);
-    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut', 'resetZoom']) button(command).click();
+    for (const command of ['zoomIn', 'fitToWidth', 'zoomOut']) button(command).click();
+    chooseZoom(100);
     assert.deepEqual(
       [draft.value, draft.selectionStart, draft.selectionEnd],
       ['unapplied zoom draft', 2, 7],
@@ -314,7 +405,7 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
     assert.equal(applies().length, 0);
     open('Another view.\n');
-    assert.equal(button('resetZoom').textContent, '100%');
+    assert.equal(button('chooseZoom').textContent, '100%');
     assert.equal(button('fitToWidth').getAttribute('aria-pressed'), 'false');
   });
 
@@ -389,6 +480,57 @@ describe('bundled editor behavior with a delayed host', function () {
     await tick();
     assert.equal(code.querySelector('.hljs-keyword')?.textContent, 'const');
     assert.equal(applies().at(-1)?.payload.markdown, source);
+  });
+
+  it('reads the language from the first info word and keeps fence attributes', async () => {
+    const editor = open('Intro\n\n```Python title="a.py" {1,3}\nprint("hi")\n```\n');
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    assert.ok(code.querySelector('span[class*="hljs-"]'));
+    assert.equal(language.value, 'python');
+    language.value = 'javascript';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n```javascript title="a.py" {1,3}\nprint("hi")\n```\n',
+    );
+    assert.ok(code.querySelector('span[class*="hljs-"]'));
+    ack(0, 1);
+    language.value = '';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n``` title="a.py" {1,3}\nprint("hi")\n```\n',
+    );
+  });
+
+  it('restores the language picker when a language change cannot preserve the source', async () => {
+    const editor = open('Intro\n\n    indented code\n');
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    language.value = 'python';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(language.value, '');
+    assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, /Use Source/);
+  });
+
+  it('offers localized plain text and no placeholder language in the picker', () => {
+    const editor = open('```Kotlin\nval a = 1\n```\n', undefined, {
+      codeBlockLanguagePlainText: 'Texte brut',
+      codeBlockLanguageUnsupportedTemplate: 'Non pris en charge ({0})',
+    });
+    const options = [
+      ...editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!.options,
+    ].map((option) => [option.value, option.textContent]);
+    assert.deepEqual(options[0], ['', 'Texte brut']);
+    assert.deepEqual(options.at(-1), ['kotlin', 'Non pris en charge (kotlin)']);
+    assert.equal(
+      options.filter(([value]) => value === 'unsupported' || value === 'kotlin').length,
+      1,
+    );
   });
 
   it('keeps unknown, omitted and Mermaid code languages editable as plain text', async () => {
@@ -643,6 +785,41 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)?.payload.markdown, '- First\n- Next\n');
   });
 
+  for (const [name, source, expected] of [
+    ['a hard break', 'first line\\\nsecond word here\n', 'first line\\\nsecond **word** here\n'],
+    [
+      'an inline image',
+      'See ![logo](x.png) the word here\n',
+      'See ![logo](x.png) the **word** here\n',
+    ],
+  ]) {
+    it('bolds the whole word at a collapsed caret after ' + name, async () => {
+      const editor = open(source);
+      editor.focus();
+      const text = [...editor.querySelector('p')!.childNodes].findLast(
+        (node) => node instanceof dom.window.Text,
+      )!;
+      const range = dom.window.document.createRange();
+      range.setStart(text, text.textContent!.indexOf('word') + 2);
+      range.collapse(true);
+      dom.window.getSelection()!.removeAllRanges();
+      dom.window.getSelection()!.addRange(range);
+      dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+      await tick();
+      editor.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', {
+          key: 'b',
+          code: 'KeyB',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await tick();
+      assert.equal(applies().at(-1)?.payload.markdown, expected);
+    });
+  }
+
   it('preserves remote Markdown bytes during a subsequent unrelated local edit', async () => {
     const editor = open('Alpha\n');
     send({
@@ -767,6 +944,45 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.doesNotMatch(JSON.stringify(savedState), /AlphaX/);
   });
 
+  const recoveredDrafts = () =>
+    messages.flatMap((m) => (m.type === 'view.recoverDraft' ? [m.payload.markdown] : []));
+
+  it('drops a retained draft that the host document already contains', async () => {
+    const markdown = '# Notes\n\nnew line\n';
+    const editor = open(markdown, { draft: { markdown, baseMarkdown: '# Notes\n\nold line\n' } });
+    await tick();
+    assert.equal(editor.textContent, 'Notesnew line');
+    assert.deepEqual(applies(), []);
+    assert.deepEqual(recoveredDrafts(), []);
+    assert.equal((savedState as { draft?: unknown }).draft, undefined);
+  });
+
+  it('reapplies a retained draft when the host document still matches its base', async () => {
+    const base = '# Notes\n\nold line\n';
+    const draft = base + '\nnew line\n';
+    const editor = open(base, { draft: { markdown: draft, baseMarkdown: base } });
+    await tick();
+    assert.equal(editor.textContent, 'Notesold linenew line');
+    assert.deepEqual(
+      applies().map((m) => m.payload.markdown),
+      [draft],
+    );
+    assert.deepEqual(recoveredDrafts(), []);
+  });
+
+  it('recovers a retained draft instead of merging it into a changed host document', async () => {
+    const base = '# Notes\n\nold line\n';
+    const draft = base + '\nnew line\n';
+    const editor = open('# Notes\n\nnew line\n', {
+      draft: { markdown: draft, baseMarkdown: base },
+    });
+    await tick();
+    assert.equal(editor.textContent, 'Notesnew line');
+    assert.equal(editor.getAttribute('contenteditable'), 'false');
+    assert.deepEqual(applies(), []);
+    assert.deepEqual(recoveredDrafts(), [draft]);
+  });
+
   it('adds a one-cell row to a one-column table through the native command', async () => {
     open('| Name |\n| :--- |\n| Alpha\\|Beta |\n');
     send({ type: 'host.executeCommand', payload: { command: 'addTableRow' } });
@@ -868,6 +1084,32 @@ describe('bundled editor behavior with a delayed host', function () {
       '| Name | State |\n| :--- | ---: |\n| AlXpha | Todo |\n',
     );
   });
+
+  for (const [source, values, expected] of <[string, string[], string[]][]>[
+    [
+      '|a|b|\n|-|-|\n|1|2|\n',
+      ['1\\', String.raw`1\x`],
+      ['|a|b|\n|-|-|\n|1\\ |2|\n', '|a|b|\n|-|-|\n|1\\x |2|\n'],
+    ],
+    [
+      '| A | B |\n| --- | --- |\n|  | 2 |\n',
+      ['C:\\', String.raw`C:\x`],
+      ['| A | B |\n| --- | --- |\n|  C:\\ | 2 |\n', '| A | B |\n| --- | --- |\n|  C:\\x | 2 |\n'],
+    ],
+  ]) {
+    it('keeps a trailing cell backslash from escaping the next pipe: ' + values[0], async () => {
+      open(source);
+      const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+      input.focus();
+      for (const [index, value] of values.entries()) {
+        input.value = value;
+        input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: value }));
+        await tick();
+        assert.equal(applies().at(-1)?.payload.markdown, expected[index]);
+        ack(index, index + 1);
+      }
+    });
+  }
 
   it('fits table cells to their font and glyphs on opening, editing and font resizing', async () => {
     open('| Thin | Wide |\n| --- | --- |\n| iiiiiiiiiiiiiiiiiii | WWWWWWWWWWWWWWWWWWW |\n');
@@ -1020,6 +1262,54 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal((dom.window.document.activeElement as HTMLElement).dataset.tableRow, '0');
   });
 
+  for (const draft of ['| Name |\n| --- |\n| Beta |\n\n', '  | Name |\n  | --- |\n  | Beta |\n']) {
+    it('applies raw table source with surrounding layout: ' + JSON.stringify(draft), async () => {
+      open('Before\n\n| Name |\n| --- |\n| Alpha |\n\nAfter\n');
+      dom.window.document
+        .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+        .click();
+      const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+      textarea.value = draft;
+      textarea.dispatchEvent(new dom.window.Event('input'));
+      dom.window.document
+        .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+        .click();
+      await tick();
+      assert.equal(applies().length, 1);
+      assert.equal(
+        applies()[0].payload.markdown,
+        'Before\n\n| Name |\n| --- |\n| Beta |\n\nAfter\n',
+      );
+      assert.deepEqual((savedState as { tableDrafts: unknown }).tableDrafts, {});
+    });
+  }
+
+  it('rejects an empty raw table draft without inserting placeholder content', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = ' \n';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+      .click();
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(textarea.getAttribute('aria-invalid'), 'true');
+    assert.match(
+      dom.window.document.querySelector('[data-testid="muninn-table-source-feedback"]')!
+        .textContent!,
+      /header row.*separator row/i,
+    );
+    assert.equal(textarea.value, ' \n');
+    assert.equal(
+      dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+      'Alpha',
+    );
+  });
+
   for (const draft of ['| Name |\n| --- |\n| Beta |', '| unfinished draft']) {
     it(
       'retains unapplied raw source through Source and reload: ' + JSON.stringify(draft),
@@ -1050,6 +1340,112 @@ describe('bundled editor behavior with a delayed host', function () {
       },
     );
   }
+
+  it('keeps a raw table draft instead of applying it over a newer table', async () => {
+    open('Intro\n\n| Name |\n| --- |\n| Alpha |\n');
+    const toggle = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-toggle-source"]',
+    )!;
+    const apply = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-apply-source"]',
+    )!;
+    toggle.click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    const draft = '| Name |\n| --- |\n| Beta |';
+    textarea.value = draft;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    send({
+      type: 'host.documentChanged',
+      payload: {
+        markdown: 'Intro\n\n| Name |\n| --- |\n| Gamma |\n',
+        revision: 1,
+        imageSources: {},
+      },
+    });
+    assert.equal(textarea.isConnected, true);
+    apply.click();
+    await tick();
+    assert.equal(applies().length, 0);
+    const stale = /changed after you started editing its source/;
+    assert.match(
+      dom.window.document.querySelector('[data-testid="muninn-table-source-feedback"]')!
+        .textContent!,
+      stale,
+    );
+    assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, stale);
+    assert.equal(textarea.value, draft);
+    assert.equal(
+      dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+      'Gamma',
+    );
+
+    toggle.click();
+    toggle.click();
+    assert.equal(textarea.value, '| Name |\n| --- |\n| Gamma |');
+    assert.equal(messages.findLast((m) => m.type === 'view.tableDraft')?.payload.markdown, draft);
+    textarea.value = '| Name |\n| --- |\n| Delta |';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    apply.click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Intro\n\n| Name |\n| --- |\n| Delta |\n');
+  });
+
+  it('keeps a retained stale table draft when the table returns to its base', async () => {
+    const original = 'Intro\n\n| Name |\n| --- |\n| Alpha |\n';
+    open(original);
+    const toggle = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-toggle-source"]',
+    )!;
+    toggle.click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    const stale = '| Name |\n| --- |\n| Beta |';
+    textarea.value = stale;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    const staleKey = messages.findLast(isTableDraft)!.payload.key;
+    for (const [markdown, revision] of [
+      ['Intro\n\n| Name |\n| --- |\n| Gamma |\n', 1],
+      [original, 2],
+    ] as const) {
+      if (revision === 2) {
+        dom.window.document
+          .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+          .click();
+        await tick();
+        toggle.click();
+      }
+      send({ type: 'host.documentChanged', payload: { markdown, revision, imageSources: {} } });
+    }
+    toggle.click();
+    textarea.value = '| Name |\n| --- |\n| Delta |';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    const retained = messages.filter(isTableDraft).filter((m) => m.payload.key === staleKey);
+    assert.equal(retained.at(-1)?.payload.markdown, stale);
+    assert.notEqual(messages.findLast(isTableDraft)?.payload.key, staleKey);
+  });
+
+  it('restores a raw table draft started after a grid edit and applies it exactly', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+    input.value = 'Beta';
+    input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: 'Beta' }));
+    await tick();
+    ack(0, 1);
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const draft = '| Name |\n| --- |\n| Gamma |';
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = draft;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+
+    open('| Name |\n| --- |\n| Beta |\n', savedState);
+    assert.equal(dom.window.document.querySelector('textarea')!.value, draft);
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+      .click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, draft + '\n');
+  });
 
   it('does not redirect a detached table action to an identical replacement table', () => {
     open('| Name |\n| --- |\n| Alpha |\n');
@@ -1129,6 +1525,41 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   });
 
+  it('shows the Mermaid preview again after a language toggle and after restoring cleared source', async () => {
+    const source = '~~~mermaid\ngraph TD\nA --> B\n~~~\n';
+    open(source);
+    send({
+      type: 'host.settingsChanged',
+      payload: { mermaidEnabled: true, toolbarMode: 'basic', contentWidth: 'comfortable' },
+    });
+    const preview = dom.window.document.querySelector<HTMLElement>(
+      '.muninn-code-node-mermaid-preview',
+    )!;
+    const settle = async (hidden: boolean) => {
+      for (let attempt = 0; attempt < 100 && preview.hidden !== hidden; attempt++) await tick();
+      await new Promise((resolve) => setTimeout(resolve, 140));
+      assert.equal(preview.hidden, hidden);
+    };
+    await settle(false);
+    const language = dom.window.document.querySelector<HTMLSelectElement>(
+      '.muninn-code-node-language',
+    )!;
+    for (const value of ['', 'mermaid']) {
+      language.value = value;
+      language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      await settle(value === '');
+      ack(applies().length - 1, applies().length);
+    }
+    for (const [index, markdown] of ['~~~mermaid\n~~~\n', source].entries()) {
+      send({
+        type: 'host.documentChanged',
+        payload: { markdown, revision: applies().length + index + 1, imageSources: {} },
+      });
+      assert.equal(preview.isConnected, true);
+      await settle(index === 0);
+    }
+  });
+
   it('turns GFM tasks into interactive checkboxes without normalizing their source', async () => {
     open('- [ ] Alpha\n- [x] Beta\n');
     const checkbox = dom.window.document.querySelector<HTMLInputElement>('.muninn-task-checkbox')!;
@@ -1137,11 +1568,45 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies()[0].payload.markdown, '- [x] Alpha\n- [x] Beta\n');
   });
 
+  const boxes = () => [
+    ...dom.window.document.querySelectorAll<HTMLInputElement>('.muninn-task-checkbox'),
+  ];
+  it('keeps task checkboxes across unrelated edits and labels them with current text', async () => {
+    const editor = open('Intro\n\n- [ ] Alpha\n- [ ] Beta\n');
+    const beta = boxes()[1];
+    await append(editor, ' text', editor.querySelector('p')!);
+    ack(0, 1);
+    assert.ok(boxes()[1] === beta, 'an edit above a task must not recreate its checkbox');
+    await append(editor, 'X', editor.querySelector('li p')!);
+    ack(1, 2);
+    assert.deepEqual(
+      boxes().map((box) => box.getAttribute('aria-label')),
+      ['Toggle task: AlphaX', 'Toggle task: Beta'],
+    );
+    boxes()[1].click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Intro text\n\n- [ ] AlphaX\n- [x] Beta\n');
+  });
+
+  it('keeps heading anchors current while editing headings and other text', async () => {
+    const editor = open('# Étape\n\n# Étape\n\n# Étape 1\n\n#\n\n#\n\nPlain\n');
+    const ids = () => [...editor.querySelectorAll('h1')].map((heading) => heading.id);
+    assert.deepEqual(ids(), ['étape', 'étape-1', 'étape-1-1', '', '-1']);
+    await append(editor, ' text', editor.querySelector('p')!);
+    ack(0, 1);
+    assert.deepEqual(ids(), ['étape', 'étape-1', 'étape-1-1', '', '-1']);
+    await append(editor, 's', editor.querySelector('h1')!);
+    assert.deepEqual(ids(), ['étapes', 'étape', 'étape-1', '', '-1']);
+  });
+
   it('routes links through the host and creates unique Unicode heading anchors', () => {
-    const editor = open('# Étape\n\n# Étape\n\n[Spec](design%20notes.md)\n');
+    const editor = open(
+      '# Étape\n\n# Étape\n\n# Héllo *world*\n\n# Héllo *world*\n\n# Use `foo()` now\n\n# ![logo](x.png) Title\n\n[Spec](design%20notes.md)\n',
+    );
+    // HTML export asserts these same ids for the same headings.
     assert.deepEqual(
       [...editor.querySelectorAll('h1')].map((h) => h.id),
-      ['étape', 'étape-1'],
+      ['étape', 'étape-1', 'héllo-world', 'héllo-world-1', 'use-foo-now', 'title'],
     );
     editor
       .querySelector('a')!
@@ -1329,6 +1794,26 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
   });
 
+  it('adds a host image after a focused table instead of replacing the table', async () => {
+    const source = 'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nOutro\n';
+    const editor = open(source);
+    editor.querySelector<HTMLInputElement>('tbody input')!.focus();
+    send({
+      type: 'host.imageInserted',
+      payload: {
+        requestId: 1,
+        path: 'images/pic.png',
+        webviewUri: 'https://muninn-test.invalid/pic.png',
+        filename: 'pic.png',
+      },
+    });
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n![](images/pic.png)\n\nOutro\n',
+    );
+  });
+
   it('flushes pending edits before requesting HTML export from the toolbar', async () => {
     const editor = open('Alpha\n');
     await append(editor, 'X');
@@ -1407,6 +1892,74 @@ describe('bundled editor behavior with a delayed host', function () {
     });
     assert.equal(editor.querySelectorAll('th').length, 1);
     assert.equal(applies().length, 0);
+  });
+
+  const requestLinkFor = async (editor: HTMLElement, from: number, to: number): Promise<void> => {
+    editor.focus();
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, from);
+    range.setEnd(text, to);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    dom.window.document
+      .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="insertLink"]')!
+      .click();
+    await tick();
+  };
+
+  it('applies a host link to the selection that requested it', async () => {
+    const editor = open('Alpha beta gamma\n');
+    await requestLinkFor(editor, 6, 10);
+    assert.deepEqual(structuredClone(messages.at(-1)), {
+      type: 'view.requestLinkInput',
+      payload: { selectedText: 'beta' },
+    });
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, 16);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    send({ type: 'host.insertLink', payload: { href: 'https://example.com', text: 'beta' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Alpha [beta](https://example.com) gamma\n');
+  });
+
+  it('forgets a canceled link request before a later file link', async () => {
+    const editor = open('Alpha beta\n');
+    await requestLinkFor(editor, 6, 10);
+    send({ type: 'host.linkInputCanceled' });
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, 10);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+    send({ type: 'host.insertLink', payload: { href: 'note.md', text: 'note.md' } });
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Alpha beta[note.md](note.md)\n');
+  });
+
+  it('does not apply a host link after the document changed', async () => {
+    const editor = open('Alpha beta\n');
+    await requestLinkFor(editor, 6, 10);
+    send({
+      type: 'host.documentChanged',
+      payload: { markdown: 'Alpha beta!\n', revision: 1, imageSources: {} },
+    });
+    send({ type: 'host.insertLink', payload: { href: 'https://example.com', text: 'beta' } });
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(editor.querySelector('p')!.textContent, 'Alpha beta!');
+    assert.match(
+      dom.window.document.querySelector('#status-alert')!.textContent!,
+      /document changed/,
+    );
   });
 
   it('keeps table actions as named icons and restores editor focus after deletion', () => {

@@ -4,9 +4,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { characterDiff } from 'diff';
 import { EditorState, TextSelection } from 'prosemirror-state';
+import sinon from 'sinon';
 import { continueList, toggleTask } from '../../src/webview/editor/document-navigation';
 import {
+  markdownSerializer,
   parseHostMarkdown,
   serializeToHostMarkdown,
   schema,
@@ -102,6 +105,7 @@ describe('source-preserving edits', () => {
     '[Alpha][target]\n\n[target]: https://example.com\n',
     'Alpha &amp; Beta\n',
     'Alpha\r\nBeta\r\n',
+    'Alpha\r\nBeta\nDelta\r\n',
     'Alpha\n\n\nBeta\n',
     '---\ntitle: preserve\n---\n\nAlpha\n',
     '> Alpha\n> Beta\n',
@@ -129,6 +133,26 @@ describe('source-preserving edits', () => {
         ['# Reading ###', '', 'Alpha', '', 'Beta', '', '_Untouched_  '].join(eol),
       );
     });
+    for (const ending of [eol, '']) {
+      it(
+        'edits a large document without rewriting its line endings: ' +
+          JSON.stringify(eol) +
+          (ending ? ' with' : ' without') +
+          ' a final newline',
+        () => {
+          const paragraphs = Array.from(
+            { length: 600 },
+            (_, index) => `Line number ${index} of text.`,
+          );
+          const source = paragraphs.join(eol + eol) + ending;
+          assert.ok(source.length > 15_000);
+          assert.equal(
+            editWord(source, 'number 10 of', 'number 10X of'),
+            source.replace('number 10 of', 'number 10X of'),
+          );
+        },
+      );
+    }
   }
 
   it('keeps intermediate trailing spaces while typing and subsequent undo edits', () => {
@@ -142,6 +166,26 @@ describe('source-preserving edits', () => {
     assert.equal(serializeToHostMarkdown(state.doc), '# Reading\n\nAlpha Beta \n');
     const transaction = state.tr.delete(state.doc.content.size - 7, state.doc.content.size - 1);
     assert.equal(serializeToHostMarkdown(transaction.doc), '# Reading\n\nAlpha\n');
+  });
+
+  it('serializes each typed character once after the first edit', () => {
+    const serialize = sinon.spy(markdownSerializer, 'serialize');
+    try {
+      let state = EditorState.create({ doc: parseHostMarkdown('# Reading\n\nAlpha\n') });
+      const counts: number[] = [];
+      for (const addition of ['B', 'e', 't', 'a']) {
+        serialize.resetHistory();
+        const transaction = state.tr.insertText(addition, state.doc.content.size - 1);
+        const markdown = serializeToHostMarkdown(transaction.doc);
+        state = state.apply(transaction);
+        setDocumentSource(state.doc, markdown);
+        counts.push(serialize.callCount);
+      }
+      assert.deepEqual(counts.slice(1), [1, 1, 1]);
+      assert.equal(serializeToHostMarkdown(state.doc), '# Reading\n\nAlphaBeta\n');
+    } finally {
+      serialize.restore();
+    }
   });
 
   it('preserves original table alignment, spacing and escaped pipes after a cell edit', () => {
@@ -179,6 +223,37 @@ describe('text synchronization changes', () => {
       applyTextChanges('😀 alpha\r\nbeta', textChanges('😀 alpha\r\nbeta', '😀 gamma\r\nbeta')),
       '😀 gamma\r\nbeta',
     );
+  });
+  it('keeps surrogate pairs whole when a large rewrite falls back to one change', () => {
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (const [before, after] of [
+      ['😀' + 'a'.repeat(30_000), '😁' + 'b'.repeat(30_000)],
+      ['a'.repeat(30_000) + '🈀', 'b'.repeat(30_000) + '😀'],
+    ]) {
+      const changes = textChanges(before, after);
+      assert.equal(changes.length, 1);
+      assert.equal(loneSurrogate.test(before.slice(changes[0].from, changes[0].to)), false);
+      assert.equal(loneSurrogate.test(changes[0].insert), false);
+      assert.equal(applyTextChanges(before, changes) === after, true);
+    }
+  });
+  it('skips the common prefix before diffing without changing the alignment', () => {
+    const diff = sinon.spy(characterDiff, 'diff');
+    try {
+      const before = 'a'.repeat(100_000) + 'Xb';
+      const after = 'a'.repeat(100_000) + 'YZb';
+      assert.deepEqual(textChanges(before, after), [{ from: 100_000, to: 100_001, insert: 'YZ' }]);
+      assert.deepEqual(diff.firstCall.args.slice(0, 2), ['Xb', 'YZb']);
+      // A lifted list item keeps the marker space that diffChars aligns first.
+      assert.deepEqual(textChanges('- Parent\n  + Child\n  + ', '- Parent\n  + Child\n- '), [
+        { from: 19, to: 19, insert: '-' },
+        { from: 20, to: 23, insert: '' },
+      ]);
+      assert.deepEqual(textChanges('a😀b', 'a😁b'), [{ from: 1, to: 3, insert: '😁' }]);
+      assert.deepEqual(textChanges('a😀b', 'a😀'), [{ from: 3, to: 4, insert: '' }]);
+    } finally {
+      diff.restore();
+    }
   });
   it('merges independent agent and local edits', () => {
     assert.equal(

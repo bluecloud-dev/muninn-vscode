@@ -143,6 +143,19 @@ body {
   min-inline-size: 9rem;
 }
 
+/* Stable digits keep the neighboring zoom buttons under the pointer while the level changes. */
+.muninn-zoom-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.muninn-zoom-level-label {
+  min-inline-size: 5ch;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .muninn-toolbar button:focus-visible,
 .muninn-toolbar-menu button:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);

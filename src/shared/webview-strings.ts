@@ -12,8 +12,9 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   commandLabelFitToWidth: 'Fit to width',
   commandLabelZoomIn: 'Zoom in',
   commandLabelZoomOut: 'Zoom out',
-  commandLabelResetZoom: 'Reset zoom to 100%',
-  zoomResetHelpTemplate: 'Reset zoom to 100% (current: {0}%)',
+  commandLabelZoomLevel: 'Zoom level',
+  zoomLevelHelpTemplate: 'Zoom level: {0}%',
+  zoomPercentTemplate: '{0}%',
   zoomStatusTemplate: 'Document zoom: {0}%',
   statusSyncConflict:
     'The document changed elsewhere. Preserving your edits in a recovery document.',
@@ -24,7 +25,6 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   toolbarGroupHistoryLabel: 'History',
   toolbarGroupListsLabel: 'Lists',
   toolbarGroupTextLabel: 'Text',
-  toolbarGroupStructureLabel: 'Structure',
   toolbarGroupInsertLabel: 'Insert',
   toolbarButtonBoldTitle: 'Bold (Ctrl/Cmd+B)',
   toolbarButtonItalicTitle: 'Italic (Ctrl/Cmd+I)',
@@ -33,7 +33,6 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   toolbarButtonNumberedTitle: 'Toggle numbered list',
   toolbarButtonBulletLabel: 'Bullet',
   toolbarButtonNumberedLabel: 'Numbered',
-  toolbarButtonTableTitle: 'Insert table (Ctrl/Cmd+Alt+T)',
   toolbarButtonCodeTitle: 'Insert code block',
   toolbarButtonMermaidTitle: 'Insert Mermaid diagram (Ctrl/Cmd+Alt+M)',
   toolbarButtonSourceTitle: 'Open raw Markdown source in VS Code',
@@ -87,6 +86,7 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   statusInsertLinkFailed: 'Failed to insert link.',
   codeBlockTitle: 'Code',
   codeBlockLanguageAriaLabel: 'Code block language',
+  codeBlockLanguagePlainText: 'Plain text',
   codeBlockLanguageUnsupportedTemplate: 'Unsupported ({0})',
   statusCodeLanguageUpdateFailed: 'Could not update code block language. Please retry.',
   statusCodeLanguagePlainText: 'Code block language set to plain text.',
@@ -114,6 +114,8 @@ export const DEFAULT_WEBVIEW_STRINGS = {
     'Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.',
   statusTableSourceInvalid:
     'Use a Markdown header row followed by a separator row, such as | --- |.',
+  statusTableSourceStale:
+    'This table changed after you started editing its source. Copy your changes, then select Back to Preview and View Source to edit the current table.',
   mermaidDisabledMessage:
     'Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.',
   mermaidNoSvgOutput: 'Mermaid rendered no SVG output.',
