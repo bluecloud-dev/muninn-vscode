@@ -849,6 +849,45 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.doesNotMatch(JSON.stringify(savedState), /AlphaX/);
   });
 
+  const recoveredDrafts = () =>
+    messages.flatMap((m) => (m.type === 'view.recoverDraft' ? [m.payload.markdown] : []));
+
+  it('drops a retained draft that the host document already contains', async () => {
+    const markdown = '# Notes\n\nnew line\n';
+    const editor = open(markdown, { draft: { markdown, baseMarkdown: '# Notes\n\nold line\n' } });
+    await tick();
+    assert.equal(editor.textContent, 'Notesnew line');
+    assert.deepEqual(applies(), []);
+    assert.deepEqual(recoveredDrafts(), []);
+    assert.equal((savedState as { draft?: unknown }).draft, undefined);
+  });
+
+  it('reapplies a retained draft when the host document still matches its base', async () => {
+    const base = '# Notes\n\nold line\n';
+    const draft = base + '\nnew line\n';
+    const editor = open(base, { draft: { markdown: draft, baseMarkdown: base } });
+    await tick();
+    assert.equal(editor.textContent, 'Notesold linenew line');
+    assert.deepEqual(
+      applies().map((m) => m.payload.markdown),
+      [draft],
+    );
+    assert.deepEqual(recoveredDrafts(), []);
+  });
+
+  it('recovers a retained draft instead of merging it into a changed host document', async () => {
+    const base = '# Notes\n\nold line\n';
+    const draft = base + '\nnew line\n';
+    const editor = open('# Notes\n\nnew line\n', {
+      draft: { markdown: draft, baseMarkdown: base },
+    });
+    await tick();
+    assert.equal(editor.textContent, 'Notesnew line');
+    assert.equal(editor.getAttribute('contenteditable'), 'false');
+    assert.deepEqual(applies(), []);
+    assert.deepEqual(recoveredDrafts(), [draft]);
+  });
+
   it('adds a one-cell row to a one-column table through the native command', async () => {
     open('| Name |\n| :--- |\n| Alpha\\|Beta |\n');
     send({ type: 'host.executeCommand', payload: { command: 'addTableRow' } });

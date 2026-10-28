@@ -16,7 +16,6 @@ import {
   type ViewEditorCommand,
   type ViewToHostMessage,
 } from '../../custom-editor/protocol';
-import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
@@ -1028,23 +1027,22 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       setImageSources(payload.imageSources);
       applyHostMarkdown(payload.markdown, payload.fileName);
       announce(getString('statusConnected'), { kind: 'status' });
-      if (savedDraft && savedDraft.markdown !== payload.markdown) {
-        const merged = mergeIndependentChanges(
-          savedDraft.baseMarkdown,
-          savedDraft.markdown,
-          payload.markdown,
-        );
-        if (merged === undefined) {
-          recovering = true;
-          view?.setProps({ editable: () => false });
-          vscode.postMessage({
-            type: 'view.recoverDraft',
-            payload: { markdown: savedDraft.markdown },
-          });
-        } else {
-          applyHostMarkdown(merged);
-          syncController.queueApply(() => merged);
-        }
+      // The retained base can lag behind operations the host already applied, so a
+      // three-way merge could apply the draft twice. Reapply it only onto its own base.
+      if (savedDraft?.markdown === payload.markdown) {
+        retained.draft = undefined;
+        preserveState();
+      } else if (savedDraft?.baseMarkdown === payload.markdown) {
+        const draft = savedDraft.markdown;
+        applyHostMarkdown(draft);
+        syncController.queueApply(() => draft);
+      } else if (savedDraft) {
+        recovering = true;
+        view?.setProps({ editable: () => false });
+        vscode.postMessage({
+          type: 'view.recoverDraft',
+          payload: { markdown: savedDraft.markdown },
+        });
       }
       if (typeof retained.scrollTop === 'number') editorShell.scrollTop = retained.scrollTop;
       return;
