@@ -253,6 +253,11 @@ async function clickTool(editor, command, keyboard = false) {
     await activate(editor.locator('#muninn-toolbar-menu [data-command="insertTable"]'));
     return;
   }
+  if (command.startsWith('setZoom')) {
+    await clickTool(editor, 'chooseZoom', keyboard);
+    await activate(editor.locator('#muninn-toolbar-menu [data-command="' + command + '"]'));
+    return;
+  }
   const inline = editor.locator('.muninn-toolbar [data-command="' + command + '"]');
   if (await inline.isVisible()) await activate(inline);
   else {
@@ -477,7 +482,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       '| One | Two | Three | Four | Five | Six |\n| --- | --- | --- | --- | --- | --- |\n| First cell | Second | Third | Fourth | Fifth | Sixth |\n\n' +
       'Long document paragraph with ordinary readable prose.\n\n'.repeat(100);
     const { editor, file } = await open('viewport.md', source);
-    assert.equal(await editor.locator('.muninn-toolbar [data-command="resetZoom"]').count(), 1);
+    assert.equal(await editor.locator('.muninn-toolbar [data-command="chooseZoom"]').count(), 1);
     const nativeWindow = await app.browserWindow(page);
     const bounds = await nativeWindow.evaluate((window) => window.getBounds());
     const resize = (target) => resizeEditorPane(editor, nativeWindow, target);
@@ -497,7 +502,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
           viewport: innerWidth,
           viewportHeight: innerHeight,
           zoom: document.querySelector('#editor').style.zoom,
-          percentage: document.querySelector('[data-command="resetZoom"]').textContent,
+          percentage: document.querySelector('[data-command="chooseZoom"]').textContent,
           proseWidth: prose.getBoundingClientRect().width * coordinateScale,
           coordinateScale,
           userAgent: navigator.userAgent,
@@ -528,7 +533,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       );
       assert.ok(geometry.imageWidth <= geometry.proseWidth + 1, JSON.stringify(geometry));
       assert.equal(
-        await editor.locator('.muninn-toolbar [data-command="resetZoom"]').isVisible(),
+        await editor.locator('.muninn-toolbar [data-command="chooseZoom"]').isVisible(),
         true,
       );
       return geometry;
@@ -549,14 +554,29 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       assert.equal((await check()).percentage, '200%');
       await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom-200.png') });
       evidence.editorZoom.push(await check());
-      await clickTool(editor, 'resetZoom', true);
+      await clickTool(editor, 'setZoom100', true);
       for (let count = 0; count < 5; count++) await clickTool(editor, 'zoomOut', true);
       assert.equal((await check()).percentage, '50%');
       await page.screenshot({ path: path.join(artifactDirectory, 'editor-zoom-50.png') });
       evidence.editorZoom.push(await check());
-      await clickTool(editor, 'resetZoom', true);
-      // Enter operates the visible percentage control through the existing keyboard focus model.
-      await editor.locator('.muninn-toolbar [data-command="resetZoom"]').focus();
+      await clickTool(editor, 'setZoom100', true);
+      // Enter opens the percentage menu on the current level, and Enter again chooses it.
+      await editor.locator('.muninn-toolbar [data-command="chooseZoom"]').focus();
+      await page.keyboard.press('Enter');
+      assert.deepEqual(
+        await editor.evaluate(() => {
+          const menu = document.querySelector('#muninn-toolbar-menu');
+          const popup = menu.getBoundingClientRect();
+          const row = document.activeElement.getBoundingClientRect();
+          return {
+            hidden: menu.hidden,
+            levels: menu.querySelectorAll('[role="menuitemradio"]').length,
+            focused: document.activeElement.textContent,
+            visible: row.top >= popup.top - 1 && row.bottom <= popup.bottom + 1,
+          };
+        }),
+        { hidden: false, levels: 16, focused: '100%', visible: true },
+      );
       await page.keyboard.press('Enter');
       assert.equal((await check()).percentage, '100%');
       await nativeWindow.evaluate((window) => window.webContents.setZoomFactor(2));
@@ -641,7 +661,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         await draft.evaluate((input) => [input.value, input.selectionStart, input.selectionEnd]),
         ['unapplied zoom draft', 2, 7],
       );
-      await clickTool(editor, 'resetZoom', true);
+      await clickTool(editor, 'setZoom100', true);
       await save(editor, file, source);
       await editor.locator('[data-testid="muninn-table-toggle-source"]').focus();
       await page.keyboard.press('Enter');
@@ -667,11 +687,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       }
       await clickTool(rightEditor, 'zoomIn', true);
       assert.equal(
-        await rightEditor.locator('.muninn-toolbar [data-command="resetZoom"]').textContent(),
+        await rightEditor.locator('.muninn-toolbar [data-command="chooseZoom"]').textContent(),
         '110%',
       );
       assert.equal(
-        await editor.locator('.muninn-toolbar [data-command="resetZoom"]').textContent(),
+        await editor.locator('.muninn-toolbar [data-command="chooseZoom"]').textContent(),
         '100%',
       );
       await command('View: Close Editor');
@@ -682,7 +702,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       await command('View: Join All Editor Groups');
       await editor.locator('.ProseMirror').waitFor();
       await resize(1440);
-      await clickTool(editor, 'resetZoom', true);
+      await clickTool(editor, 'setZoom100', true);
       assert.ok(Math.abs((await check()).proseWidth - comfortable.proseWidth) <= 1);
       for (const [command, steps] of [
         ['zoomIn', 10],
@@ -695,11 +715,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
         for (let count = 0; count < steps; count++) await clickTool(editor, command, true);
         assert.equal(
           await editor
-            .locator('.muninn-toolbar [data-command="resetZoom"]')
+            .locator('.muninn-toolbar [data-command="chooseZoom"]')
             .evaluate((button) => document.activeElement === button),
           true,
         );
-        await page.keyboard.press('Enter');
+        await clickTool(editor, 'setZoom100', true);
         assert.equal((await check()).percentage, '100%');
       }
       assert.equal(fs.readFileSync(file, 'utf8'), source);

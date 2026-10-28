@@ -30,7 +30,7 @@ export const attachAdaptiveToolbar = (options: {
   const groups = [...toolbar.querySelectorAll<HTMLElement>('.muninn-toolbar-group')];
   const actions = [...buttons.keys()];
   const priority = new Set([
-    'resetZoom',
+    'chooseZoom',
     'chooseBlockStyle',
     'openRawMarkdown',
     'toggleBold',
@@ -164,10 +164,13 @@ export const attachAdaptiveToolbar = (options: {
     menu.scrollTop = 0;
     position();
     const rows = menuItems();
-    (last
+    const target = last
       ? rows.at(-1)
-      : (rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows[0])
-    )?.focus();
+      : (rows.find((row) => row.getAttribute('aria-checked') === 'true') ?? rows[0]);
+    if (!target) return;
+    // Center the opening choice so a scrolled menu shows its neighbors on both sides.
+    target.focus({ preventScroll: true });
+    menu.scrollTop = target.offsetTop - (menu.clientHeight - target.offsetHeight) / 2;
   };
 
   const layout = (): void => {

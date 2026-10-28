@@ -20,7 +20,7 @@ import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
-import { createEditorViewport } from './editor-viewport';
+import { createEditorViewport, zoomLevels } from './editor-viewport';
 import { setButtonHelp } from './icon-button';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
@@ -831,15 +831,15 @@ const isListActive = (listNodeType: NodeType): boolean => {
 const updateToolbarState = (): void => {
   const { zoomPercent, fitToWidth } = viewport;
   updateToolbarPressedState('fitToWidth', fitToWidth);
-  const reset = toolbarButtons.get('resetZoom')!;
-  const percentage = zoomPercent + '%';
-  if (reset.textContent !== percentage) reset.textContent = percentage;
-  const zoomHelp = formatString(getString('zoomResetHelpTemplate'), zoomPercent);
-  setButtonHelp(reset, zoomHelp);
+  const zoom = toolbarButtons.get('chooseZoom')!;
+  const percentage = formatString(getString('zoomPercentTemplate'), zoomPercent);
+  const zoomLabel = zoom.querySelector('.muninn-zoom-level-label')!;
+  if (zoomLabel.textContent !== percentage) zoomLabel.textContent = percentage;
+  setButtonHelp(zoom, formatString(getString('zoomLevelHelpTemplate'), zoomPercent));
   const zoomIn = toolbarButtons.get('zoomIn')!;
   const zoomOut = toolbarButtons.get('zoomOut')!;
-  if (zoomPercent === 200 && document.activeElement === zoomIn) reset.focus();
-  if (zoomPercent === 50 && document.activeElement === zoomOut) reset.focus();
+  if (zoomPercent === 200 && document.activeElement === zoomIn) zoom.focus();
+  if (zoomPercent === 50 && document.activeElement === zoomOut) zoom.focus();
   zoomIn.disabled = zoomPercent === 200;
   zoomOut.disabled = zoomPercent === 50;
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
@@ -881,6 +881,13 @@ const adaptiveToolbar = attachAdaptiveToolbar({
   },
   execute: executeToolbarCommand,
   getMenu: (command): ToolbarMenuItem[] | undefined => {
+    if (command === 'chooseZoom')
+      return zoomLevels.map((level) => ({
+        command: 'setZoom' + level,
+        label: formatString(getString('zoomPercentTemplate'), level),
+        role: 'menuitemradio',
+        checked: viewport.zoomPercent === level,
+      }));
     if (command === 'chooseTableAction') {
       const disabled = findSelectedTablePosition() === undefined;
       return [

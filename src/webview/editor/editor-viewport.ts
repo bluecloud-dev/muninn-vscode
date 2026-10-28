@@ -3,6 +3,8 @@
 
 import type { ContentWidthSetting } from '../../types/config';
 
+export const zoomLevels = Array.from({ length: 16 }, (_, index) => 50 + index * 10);
+
 export const createEditorViewport = (shell: HTMLElement, surface: HTMLElement) => {
   let contentWidth: ContentWidthSetting = 'comfortable';
   let zoomPercent = 100;
@@ -30,21 +32,24 @@ export const createEditorViewport = (shell: HTMLElement, surface: HTMLElement) =
     execute(command: string): boolean {
       switch (command) {
         case 'zoomIn': {
-          zoomPercent = Math.min(200, zoomPercent + 10);
+          zoomPercent = Math.min(zoomLevels.at(-1)!, zoomPercent + 10);
           break;
         }
         case 'zoomOut': {
-          zoomPercent = Math.max(50, zoomPercent - 10);
+          zoomPercent = Math.max(zoomLevels[0], zoomPercent - 10);
           break;
         }
-        case 'fitToWidth':
-        case 'resetZoom': {
-          fitToWidth = command === 'fitToWidth';
+        case 'fitToWidth': {
+          fitToWidth = true;
           zoomPercent = 100;
           break;
         }
         default: {
-          return false;
+          // An exact level also leaves fit and restores the configured reading width.
+          const level = zoomLevels.find((percent) => command === 'setZoom' + percent);
+          if (level === undefined) return false;
+          fitToWidth = false;
+          zoomPercent = level;
         }
       }
       apply();

@@ -156,8 +156,9 @@
   "View": "View",
   "Zoom in": "Zoom in",
   "Zoom out": "Zoom out",
-  "Reset zoom to 100%": "Reset zoom to 100%",
-  "Reset zoom to 100% (current: {0}%)": "Reset zoom to 100% (current: {0}%)",
+  "Zoom level": "Zoom level",
+  "Zoom level: {0}%": "Zoom level: {0}%",
+  "{0}%": "{0}%",
   "Document zoom: {0}%": "Document zoom: {0}%",
   "Fit to width": "Fit to width"
 }

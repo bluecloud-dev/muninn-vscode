@@ -12,8 +12,9 @@ export const DEFAULT_WEBVIEW_STRINGS = {
   commandLabelFitToWidth: 'Fit to width',
   commandLabelZoomIn: 'Zoom in',
   commandLabelZoomOut: 'Zoom out',
-  commandLabelResetZoom: 'Reset zoom to 100%',
-  zoomResetHelpTemplate: 'Reset zoom to 100% (current: {0}%)',
+  commandLabelZoomLevel: 'Zoom level',
+  zoomLevelHelpTemplate: 'Zoom level: {0}%',
+  zoomPercentTemplate: '{0}%',
   zoomStatusTemplate: 'Document zoom: {0}%',
   statusSyncConflict:
     'The document changed elsewhere. Preserving your edits in a recovery document.',
