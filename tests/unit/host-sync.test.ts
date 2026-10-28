@@ -125,6 +125,17 @@ describe('acknowledged webview synchronization', () => {
     assert.deepEqual(f.applied, ['Remote']);
   });
 
+  it('keeps sync suppressed after a nested suppressed update returns', () => {
+    const f = fixture();
+    f.sync.withSuppressedSync(() => {
+      f.sync.withSuppressedSync(() => f.sync.queueApply(() => 'inner'));
+      f.sync.queueApply(() => 'outer');
+    });
+    assert.equal(f.sent.length, 0);
+    f.sync.queueApply(() => 'Local');
+    assert.equal(f.sent[0].markdown, 'Local');
+  });
+
   it('fails a wait after one second without an acknowledgment and accepts a late one', async () => {
     const clock = sinon.useFakeTimers();
     try {

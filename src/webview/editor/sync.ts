@@ -50,11 +50,13 @@ export class HostSyncController {
   }
 
   withSuppressedSync<T>(run: () => T): T {
+    // Remote applies nest: reconcile suppresses applyRemote, which suppresses its own update.
+    const previous = this.suppressSync;
     this.suppressSync = true;
     try {
       return run();
     } finally {
-      this.suppressSync = false;
+      this.suppressSync = previous;
     }
   }
 
@@ -100,7 +102,6 @@ export class HostSyncController {
     if (result.ok) {
       // The server accepted the sent text. Later local edits remain in localMarkdown.
       this.baseMarkdown = sent.markdown;
-      this.currentRevision = Math.min(this.currentRevision, result.revision);
       this.reconcile(result);
     } else if (result.markdown === this.baseMarkdown && result.revision === this.currentRevision) {
       this.failConflict();
