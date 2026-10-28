@@ -241,6 +241,13 @@ async function save(editor, file, expected) {
   return (await visibleEditorFrame(path.basename(file))) ?? currentEditor;
 }
 
+// Native caret moves reach ProseMirror through selectionchange and its own timers; let them settle.
+async function settle(editor) {
+  await editor.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50))),
+  );
+}
+
 async function clickTool(editor, command, keyboard = false) {
   const activate = async (button) => {
     if (keyboard) {
@@ -440,7 +447,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     it('continues a list with keyboard, save, undo, redo and reopen: ' + name, async () => {
       let { editor, file } = await open(name, source);
       await editor.locator('.ProseMirror li p').last().click();
+      await settle(editor);
       await editor.locator('.ProseMirror').press(lineEnd);
+      await settle(editor);
       await editor.locator('.ProseMirror').press('Enter');
       await eventually(
         async () => (await editor.locator('.ProseMirror li').count()) === 2,
@@ -1000,8 +1009,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     let { editor, file } = await open('block-style.md', 'Alpha\n\nBeta\n');
     await eventually(async () => {
       await editor.locator('.ProseMirror p').last().click();
+      await settle(editor);
       await editor.locator('.ProseMirror').press(lineStart);
+      await settle(editor);
       await editor.locator('.ProseMirror').press(selectLineEnd);
+      await settle(editor);
       return (await editor.evaluate(() => getSelection().toString())) === 'Beta';
     }, 'Native text selection did not reach Beta');
     const style = editor.locator('.muninn-toolbar [data-command="chooseBlockStyle"]');
@@ -1236,7 +1248,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     const source = 'Before\n\n~~~javascript\nconst value = 1;\n~~~\n\nAfter\n';
     let { editor, file } = await open('highlighting.md', source);
     await editor.locator('pre code').click();
+    await settle(editor);
     await editor.locator('.ProseMirror').press(lineEnd);
+    await settle(editor);
     await editor.locator('.ProseMirror').pressSequentially(' // edited');
     const edited = 'Before\n\n~~~javascript\nconst value = 1; // edited\n~~~\n\nAfter\n';
     editor = await save(editor, file, edited);
@@ -1246,8 +1260,11 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await command('Muninn for VS Code: Redo');
     editor = await save(editor, file, edited);
     await editor.locator('pre code').click();
+    await settle(editor);
     await editor.locator('.ProseMirror').press(lineStart);
+    await settle(editor);
     await editor.locator('.ProseMirror').press(selectLineEnd);
+    await settle(editor);
     assert.equal(
       await editor.evaluate(() => getSelection().toString()),
       'const value = 1; // edited',
@@ -1630,7 +1647,9 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     fs.copyFileSync('tests/fixtures/export/image.svg', path.join(workspace, 'image.svg'));
     const { editor, file } = await open('export.md', source);
     await editor.locator('.ProseMirror p').last().click();
+    await settle(editor);
     await editor.locator('.ProseMirror').press(lineEnd);
+    await settle(editor);
     await editor.locator('.ProseMirror').pressSequentially(' Unsaved change.');
     const exported = path.join(workspace, 'shared-notes.html');
     await clickTool(editor, 'exportHtml');
