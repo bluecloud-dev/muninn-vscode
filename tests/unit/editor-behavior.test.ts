@@ -1025,6 +1025,32 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   });
 
+  for (const [source, values, expected] of <[string, string[], string[]][]>[
+    [
+      '|a|b|\n|-|-|\n|1|2|\n',
+      ['1\\', String.raw`1\x`],
+      ['|a|b|\n|-|-|\n|1\\ |2|\n', '|a|b|\n|-|-|\n|1\\x |2|\n'],
+    ],
+    [
+      '| A | B |\n| --- | --- |\n|  | 2 |\n',
+      ['C:\\', String.raw`C:\x`],
+      ['| A | B |\n| --- | --- |\n|  C:\\ | 2 |\n', '| A | B |\n| --- | --- |\n|  C:\\x | 2 |\n'],
+    ],
+  ]) {
+    it('keeps a trailing cell backslash from escaping the next pipe: ' + values[0], async () => {
+      open(source);
+      const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+      input.focus();
+      for (const [index, value] of values.entries()) {
+        input.value = value;
+        input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: value }));
+        await tick();
+        assert.equal(applies().at(-1)?.payload.markdown, expected[index]);
+        ack(index, index + 1);
+      }
+    });
+  }
+
   it('fits table cells to their font and glyphs on opening, editing and font resizing', async () => {
     open('| Thin | Wide |\n| --- | --- |\n| iiiiiiiiiiiiiiiiiii | WWWWWWWWWWWWWWWWWWW |\n');
     const style = dom.window.document.createElement('style');

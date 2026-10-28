@@ -66,13 +66,12 @@ const rowSource = (values: string[], original?: string): string => {
     if (cell.value === values[index]) continue;
     const raw = original.slice(cell.from, cell.to);
     const leading = /^\s*/.exec(raw)?.[0] ?? '';
-    const trailing = /\s*$/.exec(raw)?.[0] ?? '';
+    const trailing = raw.trim() ? (/\s*$/.exec(raw)?.[0] ?? '') : '';
+    const escaped = escapeCell(values[index]);
+    // A trailing backslash would escape the next pipe and merge the cells.
+    const separator = !trailing && escaped.endsWith('\\') && cell.to < original.length ? ' ' : '';
     result =
-      result.slice(0, cell.from) +
-      leading +
-      escapeCell(values[index]) +
-      (raw.trim() ? trailing : '') +
-      result.slice(cell.to);
+      result.slice(0, cell.from) + leading + escaped + trailing + separator + result.slice(cell.to);
   }
   return result;
 };
