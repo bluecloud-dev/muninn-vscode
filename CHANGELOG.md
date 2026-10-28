@@ -4,6 +4,35 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+### Added
+
+- Choose any zoom level from 50% to 200% in a menu opened from the percentage button. A choice, including 100%, leaves Fit to width and applies the configured reading width.
+
+### Fixed
+
+- Rich edits work in large documents with Windows line endings; they were rejected above about 16 KB.
+- Inserting an image no longer replaces a selected table or code block.
+- A table cell ending in a backslash no longer merges with the next cell.
+- Apply keeps a raw table draft when the table changed after the draft began, instead of overwriting the newer table. Drafts with a trailing newline or shared indentation apply; an empty draft is rejected.
+- Adding or removing images no longer reloads the editor and clears undo history.
+- The editor becomes editable again after conflict recovery without waiting for the warning to close.
+- Settings with the wrong type fall back to their defaults instead of preventing the editor from loading.
+- Concurrent image inserts no longer overwrite each other.
+- Large replacements no longer split surrogate pairs, and a restored draft no longer duplicates text the host already applied.
+- Bold, Italic, Strikethrough and Link without a selection expand to the correct word after line breaks or images.
+- Exported heading anchors match the editor's, including headings with inline code or images.
+- An inserted link applies to the selection that requested it, or reports that the document changed.
+- Mermaid previews redraw after a language change or undo; code fence attributes such as `title="a.py"` are kept and highlighted; a rejected language change no longer reports success.
+- Inspect Configuration keeps earlier log output.
+
+### Performance
+
+- Typing serializes the document once, reuses cached canonical Markdown and updates heading, task and code-highlighting decorations only where an edit can affect them.
+
+### Removed
+
+- Remove unused protocol messages, strings, table fields, the selectable `unsupported` code language and the unused `prosemirror-schema-basic` dependency.
+
 ## [1.2.2] - 2026-10-22
 
 ### Documentation
