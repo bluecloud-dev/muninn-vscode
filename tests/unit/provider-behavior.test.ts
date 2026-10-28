@@ -8,7 +8,7 @@ import { JSDOM } from 'jsdom';
 import * as vscode from 'vscode';
 import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 import { ConfigService } from '../../src/services/config-service';
-import type { HostToViewMessage } from '../../src/custom-editor/protocol';
+import { type HostToViewMessage, isHostToViewMessage } from '../../src/custom-editor/protocol';
 
 const noop = (): void => {};
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -20,7 +20,7 @@ describe('custom editor host lifecycle', () => {
     sinon.restore();
   });
 
-  const fixture = async (initial = 'Alpha\n') => {
+  const fixture = async (initial = 'Alpha\n', settings: Record<string, unknown> = {}) => {
     let text = initial;
     let receive: (message: unknown) => unknown = noop;
     let close: () => void = noop;
@@ -72,7 +72,7 @@ describe('custom editor host lifecycle', () => {
       return { dispose() {} };
     });
     sinon.stub(vscode.workspace, 'getConfiguration').returns({
-      get: <T>(_key: string, fallback?: T) => fallback,
+      get: <T>(key: string, fallback?: T) => (key in settings ? settings[key] : fallback),
       inspect: (): undefined => {},
       has: () => false,
       update: async () => {},
@@ -844,6 +844,36 @@ describe('custom editor host lifecycle', () => {
       },
     });
     assert.equal(remove.calledOnce, true);
+  });
+
+  it('loads and inserts images with invalid settings by falling back to defaults', async () => {
+    const f = await fixture('Alpha\n', {
+      'toolbar.mode': 'compact',
+      'integrations.mermaid.enabled': 'false',
+      'images.destination': 42,
+    });
+    const init = f.messages[0];
+    assert.equal(isHostToViewMessage(init), true);
+    if (init.type === 'host.init') assert.equal(init.payload.mermaidEnabled, false);
+    await provider.notifyConfigurationChanged();
+    assert.equal(isHostToViewMessage(f.messages.at(-1)), true);
+
+    sinon
+      .stub(vscode.workspace.fs, 'stat')
+      .rejects(Object.assign(new Error('Missing'), { code: 'FileNotFound' }));
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: {
+        kind: 'drop',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytesBase64: Buffer.from([137, 80, 78, 71]).toString('base64'),
+      },
+    });
+    assert.equal(write.firstCall?.args[0].path, '/workspace/images/diagram.png');
+    assert.equal(f.messages.at(-1)!.type, 'host.imageInserted');
   });
 
   it('does not treat a permission error as a safe unused image filename', async () => {
