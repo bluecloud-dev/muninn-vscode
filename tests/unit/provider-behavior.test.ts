@@ -846,6 +846,41 @@ describe('custom editor host lifecycle', () => {
     assert.equal(remove.calledOnce, true);
   });
 
+  it('gives concurrent image inserts distinct files without overwriting either', async () => {
+    const f = await fixture();
+    const files = new Map<string, Uint8Array>();
+    sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri) => {
+      await tick();
+      const stored = files.get(uri.toString());
+      if (!stored) throw Object.assign(new Error('Missing'), { code: 'FileNotFound' });
+      return { type: 1, size: stored.byteLength, ctime: 0, mtime: 0 };
+    });
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    sinon.stub(vscode.workspace.fs, 'writeFile').callsFake(async (uri, bytes) => {
+      await tick();
+      files.set(uri.toString(), bytes);
+    });
+    const insert = (bytes: number[]) =>
+      f.send({
+        type: 'view.requestImageInsert',
+        payload: {
+          kind: 'drop',
+          name: 'diagram.png',
+          mime: 'image/png',
+          bytesBase64: Buffer.from(bytes).toString('base64'),
+        },
+      });
+    await Promise.all([insert([137, 80, 78, 71, 1]), insert([137, 80, 78, 71, 2])]);
+
+    const inserted = f.messages.filter((message) => message.type === 'host.imageInserted');
+    assert.deepEqual(inserted.map((message) => message.payload.path).toSorted(), [
+      'images/diagram-1.png',
+      'images/diagram.png',
+    ]);
+    assert.equal(files.size, 2);
+    assert.deepEqual([...files.values()].map((bytes) => bytes.at(-1)).toSorted(), [1, 2]);
+  });
+
   it('loads and inserts images with invalid settings by falling back to defaults', async () => {
     const f = await fixture('Alpha\n', {
       'toolbar.mode': 'compact',

@@ -110,6 +110,8 @@ export class MuninnCustomEditorProvider
   private nextImageInsertId = 1;
   private readonly pendingAnchors = new Map<string, string>();
   private readonly pendingImageInsertions = new Map<number, PendingImageInsert>();
+  // Image inserts run concurrently; names chosen but not yet written are reserved here.
+  private readonly reservedImageUris = new Set<string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -142,6 +144,7 @@ export class MuninnCustomEditorProvider
       }
     }
     this.pendingImageInsertions.clear();
+    this.reservedImageUris.clear();
     this.pendingAnchors.clear();
     this.sessions.clear();
     this.sessionsByUri.clear();
@@ -822,6 +825,8 @@ export class MuninnCustomEditorProvider
       }
       this.logger.error(t('Image insertion failed.'), error);
       await this.rejectImageForSession(session, t('Could not add image. Please retry.'));
+    } finally {
+      if (imageUri) this.reservedImageUris.delete(imageUri.toString());
     }
   }
 
@@ -850,8 +855,19 @@ export class MuninnCustomEditorProvider
         await vscode.workspace.fs.stat(candidate);
         suffix += 1;
       } catch (error: unknown) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === 'FileNotFound')
-          return candidate;
+        if (
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'FileNotFound'
+        ) {
+          if (!this.reservedImageUris.has(candidate.toString())) {
+            this.reservedImageUris.add(candidate.toString());
+            return candidate;
+          }
+          suffix += 1;
+          continue;
+        }
         throw error;
       }
     }
