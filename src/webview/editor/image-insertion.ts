@@ -27,9 +27,20 @@ export const createImageInsertionTransaction = (
   // add the image after it, in its own paragraph when the selection is a block.
   if (selection instanceof NodeSelection) {
     const block = selection.node.isBlock;
-    const node = block ? state.schema.nodes.paragraph.create(undefined, imageNode) : imageNode;
-    const transaction = state.tr.insert(selection.to, node);
-    const caret = selection.to + (block ? 1 : 0) + imageNode.nodeSize;
+    let node = block ? state.schema.nodes.paragraph.create(undefined, imageNode) : imageNode;
+    let insertAt = selection.to;
+    const $after = state.doc.resolve(insertAt);
+    if (block && !$after.parent.canReplaceWith($after.index(), $after.index(), node.type)) {
+      // A paragraph cannot sit between list items, and a second one would loosen a tight
+      // list: end the item's own text with the image instead.
+      const text = selection.node.firstChild;
+      if (text?.isTextblock) {
+        node = imageNode;
+        insertAt = selection.from + text.nodeSize;
+      } else insertAt = selection.to - 1;
+    }
+    const transaction = state.tr.insert(insertAt, node);
+    const caret = insertAt + (node === imageNode ? 0 : 1) + imageNode.nodeSize;
     return transaction
       .setSelection(TextSelection.near(transaction.doc.resolve(caret), 1))
       .scrollIntoView();

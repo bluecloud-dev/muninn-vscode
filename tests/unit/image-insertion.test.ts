@@ -64,6 +64,33 @@ describe('webview image insertion helpers', () => {
     });
   }
 
+  for (const [source, expected] of [
+    ['- one\n- two\n- three\n', '- one\n- two![](images/pic.png)\n- three\n'],
+    ['1. one\n2. two\n3. three\n', '1. one\n2. two![](images/pic.png)\n3. three\n'],
+    ['- one\n\n- two\n\n- three\n', '- one\n\n- two![](images/pic.png)\n\n- three\n'],
+  ]) {
+    it(
+      'keeps an image for a selected list item inside that item: ' + JSON.stringify(source),
+      () => {
+        const documentNode = parseHostMarkdown(source);
+        const position = 1 + documentNode.child(0).child(0).nodeSize;
+        const state = EditorState.create({
+          doc: documentNode,
+          selection: NodeSelection.create(documentNode, position),
+        });
+
+        const transaction = createImageInsertionTransaction(
+          state,
+          schema.nodes.image,
+          'images/pic.png',
+        );
+
+        expect(serializeToHostMarkdown(transaction.doc)).to.equal(expected);
+        expect(transaction.selection.$from.nodeBefore?.type.name).to.equal('image');
+      },
+    );
+  }
+
   it('uses selected text as alt text and serializes markdown image syntax', () => {
     const documentNode = parseHostMarkdown('A screenshot appears here.');
     const selectedFrom = 3;
