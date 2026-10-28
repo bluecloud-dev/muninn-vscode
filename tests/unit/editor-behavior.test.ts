@@ -1450,6 +1450,26 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().length, 0);
   });
 
+  it('adds a host image after a focused table instead of replacing the table', async () => {
+    const source = 'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nOutro\n';
+    const editor = open(source);
+    editor.querySelector<HTMLInputElement>('tbody input')!.focus();
+    send({
+      type: 'host.imageInserted',
+      payload: {
+        requestId: 1,
+        path: 'images/pic.png',
+        webviewUri: 'https://muninn-test.invalid/pic.png',
+        filename: 'pic.png',
+      },
+    });
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n![](images/pic.png)\n\nOutro\n',
+    );
+  });
+
   it('flushes pending edits before requesting HTML export from the toolbar', async () => {
     const editor = open('Alpha\n');
     await append(editor, 'X');
