@@ -19,6 +19,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import { Plugin } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
+import { getCodeFenceLanguage } from '../../shared/code-languages';
 
 const highlighter = highlight.newInstance();
 for (const [language, grammar] of Object.entries({
@@ -45,7 +46,7 @@ type CodeToken = { from: number; to: number; classes: string };
 const highlightCode = (node: ProseMirrorNode): CodeToken[] => {
   // shortcut: blocks over 20,000 UTF-16 units stay plain; use a worker if larger blocks need highlighting.
   if (node.content.size > 20_000) return [];
-  const language = ((node.attrs.params as string | undefined) ?? '').trim().toLowerCase();
+  const language = getCodeFenceLanguage((node.attrs.params as string | undefined) ?? '');
   if (!highlighter.getLanguage(language)) return [];
   try {
     const template = document.createElement('template');

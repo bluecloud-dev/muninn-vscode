@@ -473,6 +473,41 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies().at(-1)?.payload.markdown, source);
   });
 
+  it('reads the language from the first info word and keeps fence attributes', async () => {
+    const editor = open('Intro\n\n```Python title="a.py" {1,3}\nprint("hi")\n```\n');
+    const code = editor.querySelector<HTMLElement>('pre code')!;
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    assert.ok(code.querySelector('span[class*="hljs-"]'));
+    assert.equal(language.value, 'python');
+    language.value = 'javascript';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n```javascript title="a.py" {1,3}\nprint("hi")\n```\n',
+    );
+    assert.ok(code.querySelector('span[class*="hljs-"]'));
+    ack(0, 1);
+    language.value = '';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(
+      applies().at(-1)?.payload.markdown,
+      'Intro\n\n``` title="a.py" {1,3}\nprint("hi")\n```\n',
+    );
+  });
+
+  it('restores the language picker when a language change cannot preserve the source', async () => {
+    const editor = open('Intro\n\n    indented code\n');
+    const language = editor.querySelector<HTMLSelectElement>('.muninn-code-node-language')!;
+    language.value = 'python';
+    language.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await tick();
+    assert.equal(applies().length, 0);
+    assert.equal(language.value, '');
+    assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, /Use Source/);
+  });
+
   it('keeps unknown, omitted and Mermaid code languages editable as plain text', async () => {
     for (const language of ['', 'Unknown-Lang', 'mermaid']) {
       const source = '~~~' + language + '\nraw <script>& text\n~~~\n';

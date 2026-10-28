@@ -3,7 +3,12 @@
 
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import type { EditorView, NodeView, NodeViewConstructor } from 'prosemirror-view';
-import { CODE_LANGUAGE_OPTIONS, type CodeLanguageOption } from '../../../shared/code-languages';
+import {
+  CODE_LANGUAGE_OPTIONS,
+  getCodeFenceLanguage,
+  setCodeFenceLanguage,
+  type CodeLanguageOption,
+} from '../../../shared/code-languages';
 import type { Announce } from '../announcements';
 import { escapeHtml, formatString, getString } from '../localization';
 import { sanitizeMermaidSvg } from '../preview';
@@ -31,8 +36,11 @@ const createDefaultCodeBlockNodeView = (node: ProseMirrorNode): NodeView => {
   };
 };
 
+const getCodeBlockParameters = (node: ProseMirrorNode): string =>
+  (node.attrs.params as string | undefined) ?? '';
+
 const getCodeBlockLanguage = (node: ProseMirrorNode): string =>
-  ((node.attrs.params as string | undefined) ?? '').trim().toLowerCase();
+  getCodeFenceLanguage(getCodeBlockParameters(node));
 
 const buildCodeLanguageOptions = (currentLanguage: string): ReadonlyArray<CodeLanguageOption> => {
   const options = [...CODE_LANGUAGE_OPTIONS];
@@ -168,16 +176,22 @@ class GenericCodeBlockNodeView implements NodeView {
     const nextAttributes = {
       ...(this.node.attrs as Record<string, unknown>),
     };
-    if (selectedLanguage.length === 0) {
+    const parameters = setCodeFenceLanguage(getCodeBlockParameters(this.node), selectedLanguage);
+    if (parameters.trim().length === 0) {
       delete nextAttributes.params;
     } else {
-      nextAttributes.params = selectedLanguage;
+      nextAttributes.params = parameters;
     }
 
     const transaction = this.view.state.tr
       .setNodeMarkup(position, undefined, nextAttributes)
       .scrollIntoView();
     this.view.dispatch(transaction);
+    if (!this.view.state.doc.eq(transaction.doc)) {
+      // The editor rejected an edit it cannot preserve and already explained why.
+      this.syncLanguageSelect();
+      return;
+    }
 
     if (selectedLanguage.length === 0) {
       this.options.announce(getString('statusCodeLanguagePlainText'), { kind: 'status' });
