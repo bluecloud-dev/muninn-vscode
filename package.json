@@ -539,7 +539,7 @@
     "highlight.js": "11.12.0",
     "markdown-it": "^15.0.3",
     "markdown-it-front-matter": "^0.2.4",
-    "mermaid": "^11.16.1",
+    "mermaid": "^12.2.0",
     "prosemirror-commands": "^1.7.2",
     "prosemirror-history": "^1.5.1",
     "prosemirror-keymap": "^1.2.3",
