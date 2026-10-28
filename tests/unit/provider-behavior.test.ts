@@ -619,6 +619,61 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.document.getText(), 'AlphaXY\n');
   });
 
+  it('applies a closing draft over its own applied but unacknowledged edit', async () => {
+    const f = await fixture();
+    const open = sinon.spy(vscode.workspace, 'openTextDocument');
+    await f.send({
+      type: 'view.applyDocument',
+      payload: { markdown: 'AlphaX\n', revision: 0, operationId: 1 },
+    });
+    await f.send({
+      type: 'view.draft',
+      payload: { markdown: 'AlphaXY\n', baseMarkdown: 'Alpha\n' },
+    });
+    f.close();
+    await tick();
+    assert.equal(f.document.getText(), 'AlphaXY\n');
+    assert.equal(open.called, false);
+  });
+
+  it('merges a closing draft with an independent external change', async () => {
+    const f = await fixture('Alpha\n\nBeta\n');
+    const open = sinon.spy(vscode.workspace, 'openTextDocument');
+    await f.send({
+      type: 'view.draft',
+      payload: { markdown: 'AlphaX\n\nBeta\n', baseMarkdown: 'Alpha\n\nBeta\n' },
+    });
+    f.external('Alpha\n\nBetaY\n');
+    f.close();
+    await tick();
+    assert.equal(f.document.getText(), 'AlphaX\n\nBetaY\n');
+    assert.equal(open.called, false);
+  });
+
+  for (const failure of ['conflict', 'refused'] as const) {
+    it('recovers a closing draft that cannot be applied: ' + failure, async () => {
+      const f = await fixture();
+      const open = sinon.spy(vscode.workspace, 'openTextDocument');
+      const warning = sinon.spy(vscode.window, 'showWarningMessage');
+      await f.send({
+        type: 'view.draft',
+        payload: { markdown: 'AlphaX\n', baseMarkdown: 'Alpha\n' },
+      });
+      if (failure === 'conflict') f.external('Remote\n');
+      else f.applyEdit.resolves(false);
+      f.close();
+      await tick();
+      assert.ok(open.calledOnceWithExactly({ language: 'markdown', content: 'AlphaX\n' }));
+      assert.equal(f.document.getText(), failure === 'conflict' ? 'Remote\n' : 'Alpha\n');
+      assert.equal(f.applyEdit.callCount, failure === 'conflict' ? 0 : 1);
+      assert.equal(warning.calledOnce, true);
+      assert.equal(
+        f.messages.some((message) => message.type === 'host.draftRecovered'),
+        false,
+      );
+    });
+  }
+
   it('returns bounded native picker choices and cancellation to the requesting editor', async () => {
     const f = await fixture();
     const pick = sinon.stub(vscode.window, 'showQuickPick');
