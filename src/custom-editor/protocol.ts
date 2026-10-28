@@ -96,13 +96,6 @@ export type HostToViewMessage =
       payload: {
         reason: string;
       };
-    }
-  | {
-      type: 'host.error';
-      payload: {
-        code: 'revision_mismatch' | 'apply_failed';
-        message: string;
-      };
     };
 
 export type ViewToHostMessage =
@@ -385,14 +378,6 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
 
   if (value.type === 'host.imageRejected') {
     return isObject(value.payload) && isString(value.payload.reason);
-  }
-
-  if (value.type === 'host.error') {
-    return (
-      isObject(value.payload) &&
-      (value.payload.code === 'revision_mismatch' || value.payload.code === 'apply_failed') &&
-      isString(value.payload.message)
-    );
   }
 
   return false;

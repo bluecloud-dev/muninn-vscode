@@ -1140,11 +1140,6 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       announce(payload.reason, { kind: 'error' });
       return;
     }
-    case 'host.error': {
-      const payload = message.payload;
-      announce(payload.message, { kind: 'error' });
-      return;
-    }
   }
 };
 window.addEventListener('message', onHostMessage);
