@@ -1293,6 +1293,37 @@ describe('bundled editor behavior with a delayed host', function () {
     assert.equal(applies()[0].payload.markdown, '- [x] Alpha\n- [x] Beta\n');
   });
 
+  const boxes = () => [
+    ...dom.window.document.querySelectorAll<HTMLInputElement>('.muninn-task-checkbox'),
+  ];
+  it('keeps task checkboxes across unrelated edits and labels them with current text', async () => {
+    const editor = open('Intro\n\n- [ ] Alpha\n- [ ] Beta\n');
+    const beta = boxes()[1];
+    await append(editor, ' text', editor.querySelector('p')!);
+    ack(0, 1);
+    assert.ok(boxes()[1] === beta, 'an edit above a task must not recreate its checkbox');
+    await append(editor, 'X', editor.querySelector('li p')!);
+    ack(1, 2);
+    assert.deepEqual(
+      boxes().map((box) => box.getAttribute('aria-label')),
+      ['Toggle task: AlphaX', 'Toggle task: Beta'],
+    );
+    boxes()[1].click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Intro text\n\n- [ ] AlphaX\n- [x] Beta\n');
+  });
+
+  it('keeps heading anchors current while editing headings and other text', async () => {
+    const editor = open('# Étape\n\n# Étape\n\n# Étape 1\n\n#\n\n#\n\nPlain\n');
+    const ids = () => [...editor.querySelectorAll('h1')].map((heading) => heading.id);
+    assert.deepEqual(ids(), ['étape', 'étape-1', 'étape-1-1', '', '-1']);
+    await append(editor, ' text', editor.querySelector('p')!);
+    ack(0, 1);
+    assert.deepEqual(ids(), ['étape', 'étape-1', 'étape-1-1', '', '-1']);
+    await append(editor, 's', editor.querySelector('h1')!);
+    assert.deepEqual(ids(), ['étapes', 'étape', 'étape-1', '', '-1']);
+  });
+
   it('routes links through the host and creates unique Unicode heading anchors', () => {
     const editor = open(
       '# Étape\n\n# Étape\n\n# Héllo *world*\n\n# Héllo *world*\n\n# Use `foo()` now\n\n# ![logo](x.png) Title\n\n[Spec](design%20notes.md)\n',
