@@ -201,6 +201,19 @@ describe('text synchronization changes', () => {
       '😀 gamma\r\nbeta',
     );
   });
+  it('keeps surrogate pairs whole when a large rewrite falls back to one change', () => {
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (const [before, after] of [
+      ['😀' + 'a'.repeat(30_000), '😁' + 'b'.repeat(30_000)],
+      ['a'.repeat(30_000) + '🈀', 'b'.repeat(30_000) + '😀'],
+    ]) {
+      const changes = textChanges(before, after);
+      assert.equal(changes.length, 1);
+      assert.equal(loneSurrogate.test(before.slice(changes[0].from, changes[0].to)), false);
+      assert.equal(loneSurrogate.test(changes[0].insert), false);
+      assert.equal(applyTextChanges(before, changes) === after, true);
+    }
+  });
   it('merges independent agent and local edits', () => {
     assert.equal(
       mergeIndependentChanges('Alpha\nBeta\n', 'AlphaX\nBeta\n', 'Alpha\nBetaY\n'),

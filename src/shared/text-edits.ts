@@ -5,6 +5,9 @@ import { diffChars } from 'diff';
 
 export type TextChange = { from: number; to: number; insert: string };
 
+const highSurrogate = /^[\uD800-\uDBFF]$/;
+const lowSurrogate = /^[\uDC00-\uDFFF]$/;
+
 /** UTF-16 offsets match VS Code and ProseMirror; diff counts Unicode code points. */
 export const textChanges = (before: string, after: string): TextChange[] => {
   if (before === after) return [];
@@ -12,11 +15,17 @@ export const textChanges = (before: string, after: string): TextChange[] => {
   if (!changes) {
     let from = 0;
     while (from < before.length && from < after.length && before[from] === after[from]) from++;
+    // Scanning compares UTF-16 units; never leave half of a surrogate pair outside the change.
+    if (from > 0 && highSurrogate.test(before[from - 1])) from--;
     let oldEnd = before.length;
     let newEnd = after.length;
     while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
       oldEnd--;
       newEnd--;
+    }
+    if (oldEnd < before.length && lowSurrogate.test(before[oldEnd])) {
+      oldEnd++;
+      newEnd++;
     }
     return [{ from, to: oldEnd, insert: after.slice(from, newEnd) }];
   }
