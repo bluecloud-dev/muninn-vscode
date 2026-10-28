@@ -699,6 +699,27 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.messages.at(-1)!.type, 'host.draftRecovered');
   });
 
+  it('re-enables the editor after recovery while the warning notification stays open', async () => {
+    const f = await fixture();
+    const open = sinon.stub(vscode.workspace, 'openTextDocument').resolves(f.document);
+    sinon.stub(vscode.window, 'showTextDocument').resolves({} as vscode.TextEditor);
+    const warning = sinon
+      .stub(vscode.window, 'showWarningMessage')
+      .returns(new Promise<undefined>(noop));
+    void f.send({ type: 'view.recoverDraft', payload: { markdown: 'First recovery' } });
+    await tick();
+    assert.equal(f.messages.at(-1)!.type, 'host.draftRecovered');
+    void f.send({ type: 'view.recoverDraft', payload: { markdown: 'Second recovery' } });
+    await tick();
+    assert.equal(open.callCount, 2);
+    assert.deepEqual(open.secondCall.args[0], {
+      language: 'markdown',
+      content: 'Second recovery',
+    });
+    assert.equal(warning.callCount, 2);
+    assert.equal(f.messages.filter((message) => message.type === 'host.draftRecovered').length, 2);
+  });
+
   it('creates relative file links and native heading selections', async () => {
     const f = await fixture('---\ntitle: Metadata\n---\n\n# First\n\n## Next\n');
     sinon

@@ -587,7 +587,8 @@ export class MuninnCustomEditorProvider
       });
       await vscode.window.showTextDocument(copy, { preview: false });
       session.draft = undefined;
-      await vscode.window.showWarningMessage(
+      // A notification may never settle (timeout, Do Not Disturb); the editor must not wait for it.
+      void vscode.window.showWarningMessage(
         t(
           'The document changed elsewhere. Your edits are preserved in a separate unsaved Markdown document.',
         ),
