@@ -1281,6 +1281,79 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   }
 
+  it('keeps a raw table draft instead of applying it over a newer table', async () => {
+    open('Intro\n\n| Name |\n| --- |\n| Alpha |\n');
+    const toggle = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-toggle-source"]',
+    )!;
+    const apply = dom.window.document.querySelector<HTMLButtonElement>(
+      '[data-testid="muninn-table-apply-source"]',
+    )!;
+    toggle.click();
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    const draft = '| Name |\n| --- |\n| Beta |';
+    textarea.value = draft;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    send({
+      type: 'host.documentChanged',
+      payload: {
+        markdown: 'Intro\n\n| Name |\n| --- |\n| Gamma |\n',
+        revision: 1,
+        imageSources: {},
+      },
+    });
+    assert.equal(textarea.isConnected, true);
+    apply.click();
+    await tick();
+    assert.equal(applies().length, 0);
+    const stale = /changed after you started editing its source/;
+    assert.match(
+      dom.window.document.querySelector('[data-testid="muninn-table-source-feedback"]')!
+        .textContent!,
+      stale,
+    );
+    assert.match(dom.window.document.querySelector('#status-alert')!.textContent!, stale);
+    assert.equal(textarea.value, draft);
+    assert.equal(
+      dom.window.document.querySelector<HTMLInputElement>('tbody input')!.value,
+      'Gamma',
+    );
+
+    toggle.click();
+    toggle.click();
+    assert.equal(textarea.value, '| Name |\n| --- |\n| Gamma |');
+    assert.equal(messages.findLast((m) => m.type === 'view.tableDraft')?.payload.markdown, draft);
+    textarea.value = '| Name |\n| --- |\n| Delta |';
+    textarea.dispatchEvent(new dom.window.Event('input'));
+    apply.click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, 'Intro\n\n| Name |\n| --- |\n| Delta |\n');
+  });
+
+  it('restores a raw table draft started after a grid edit and applies it exactly', async () => {
+    open('| Name |\n| --- |\n| Alpha |\n');
+    const input = dom.window.document.querySelector<HTMLInputElement>('tbody input')!;
+    input.value = 'Beta';
+    input.dispatchEvent(new dom.window.InputEvent('input', { bubbles: true, data: 'Beta' }));
+    await tick();
+    ack(0, 1);
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-toggle-source"]')!
+      .click();
+    const draft = '| Name |\n| --- |\n| Gamma |';
+    const textarea = dom.window.document.querySelector<HTMLTextAreaElement>('textarea')!;
+    textarea.value = draft;
+    textarea.dispatchEvent(new dom.window.Event('input'));
+
+    open('| Name |\n| --- |\n| Beta |\n', savedState);
+    assert.equal(dom.window.document.querySelector('textarea')!.value, draft);
+    dom.window.document
+      .querySelector<HTMLButtonElement>('[data-testid="muninn-table-apply-source"]')!
+      .click();
+    await tick();
+    assert.equal(applies().at(-1)?.payload.markdown, draft + '\n');
+  });
+
   it('does not redirect a detached table action to an identical replacement table', () => {
     open('| Name |\n| --- |\n| Alpha |\n');
     const button = dom.window.document.querySelector<HTMLButtonElement>(

@@ -124,6 +124,7 @@
   "Back to Preview": "Back to Preview",
   "Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.": "Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.",
   "Use a Markdown header row followed by a separator row, such as | --- |.": "Use a Markdown header row followed by a separator row, such as | --- |.",
+  "This table changed after you started editing its source. Copy your changes, then select Back to Preview and View Source to edit the current table.": "This table changed after you started editing its source. Copy your changes, then select Back to Preview and View Source to edit the current table.",
   "Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.": "Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.",
   "Mermaid rendered no SVG output.": "Mermaid rendered no SVG output.",
   "appearance.contentWidth: {0}": "appearance.contentWidth: {0}",

@@ -115,6 +115,8 @@ export const DEFAULT_WEBVIEW_STRINGS = {
     'Could not apply this table edit. Your draft is retained. Reopen the table or use Source to apply it safely.',
   statusTableSourceInvalid:
     'Use a Markdown header row followed by a separator row, such as | --- |.',
+  statusTableSourceStale:
+    'This table changed after you started editing its source. Copy your changes, then select Back to Preview and View Source to edit the current table.',
   mermaidDisabledMessage:
     'Mermaid preview is disabled for this workspace. Enable muninn.integrations.mermaid.enabled and trust the workspace, or allow Mermaid in restricted workspaces.',
   mermaidNoSvgOutput: 'Mermaid rendered no SVG output.',
