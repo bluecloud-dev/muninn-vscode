@@ -36,7 +36,7 @@ Please describe the task you were doing and the result you expected. Include ste
 
 ## Start reading
 
-This source targets **1.2.2**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+This source targets **1.4.0**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a toolbar with local Paragraph/Heading choices and as many controls as fit; More contains only the remaining actions; standard GFM tasks and strikethrough; editable table cells with raw-source access.
