@@ -6,8 +6,14 @@ export type CodeLanguageOption = Readonly<{
   label: string;
 }>;
 
+// The first word of a fence info string names its language; the rest are attributes.
+const INFO_LANGUAGE = /^(\s*)(\S*)/;
+export const getCodeFenceLanguage = (info: string): string =>
+  INFO_LANGUAGE.exec(info)![2].toLowerCase();
+export const setCodeFenceLanguage = (info: string, language: string): string =>
+  info.replace(INFO_LANGUAGE, (_word, space: string) => space + language);
+
 export const CODE_LANGUAGE_OPTIONS: ReadonlyArray<CodeLanguageOption> = [
-  { value: '', label: 'Plain text' },
   { value: 'typescript', label: 'TypeScript' },
   { value: 'javascript', label: 'JavaScript' },
   { value: 'tsx', label: 'TSX' },
@@ -24,5 +30,4 @@ export const CODE_LANGUAGE_OPTIONS: ReadonlyArray<CodeLanguageOption> = [
   { value: 'sql', label: 'SQL' },
   { value: 'markdown', label: 'Markdown' },
   { value: 'mermaid', label: 'Mermaid' },
-  { value: 'unsupported', label: 'Unsupported' },
 ];

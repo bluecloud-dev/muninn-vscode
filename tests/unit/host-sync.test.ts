@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'node:assert/strict';
+import sinon from 'sinon';
 import { HostSyncController, type ApplyDocumentPayload } from '../../src/webview/editor/sync';
 
 const fixture = (initial = 'Alpha') => {
@@ -58,6 +59,32 @@ describe('acknowledged webview synchronization', () => {
     assert.deepEqual(f.conflicts, []);
   });
 
+  it('resends unchanged local edits when a rejection only advances the revision', () => {
+    const f = fixture('Alpha\n');
+    f.sync.queueApply(() => 'AlphaX\n');
+    f.ack(0, 1, 'Alpha\n', false);
+    assert.deepEqual(
+      f.sent.map(({ markdown, revision }) => ({ markdown, revision })),
+      [
+        { markdown: 'AlphaX\n', revision: 0 },
+        { markdown: 'AlphaX\n', revision: 1 },
+      ],
+    );
+    assert.deepEqual(f.applied, []);
+    assert.deepEqual(f.conflicts, []);
+  });
+
+  it('merges a buffered external snapshot after a stale-revision rejection', () => {
+    const f = fixture('Alpha\nBeta\nGamma\n');
+    f.sync.queueApply(() => 'AlphaX\nBeta\nGamma\n');
+    f.sync.handleHostDocumentChanged({ markdown: 'Alpha\nBetaY\nGammaZ\n', revision: 2 });
+    f.ack(0, 1, 'Alpha\nBetaY\nGamma\n', false);
+    assert.deepEqual(f.applied, ['AlphaX\nBetaY\nGamma\n', 'AlphaX\nBetaY\nGammaZ\n']);
+    assert.equal(f.sent[1].markdown, 'AlphaX\nBetaY\nGammaZ\n');
+    assert.equal(f.sent[1].revision, 2);
+    assert.deepEqual(f.conflicts, []);
+  });
+
   it('buffers external events until the in-flight operation resolves', () => {
     const f = fixture('Alpha\nBeta\n');
     f.sync.queueApply(() => 'AlphaX\nBeta\n');
@@ -96,6 +123,36 @@ describe('acknowledged webview synchronization', () => {
     f.sync.handleHostDocumentChanged({ markdown: 'old', revision: 0 });
     assert.equal(f.sync.getLocalMarkdown(), 'Remote');
     assert.deepEqual(f.applied, ['Remote']);
+  });
+
+  it('keeps sync suppressed after a nested suppressed update returns', () => {
+    const f = fixture();
+    f.sync.withSuppressedSync(() => {
+      f.sync.withSuppressedSync(() => f.sync.queueApply(() => 'inner'));
+      f.sync.queueApply(() => 'outer');
+    });
+    assert.equal(f.sent.length, 0);
+    f.sync.queueApply(() => 'Local');
+    assert.equal(f.sent[0].markdown, 'Local');
+  });
+
+  it('fails a wait after one second without an acknowledgment and accepts a late one', async () => {
+    const clock = sinon.useFakeTimers();
+    try {
+      const f = fixture();
+      f.sync.queueApply(() => 'Local');
+      let settled: boolean | undefined;
+      void f.sync.whenIdle().then((ok) => (settled = ok));
+      await clock.tickAsync(999);
+      assert.equal(settled, undefined);
+      await clock.tickAsync(1);
+      assert.equal(settled, false);
+      f.ack(0, 1);
+      assert.equal(f.sync.isDirty(), false);
+      assert.equal(await f.sync.whenIdle(), true);
+    } finally {
+      clock.restore();
+    }
   });
 
   it('releases pending waits when disposed', async () => {

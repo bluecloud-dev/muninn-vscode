@@ -8,7 +8,7 @@ import { JSDOM } from 'jsdom';
 import * as vscode from 'vscode';
 import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 import { ConfigService } from '../../src/services/config-service';
-import type { HostToViewMessage } from '../../src/custom-editor/protocol';
+import { type HostToViewMessage, isHostToViewMessage } from '../../src/custom-editor/protocol';
 
 const noop = (): void => {};
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -20,7 +20,7 @@ describe('custom editor host lifecycle', () => {
     sinon.restore();
   });
 
-  const fixture = async (initial = 'Alpha\n') => {
+  const fixture = async (initial = 'Alpha\n', settings: Record<string, unknown> = {}) => {
     let text = initial;
     let receive: (message: unknown) => unknown = noop;
     let close: () => void = noop;
@@ -29,6 +29,8 @@ describe('custom editor host lifecycle', () => {
     let willSave: (event: vscode.TextDocumentWillSaveEvent) => unknown = noop;
     let flushResult: boolean | undefined = true;
     const messages: HostToViewMessage[] = [];
+    let webviewOptions: vscode.WebviewOptions = {};
+    const optionUpdates: vscode.WebviewOptions[] = [];
     const uri = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace/spec.md');
     const document = {
       uri,
@@ -70,7 +72,7 @@ describe('custom editor host lifecycle', () => {
       return { dispose() {} };
     });
     sinon.stub(vscode.workspace, 'getConfiguration').returns({
-      get: <T>(_key: string, fallback?: T) => fallback,
+      get: <T>(key: string, fallback?: T) => (key in settings ? settings[key] : fallback),
       inspect: (): undefined => {},
       has: () => false,
       update: async () => {},
@@ -87,7 +89,14 @@ describe('custom editor host lifecycle', () => {
     const panel = {
       webview: {
         html: '',
-        options: {},
+        // VS Code reloads the webview whenever its options are reassigned.
+        get options() {
+          return webviewOptions;
+        },
+        set options(value: vscode.WebviewOptions) {
+          webviewOptions = value;
+          optionUpdates.push(value);
+        },
         cspSource: 'https://local.resources',
         asWebviewUri: (value: vscode.Uri) => value,
         onDidReceiveMessage: (listener: (value: unknown) => unknown) => {
@@ -124,6 +133,7 @@ describe('custom editor host lifecycle', () => {
       panel,
       document,
       messages,
+      optionUpdates,
       logger,
       applyEdit,
       close: () => close(),
@@ -231,7 +241,7 @@ describe('custom editor host lifecycle', () => {
 
   it('preserves heading anchors and safe links while rebasing local destinations', async () => {
     const f = await fixture(
-      '# Héllo *world*\n\n# Héllo *world*\n\n[Anchor](#héllo-world-1) [Local](guide.md#intro) [Web](https://example.org) [Mail](mailto:test@example.org) [Command](command:workbench.action.closeWindow)\n',
+      '# Héllo *world*\n\n# Héllo *world*\n\n# Use `foo()` now\n\n# ![logo](x.png) Title\n\n[Anchor](#héllo-world-1) [Local](guide.md#intro) [Web](https://example.org) [Mail](mailto:test@example.org) [Command](command:workbench.action.closeWindow)\n',
     );
     sinon
       .stub(vscode.window, 'showSaveDialog')
@@ -242,7 +252,7 @@ describe('custom editor host lifecycle', () => {
     assert.equal(output.title, 'Héllo world');
     assert.deepEqual(
       [...output.querySelectorAll('h1')].map((heading) => heading.id),
-      ['héllo-world', 'héllo-world-1'],
+      ['héllo-world', 'héllo-world-1', 'use-foo-now', 'title'],
     );
     assert.deepEqual(
       [...output.querySelectorAll('a')].map((link) => link.getAttribute('href') ?? undefined),
@@ -386,6 +396,46 @@ describe('custom editor host lifecycle', () => {
     f.trust();
     await tick();
     assert.equal(f.messages.at(-1)!.type, 'host.settingsChanged');
+  });
+
+  it('grows image resource roots only when a new folder appears, keeping the webview loaded', async () => {
+    const f = await fixture('![Seed](figures/seed.png)\n\n![A](a.png)\n');
+    const roots = () => f.panel.webview.options.localResourceRoots!.map(String);
+    const workspaceRoot = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace');
+    const folder = (name?: string) =>
+      (name ? vscode.Uri.joinPath(workspaceRoot, name) : workspaceRoot).toString();
+    assert.equal(f.optionUpdates.length, 1);
+    assert.ok(roots().includes(folder('figures')));
+    assert.equal(new Set(roots()).size, roots().length);
+
+    let revision = 0;
+    const apply = async (markdown: string) => {
+      await f.send({
+        type: 'view.applyDocument',
+        payload: { markdown, revision, operationId: revision + 1 },
+      });
+      revision++;
+    };
+    await apply('![A](a.png)\n\n![B](b.png)\n');
+    await apply('No images\n');
+    assert.equal(f.optionUpdates.length, 1);
+
+    await apply('![C](assets/c.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
+    assert.ok(roots().includes(folder('assets')));
+    assert.ok(roots().includes(folder('figures')));
+    assert.equal(roots().filter((root) => root === folder()).length, 1);
+    const applied = f.messages.findLast((message) => message.type === 'host.applyResult');
+    assert.equal(applied?.type, 'host.applyResult');
+    if (applied?.type === 'host.applyResult')
+      assert.equal(
+        applied.payload.imageSources['assets/c.png'],
+        vscode.Uri.joinPath(workspaceRoot, 'assets', 'c.png').toString(),
+      );
+
+    await apply('Plain again\n');
+    f.external('![D](assets/d.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
   });
 
   it('acknowledges each accepted operation, including no-ops, without an extra self echo', async () => {
@@ -569,6 +619,61 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.document.getText(), 'AlphaXY\n');
   });
 
+  it('applies a closing draft over its own applied but unacknowledged edit', async () => {
+    const f = await fixture();
+    const open = sinon.spy(vscode.workspace, 'openTextDocument');
+    await f.send({
+      type: 'view.applyDocument',
+      payload: { markdown: 'AlphaX\n', revision: 0, operationId: 1 },
+    });
+    await f.send({
+      type: 'view.draft',
+      payload: { markdown: 'AlphaXY\n', baseMarkdown: 'Alpha\n' },
+    });
+    f.close();
+    await tick();
+    assert.equal(f.document.getText(), 'AlphaXY\n');
+    assert.equal(open.called, false);
+  });
+
+  it('merges a closing draft with an independent external change', async () => {
+    const f = await fixture('Alpha\n\nBeta\n');
+    const open = sinon.spy(vscode.workspace, 'openTextDocument');
+    await f.send({
+      type: 'view.draft',
+      payload: { markdown: 'AlphaX\n\nBeta\n', baseMarkdown: 'Alpha\n\nBeta\n' },
+    });
+    f.external('Alpha\n\nBetaY\n');
+    f.close();
+    await tick();
+    assert.equal(f.document.getText(), 'AlphaX\n\nBetaY\n');
+    assert.equal(open.called, false);
+  });
+
+  for (const failure of ['conflict', 'refused'] as const) {
+    it('recovers a closing draft that cannot be applied: ' + failure, async () => {
+      const f = await fixture();
+      const open = sinon.spy(vscode.workspace, 'openTextDocument');
+      const warning = sinon.spy(vscode.window, 'showWarningMessage');
+      await f.send({
+        type: 'view.draft',
+        payload: { markdown: 'AlphaX\n', baseMarkdown: 'Alpha\n' },
+      });
+      if (failure === 'conflict') f.external('Remote\n');
+      else f.applyEdit.resolves(false);
+      f.close();
+      await tick();
+      assert.ok(open.calledOnceWithExactly({ language: 'markdown', content: 'AlphaX\n' }));
+      assert.equal(f.document.getText(), failure === 'conflict' ? 'Remote\n' : 'Alpha\n');
+      assert.equal(f.applyEdit.callCount, failure === 'conflict' ? 0 : 1);
+      assert.equal(warning.calledOnce, true);
+      assert.equal(
+        f.messages.some((message) => message.type === 'host.draftRecovered'),
+        false,
+      );
+    });
+  }
+
   it('returns bounded native picker choices and cancellation to the requesting editor', async () => {
     const f = await fixture();
     const pick = sinon.stub(vscode.window, 'showQuickPick');
@@ -647,6 +752,27 @@ describe('custom editor host lifecycle', () => {
     assert.equal(show.calledOnce, true);
     assert.equal(f.document.getText(), 'Alpha\n');
     assert.equal(f.messages.at(-1)!.type, 'host.draftRecovered');
+  });
+
+  it('re-enables the editor after recovery while the warning notification stays open', async () => {
+    const f = await fixture();
+    const open = sinon.stub(vscode.workspace, 'openTextDocument').resolves(f.document);
+    sinon.stub(vscode.window, 'showTextDocument').resolves({} as vscode.TextEditor);
+    const warning = sinon
+      .stub(vscode.window, 'showWarningMessage')
+      .returns(new Promise<undefined>(noop));
+    void f.send({ type: 'view.recoverDraft', payload: { markdown: 'First recovery' } });
+    await tick();
+    assert.equal(f.messages.at(-1)!.type, 'host.draftRecovered');
+    void f.send({ type: 'view.recoverDraft', payload: { markdown: 'Second recovery' } });
+    await tick();
+    assert.equal(open.callCount, 2);
+    assert.deepEqual(open.secondCall.args[0], {
+      language: 'markdown',
+      content: 'Second recovery',
+    });
+    assert.equal(warning.callCount, 2);
+    assert.equal(f.messages.filter((message) => message.type === 'host.draftRecovered').length, 2);
   });
 
   it('creates relative file links and native heading selections', async () => {
@@ -773,6 +899,71 @@ describe('custom editor host lifecycle', () => {
       },
     });
     assert.equal(remove.calledOnce, true);
+  });
+
+  it('gives concurrent image inserts distinct files without overwriting either', async () => {
+    const f = await fixture();
+    const files = new Map<string, Uint8Array>();
+    sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri) => {
+      await tick();
+      const stored = files.get(uri.toString());
+      if (!stored) throw Object.assign(new Error('Missing'), { code: 'FileNotFound' });
+      return { type: 1, size: stored.byteLength, ctime: 0, mtime: 0 };
+    });
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    sinon.stub(vscode.workspace.fs, 'writeFile').callsFake(async (uri, bytes) => {
+      await tick();
+      files.set(uri.toString(), bytes);
+    });
+    const insert = (bytes: number[]) =>
+      f.send({
+        type: 'view.requestImageInsert',
+        payload: {
+          kind: 'drop',
+          name: 'diagram.png',
+          mime: 'image/png',
+          bytesBase64: Buffer.from(bytes).toString('base64'),
+        },
+      });
+    await Promise.all([insert([137, 80, 78, 71, 1]), insert([137, 80, 78, 71, 2])]);
+
+    const inserted = f.messages.filter((message) => message.type === 'host.imageInserted');
+    assert.deepEqual(inserted.map((message) => message.payload.path).toSorted(), [
+      'images/diagram-1.png',
+      'images/diagram.png',
+    ]);
+    assert.equal(files.size, 2);
+    assert.deepEqual([...files.values()].map((bytes) => bytes.at(-1)).toSorted(), [1, 2]);
+  });
+
+  it('loads and inserts images with invalid settings by falling back to defaults', async () => {
+    const f = await fixture('Alpha\n', {
+      'toolbar.mode': 'compact',
+      'integrations.mermaid.enabled': 'false',
+      'images.destination': 42,
+    });
+    const init = f.messages[0];
+    assert.equal(isHostToViewMessage(init), true);
+    if (init.type === 'host.init') assert.equal(init.payload.mermaidEnabled, false);
+    await provider.notifyConfigurationChanged();
+    assert.equal(isHostToViewMessage(f.messages.at(-1)), true);
+
+    sinon
+      .stub(vscode.workspace.fs, 'stat')
+      .rejects(Object.assign(new Error('Missing'), { code: 'FileNotFound' }));
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: {
+        kind: 'drop',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytesBase64: Buffer.from([137, 80, 78, 71]).toString('base64'),
+      },
+    });
+    assert.equal(write.firstCall?.args[0].path, '/workspace/images/diagram.png');
+    assert.equal(f.messages.at(-1)!.type, 'host.imageInserted');
   });
 
   it('does not treat a permission error as a safe unused image filename', async () => {

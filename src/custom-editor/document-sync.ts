@@ -5,8 +5,7 @@ import * as vscode from 'vscode';
 import { textChanges } from '../shared/text-edits';
 import type { SerializedMarkdownPayload } from './protocol';
 
-type ApplyResult =
-  { ok: true } | { ok: false; code: 'revision_mismatch' | 'apply_failed'; message: string };
+type ApplyResult = { ok: boolean };
 
 export class DocumentSync {
   private revision = 0;
@@ -36,12 +35,7 @@ export class DocumentSync {
 
   async applyDocument(markdown: string, expectedRevision: number): Promise<ApplyResult> {
     const snapshot = this.getSnapshot();
-    if (expectedRevision !== snapshot.revision)
-      return {
-        ok: false,
-        code: 'revision_mismatch',
-        message: 'The document changed before the edit could be applied.',
-      };
+    if (expectedRevision !== snapshot.revision) return { ok: false };
     const changes = textChanges(snapshot.markdown, markdown);
     if (changes.length === 0) return { ok: true };
     const edit = new vscode.WorkspaceEdit();
@@ -60,6 +54,6 @@ export class DocumentSync {
     } catch {
       // The provider reports failure and retains the draft for recovery.
     }
-    return { ok: false, code: 'apply_failed', message: 'VS Code could not apply the edit.' };
+    return { ok: false };
   }
 }

@@ -122,7 +122,10 @@ class TableNodeView implements NodeView {
   private sourceVisible = false;
   private sourceDraft = '';
   private sourceDirty = false;
-  private readonly draftKey: string;
+  // The draft key records the table source the draft started from, so it survives reloads.
+  private draftBase = '';
+  private draftKey = '';
+  private staleDraftReported = false;
   private normalizedCurrentSource = '';
   private pendingFocus: TableCellCoordinates | undefined;
 
@@ -188,7 +191,7 @@ class TableNodeView implements NodeView {
     );
     this.sourceContainer.hidden = true;
     this.normalizedCurrentSource = normalizeTableSource(getTableSource(this.node));
-    this.draftKey = JSON.stringify([getPos(), getTableSource(node)]);
+    this.startDraft();
     this.sourceDraft = readTableDraft(this.draftKey) ?? this.normalizedCurrentSource;
     this.sourceDirty = this.sourceDraft !== this.normalizedCurrentSource;
     this.sourceTextarea.value = this.sourceDraft;
@@ -220,6 +223,7 @@ class TableNodeView implements NodeView {
     });
     this.sourceTextarea.addEventListener('input', () => {
       this.sourceDraft = this.sourceTextarea.value;
+      if (!this.sourceDirty) this.startDraft(true);
       this.sourceDirty = this.sourceDraft !== this.normalizedCurrentSource;
       writeTableDraft(this.draftKey, this.sourceDirty ? this.sourceDraft : undefined);
       this.clearSourceFeedback();
@@ -452,7 +456,26 @@ class TableNodeView implements NodeView {
     this.setSourceVisibility(!this.sourceVisible);
   }
 
+  private startDraft(fresh = false): void {
+    this.draftBase = getTableSource(this.node);
+    const position = this.resolveCurrentNodePosition();
+    this.draftKey = JSON.stringify([position, this.draftBase]);
+    // A retained stale draft can share this key once its table returns to the same base.
+    for (let copy = 1; fresh && readTableDraft(this.draftKey) !== undefined; copy++)
+      this.draftKey = JSON.stringify([position, this.draftBase, copy]);
+    this.staleDraftReported = false;
+  }
+
+  private isDraftStale(): boolean {
+    return this.sourceDirty && this.draftBase !== getTableSource(this.node);
+  }
+
   private setSourceVisibility(visible: boolean): void {
+    if (!visible && this.staleDraftReported && this.isDraftStale()) {
+      // The stored draft stays with the host for recovery; reopening shows the current table.
+      this.sourceDirty = false;
+      this.startDraft();
+    }
     this.sourceVisible = visible;
     this.dom.classList.toggle('is-source-visible', visible);
     this.sourceContainer.hidden = !visible;
@@ -484,6 +507,14 @@ class TableNodeView implements NodeView {
       return;
     }
     if (normalized !== this.normalizedCurrentSource) {
+      if (this.isDraftStale()) {
+        const message = getString('statusTableSourceStale');
+        this.staleDraftReported = true;
+        this.setSourceFeedback('error', message);
+        this.options.announce(message, { kind: 'error' });
+        this.sourceTextarea.focus();
+        return;
+      }
       this.pendingFocus = { row: 0, col: 0 };
       const applied = this.applyEdit(
         { type: 'source', source: normalized },

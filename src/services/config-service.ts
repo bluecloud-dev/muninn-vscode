@@ -27,6 +27,9 @@ const isContentWidthSetting = (value: unknown): value is ContentWidthSetting =>
 const normalizeContentWidthSetting = (value: unknown): ContentWidthSetting =>
   isContentWidthSetting(value) ? value : DEFAULT_CONFIG.contentWidth;
 
+const normalizeToolbarMode = (value: unknown): ExtensionConfiguration['toolbarMode'] =>
+  value === 'basic' || value === 'advanced' ? value : DEFAULT_CONFIG.toolbarMode;
+
 export class ConfigService {
   getMermaidEnabled(resource?: vscode.Uri): boolean {
     return this.getConfig(resource).mermaidEnabled;
@@ -50,17 +53,27 @@ export class ConfigService {
 
   getConfig(resource?: vscode.Uri): ExtensionConfiguration {
     const config = vscode.workspace.getConfiguration('muninn', resource);
+    // Settings are user-edited JSON; values of the wrong type must not reach the editor.
+    const imageDestination = config.get<unknown>(
+      'images.destination',
+      DEFAULT_CONFIG.imageDestination,
+    );
     return {
-      mermaidEnabled: config.get('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled),
+      // Only an explicit true enables diagrams; a string such as "false" fails closed.
+      mermaidEnabled:
+        config.get<unknown>('integrations.mermaid.enabled', DEFAULT_CONFIG.mermaidEnabled) === true,
       // Permission must come from the user, never a repository's settings.
       mermaidAllowInUntrustedWorkspaces:
         config.inspect<boolean>('integrations.mermaid.allowInUntrustedWorkspaces')?.globalValue ===
         true,
-      toolbarMode: config.get('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
+      toolbarMode: normalizeToolbarMode(
+        config.get<unknown>('toolbar.mode', DEFAULT_CONFIG.toolbarMode),
+      ),
       contentWidth: normalizeContentWidthSetting(
         config.get<unknown>('appearance.contentWidth', DEFAULT_CONFIG.contentWidth),
       ),
-      imageDestination: config.get('images.destination', DEFAULT_CONFIG.imageDestination),
+      imageDestination:
+        typeof imageDestination === 'string' ? imageDestination : DEFAULT_CONFIG.imageDestination,
     };
   }
 

@@ -254,12 +254,6 @@ describe('custom editor protocol guards', () => {
         payload: { reason: 'Unsupported image type.' },
       }),
     ).to.equal(true);
-    expect(
-      isHostToViewMessage({
-        type: 'host.error',
-        payload: { code: 'revision_mismatch', message: 'nope' },
-      }),
-    ).to.equal(true);
   });
 
   it('rejects malformed host-to-view payloads', () => {
@@ -308,10 +302,11 @@ describe('custom editor protocol guards', () => {
         payload: { command: 'openRawMarkdown' },
       }),
     ).to.equal(false);
+    // Apply failures travel in host.applyResult; there is no separate error message.
     expect(
       isHostToViewMessage({
         type: 'host.error',
-        payload: { code: 'unknown', message: 'x' },
+        payload: { code: 'revision_mismatch', message: 'nope' },
       }),
     ).to.equal(false);
     expect(
