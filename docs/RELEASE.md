@@ -23,7 +23,7 @@ A matching `vX.Y.Z` tag triggers publication to both registries. The workflow ca
 
 The read-only build job checks the numeric version and requires the Preview badge to be disabled, performs the quality gates, packages, and tests that exact archive in real VS Code. Registry jobs download that candidate and compare its SHA-256 with the build report before publication. They must never rebuild the VSIX. Runs for the same version are serialized.
 
-The Marketplace job uses the protected `marketplace` environment and Microsoft Entra workload identity federation. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each selected registry verifies its own publishing access before uploading on the regular release channel. The GitHub release is created after all selected registry jobs succeed; only that final job receives `contents: write`. A manual publication creates its tag at the tested workflow commit.
+The Marketplace job uses the protected `marketplace` environment and Marketplace trusted publishing with GitHub Actions OIDC. Only that job receives `id-token: write`. Open VSX uses its own token and job. Each selected registry authenticates before uploading on the regular release channel. The GitHub release is created after all selected registry jobs succeed; only that final job receives `contents: write`. A manual publication creates its tag at the tested workflow commit.
 
 Run a complete rehearsal without uploading an extension or creating a GitHub release:
 
@@ -33,7 +33,7 @@ gh workflow run release.yml --ref main -f tag=v1.4.0 -f registry=marketplace -f 
 
 The `verify_credentials` input defaults to true. Set it to false only for a build rehearsal that does not establish credential readiness; publishing always verifies access. The two registry checks run independently, so an Open VSX setup failure does not hide the Marketplace result. The tested VSIX, hash report and release notes are retained as a workflow artifact for 14 days even if a registry check fails.
 
-Before merge, a build-only rehearsal can run from the PR branch with `publish=false` and `verify_credentials=false`. The protected Marketplace environment accepts `main` and release tags, so check publishing access separately through the read-only identity workflow on `main`. After merge, run the complete Marketplace rehearsal above against the reviewed commit before authorizing publication.
+Before merge, a build-only rehearsal can run from the PR branch with `publish=false` and `verify_credentials=false`. The protected Marketplace environment accepts `main` and release tags, so verify the trusted publishing policy with a release rehearsal on `main`. After merge, run the complete Marketplace rehearsal above against the reviewed commit before authorizing publication.
 
 For an authorized Marketplace-only release:
 
@@ -45,55 +45,38 @@ The unselected registry is skipped. The GitHub release is a stable release marke
 
 Registry publishes cannot be rolled back together. If one registry publishes and another fails, complete the missing upload using the retained, tested VSIX before announcing the release; do not blindly rerun successful uploads. Credential checks do not establish that the registries will accept the package itself.
 
-## Marketplace: Microsoft Entra federation
+## Marketplace: trusted publishing
 
-The publisher is `bluecloud-dev` and the extension name is `muninn-vscode`. Marketplace publishing uses an Entra application with a federated credential, without a client secret or `VSCE_PAT`. The installed vsce supports both `verify-pat --azure-credential` and `publish --azure-credential`. Despite its command name, `verify-pat` supports Entra identities.
+The publisher is `bluecloud-dev` and the extension name is `muninn-vscode`. Publishing uses
+`vsce publish --oidc` with a short-lived Marketplace credential. No PAT, Entra application,
+client ID or tenant ID is required by the release workflow.
 
-### One-time configuration
+Create this policy under the publisher's [Trusted Publishing settings](https://marketplace.visualstudio.com/manage/publishers/bluecloud-dev/trustedpublishing):
 
-1. Register an application in an Entra directory you control. Configure its GitHub federated credential with the exact settings below.
-2. Enable immutable OIDC subjects for this repository. Check the current value with `gh api repos/bluecloud-dev/muninn-vscode/actions/oidc/customization/sub`; `use_immutable_subject` must be true. Names and numeric IDs must match the subject GitHub actually emits.
-3. Create a GitHub environment named `marketplace`. Restrict deployment branches/tags to the `main` branch (manual identity checks and rehearsals) and `v*.*.*` tags (releases). Restrict who can modify release workflows and create release tags using repository rules. An environment credential trusts jobs in that environment, not one workflow filename.
-4. Set environment variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` from the application's Overview page. These identify the application and directory; they are not passwords.
-5. Resolve the Marketplace identity with the workflow below. Add that returned identity ID to the [bluecloud-dev publisher](https://marketplace.visualstudio.com/manage/publishers/bluecloud-dev) as a direct **Contributor**. It is not the application's client ID or Entra object ID.
-6. Run the access check, then the complete release rehearsal. Delete the retired `VSCE_PAT` secret after successful Entra validation.
+| Field            | Value                        |
+| ---------------- | ---------------------------- |
+| Policy name      | `Muninn for VS Code release` |
+| Provider         | GitHub Actions               |
+| Repository owner | `bluecloud-dev`              |
+| Repository       | `muninn-vscode`              |
+| Workflow         | `release.yml`                |
+| Environment      | `marketplace`                |
 
-| Federation field | Value                                                                           |
-| ---------------- | ------------------------------------------------------------------------------- |
-| Issuer           | `https://token.actions.githubusercontent.com`                                   |
-| Audience         | `api://AzureADTokenExchange`                                                    |
-| GitHub owner     | `bluecloud-dev`                                                                 |
-| Owner ID         | `251727681`                                                                     |
-| Repository       | `muninn-vscode`                                                                 |
-| Repository ID    | `1121773683`                                                                    |
-| Entity           | Environment: `marketplace`                                                      |
-| Subject          | `repo:bluecloud-dev@251727681/muninn-vscode@1121773683:environment:marketplace` |
+Keep the GitHub `marketplace` environment restricted to `main` and `v*.*.*` tags. Only the
+Marketplace job receives `id-token: write`. The policy matches the repository, workflow and
+environment; their spelling and case must agree.
 
-The login uses `allow-no-subscriptions: true`; this application-based approach needs an Entra directory, but does not require the publishing identity to have Azure subscription roles. Marketplace access is granted separately.
+The release rehearsal exchanges an OIDC token without uploading an extension or printing the
+credential. Since `verify-pat` does not support OIDC, it uses the installed vsce OIDC helper.
+Publication obtains its own fresh token with `publish --oidc` and does not fall back to a PAT.
+The legacy `marketplace-identity.yml` workflow diagnoses the former Entra identity only; use
+`release.yml` to verify the trusted publishing policy.
 
-### Verify without publishing
-
-Resolve the Marketplace identity for first-time membership setup:
-
-```bash
-gh workflow run marketplace-identity.yml --ref main -f verify_publisher_access=false
-```
-
-The run summary reports only the identity ID and publisher, never an access token. After granting Contributor membership:
-
-```bash
-gh workflow run marketplace-identity.yml --ref main -f verify_publisher_access=true
-```
-
-The shared authentication action checks direct Contributor/Owner membership for the authenticated identity, then verifies vsce's own Azure credential path. This explicit role check is necessary because vsce's built-in membership check also accepts Reader access. Both identity workflow modes are read-only with respect to registry publication.
-
-If Entra reports no matching federated credential, compare issuer, audience and the full immutable subject, including environment spelling and case. If authentication succeeds but role verification fails, confirm that the identity ID from the run summary is a direct Contributor of the correct publisher. Do not substitute the client ID.
-
-Reference: [Azure Login OIDC](https://github.com/Azure/login#login-with-openid-connect-oidc-recommended), [immutable subjects](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects), [Marketplace Entra publishing](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#secure-automated-publishing-to-visual-studio-marketplace).
+Reference: [Marketplace trusted publishing](https://code.visualstudio.com/api/working-with-extensions/publishing-extension#publish-with-github-actions-and-trusted-publishing).
 
 ## Open VSX credentials
 
-Open VSX remains an independent registry. Its `OVSX_PAT` repository secret must contain an unexpired token for an account authorized to publish in the `bluecloud-dev` namespace, with the required publisher agreement completed. Entra federation does not replace this credential.
+Open VSX remains an independent registry. Its `OVSX_PAT` repository secret must contain an unexpired token for an account authorized to publish in the `bluecloud-dev` namespace, with the required publisher agreement completed. Marketplace trusted publishing does not replace this credential.
 
 Update it through GitHub settings or the interactive prompt:
 
