@@ -200,14 +200,19 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_ENV, 'VSIX_PATH=' + expected + '\n');
           NODE
 
-      - name: Authenticate and verify Marketplace Contributor access
-        uses: ./.github/actions/marketplace-auth
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      - name: Verify Marketplace trusted publishing without uploading
+        if: github.event_name == 'workflow_dispatch' && !inputs.publish
+        run: |
+          node <<'NODE'
+          // shortcut: use vsce's OIDC helper until verify-pat supports --oidc.
+          require('@vscode/vsce/out/oidc').getOIDCCredential('bluecloud-dev').then(
+            () => console.log('Marketplace trusted publishing verified; no extension uploaded.'),
+            error => { console.error(error.message); process.exitCode = 1; }
+          );
+          NODE
       - name: Publish to VS Code Marketplace
         if: github.event_name == 'push' || inputs.publish
-        run: node scripts/vsce-wrapper.js publish --azure-credential --packagePath "$VSIX_PATH"
+        run: node scripts/vsce-wrapper.js publish --oidc --packagePath "$VSIX_PATH"
 
   openvsx:
     needs: build

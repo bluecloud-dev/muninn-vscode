@@ -16,11 +16,10 @@ import {
   type ViewEditorCommand,
   type ViewToHostMessage,
 } from '../../custom-editor/protocol';
-import { mergeIndependentChanges } from '../../shared/text-edits';
 import { continueList, createDocumentNavigation, toggleTask } from './document-navigation';
 import { createAnnouncer } from './announcements';
 import { bootstrapEditorApp } from './bootstrap';
-import { createEditorViewport } from './editor-viewport';
+import { createEditorViewport, zoomLevels } from './editor-viewport';
 import { setButtonHelp } from './icon-button';
 import { createImageInsertionTransaction } from './image-insertion';
 import { formatString, getString } from './localization';
@@ -310,7 +309,9 @@ const getWordSelection = (state: EditorState): TextSelection | undefined => {
     return undefined;
   }
 
-  const text = parent.textContent;
+  // One placeholder per inline leaf (hard break, image) keeps text offsets
+  // equal to document offsets and treats the leaf as a word boundary.
+  const text = parent.textBetween(0, parent.content.size, undefined, '￼');
   if (text.length === 0) {
     return undefined;
   }
@@ -516,6 +517,9 @@ const insertCodeBlock = (): boolean => {
   return true;
 };
 
+// The host input box stays open when focus leaves it, so its reply targets the requesting state.
+let pendingLinkState: EditorState | undefined;
+
 const requestLinkInput = (): boolean => {
   if (!view) {
     return false;
@@ -526,6 +530,7 @@ const requestLinkInput = (): boolean => {
     return false;
   }
 
+  pendingLinkState = state;
   const { from, to } = state.selection;
   const selectedText = from === to ? undefined : state.doc.textBetween(from, to, ' ');
 
@@ -542,6 +547,18 @@ const requestLinkInput = (): boolean => {
 const insertLinkFromHost = (href: string, text?: string): boolean => {
   if (!view) {
     return false;
+  }
+
+  const pending = pendingLinkState;
+  pendingLinkState = undefined;
+  if (pending && view.state.doc !== pending.doc) {
+    // Handled without an edit; the stale notice must not be replaced by a failure.
+    announce(getString('pickerStaleMessage'), { kind: 'error' });
+    view.focus();
+    return true;
+  }
+  if (pending && !view.state.selection.eq(pending.selection)) {
+    view.dispatch(view.state.tr.setSelection(pending.selection));
   }
 
   const linkMark = schema.marks.link.create({ href });
@@ -831,15 +848,15 @@ const isListActive = (listNodeType: NodeType): boolean => {
 const updateToolbarState = (): void => {
   const { zoomPercent, fitToWidth } = viewport;
   updateToolbarPressedState('fitToWidth', fitToWidth);
-  const reset = toolbarButtons.get('resetZoom')!;
-  const percentage = zoomPercent + '%';
-  if (reset.textContent !== percentage) reset.textContent = percentage;
-  const zoomHelp = formatString(getString('zoomResetHelpTemplate'), zoomPercent);
-  setButtonHelp(reset, zoomHelp);
+  const zoom = toolbarButtons.get('chooseZoom')!;
+  const percentage = formatString(getString('zoomPercentTemplate'), zoomPercent);
+  const zoomLabel = zoom.querySelector('.muninn-zoom-level-label')!;
+  if (zoomLabel.textContent !== percentage) zoomLabel.textContent = percentage;
+  setButtonHelp(zoom, formatString(getString('zoomLevelHelpTemplate'), zoomPercent));
   const zoomIn = toolbarButtons.get('zoomIn')!;
   const zoomOut = toolbarButtons.get('zoomOut')!;
-  if (zoomPercent === 200 && document.activeElement === zoomIn) reset.focus();
-  if (zoomPercent === 50 && document.activeElement === zoomOut) reset.focus();
+  if (zoomPercent === 200 && document.activeElement === zoomIn) zoom.focus();
+  if (zoomPercent === 50 && document.activeElement === zoomOut) zoom.focus();
   zoomIn.disabled = zoomPercent === 200;
   zoomOut.disabled = zoomPercent === 50;
   updateToolbarPressedState('toggleBold', isMarkActive(schema.marks.strong));
@@ -881,6 +898,13 @@ const adaptiveToolbar = attachAdaptiveToolbar({
   },
   execute: executeToolbarCommand,
   getMenu: (command): ToolbarMenuItem[] | undefined => {
+    if (command === 'chooseZoom')
+      return zoomLevels.map((level) => ({
+        command: 'setZoom' + level,
+        label: formatString(getString('zoomPercentTemplate'), level),
+        role: 'menuitemradio',
+        checked: viewport.zoomPercent === level,
+      }));
     if (command === 'chooseTableAction') {
       const disabled = findSelectedTablePosition() === undefined;
       return [
@@ -969,8 +993,8 @@ const applyHostMarkdown = (hostMarkdown: string, fileName = documentFileName): v
         const nextState = view.state.apply(transaction);
         if (nextMarkdown !== undefined) setDocumentSource(nextState.doc, nextMarkdown);
         view.updateState(nextState);
-        if (transaction.docChanged) {
-          const markdown = serializeMarkdownForHost();
+        if (nextMarkdown !== undefined) {
+          const markdown = nextMarkdown;
           retained.draft = { markdown, baseMarkdown: syncController.getBaseMarkdown() };
           preserveState();
           vscode.postMessage({
@@ -1021,23 +1045,22 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       setImageSources(payload.imageSources);
       applyHostMarkdown(payload.markdown, payload.fileName);
       announce(getString('statusConnected'), { kind: 'status' });
-      if (savedDraft && savedDraft.markdown !== payload.markdown) {
-        const merged = mergeIndependentChanges(
-          savedDraft.baseMarkdown,
-          savedDraft.markdown,
-          payload.markdown,
-        );
-        if (merged === undefined) {
-          recovering = true;
-          view?.setProps({ editable: () => false });
-          vscode.postMessage({
-            type: 'view.recoverDraft',
-            payload: { markdown: savedDraft.markdown },
-          });
-        } else {
-          applyHostMarkdown(merged);
-          syncController.queueApply(() => merged);
-        }
+      // The retained base can lag behind operations the host already applied, so a
+      // three-way merge could apply the draft twice. Reapply it only onto its own base.
+      if (savedDraft?.markdown === payload.markdown) {
+        retained.draft = undefined;
+        preserveState();
+      } else if (savedDraft?.baseMarkdown === payload.markdown) {
+        const draft = savedDraft.markdown;
+        applyHostMarkdown(draft);
+        syncController.queueApply(() => draft);
+      } else if (savedDraft) {
+        recovering = true;
+        view?.setProps({ editable: () => false });
+        vscode.postMessage({
+          type: 'view.recoverDraft',
+          payload: { markdown: savedDraft.markdown },
+        });
       }
       if (typeof retained.scrollTop === 'number') editorShell.scrollTop = retained.scrollTop;
       return;
@@ -1075,6 +1098,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       return;
     }
     case 'host.linkInputCanceled': {
+      pendingLinkState = undefined;
       announce('', { kind: 'status' });
       view?.focus();
       return;
@@ -1131,11 +1155,6 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     case 'host.imageRejected': {
       const payload = message.payload;
       announce(payload.reason, { kind: 'error' });
-      return;
-    }
-    case 'host.error': {
-      const payload = message.payload;
-      announce(payload.message, { kind: 'error' });
       return;
     }
   }

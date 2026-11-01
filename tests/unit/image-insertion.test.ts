@@ -1,4 +1,4 @@
-import { EditorState, TextSelection } from 'prosemirror-state';
+import { EditorState, NodeSelection, TextSelection } from 'prosemirror-state';
 import {
   createImageInsertionTransaction,
   getImageAltTextFromSelection,
@@ -35,6 +35,61 @@ describe('webview image insertion helpers', () => {
       'Alpha![](images/icon.png)\n\n+ _untouched_\n',
     );
   });
+
+  for (const [name, block] of [
+    ['table', '| A | B |\n| --- | --- |\n| 1 | 2 |'],
+    ['code block', '```js\nconst code = 1;\n```'],
+  ]) {
+    it('inserts an image after a selected ' + name + ' instead of replacing it', () => {
+      const source = `Intro\n\n${block}\n\nOutro\n`;
+      const documentNode = parseHostMarkdown(source);
+      const position = documentNode.child(0).nodeSize;
+      const state = EditorState.create({
+        doc: documentNode,
+        selection: NodeSelection.create(documentNode, position),
+      });
+
+      expect(getImageAltTextFromSelection(state)).to.equal('');
+      const transaction = createImageInsertionTransaction(
+        state,
+        schema.nodes.image,
+        'images/pic.png',
+      );
+
+      expect(serializeToHostMarkdown(transaction.doc)).to.equal(
+        `Intro\n\n${block}\n\n![](images/pic.png)\n\nOutro\n`,
+      );
+      expect(transaction.selection.$from.parent.type.name).to.equal('paragraph');
+      expect(transaction.selection.$from.nodeBefore?.type.name).to.equal('image');
+    });
+  }
+
+  for (const [source, expected] of [
+    ['- one\n- two\n- three\n', '- one\n- two![](images/pic.png)\n- three\n'],
+    ['1. one\n2. two\n3. three\n', '1. one\n2. two![](images/pic.png)\n3. three\n'],
+    ['- one\n\n- two\n\n- three\n', '- one\n\n- two![](images/pic.png)\n\n- three\n'],
+  ]) {
+    it(
+      'keeps an image for a selected list item inside that item: ' + JSON.stringify(source),
+      () => {
+        const documentNode = parseHostMarkdown(source);
+        const position = 1 + documentNode.child(0).child(0).nodeSize;
+        const state = EditorState.create({
+          doc: documentNode,
+          selection: NodeSelection.create(documentNode, position),
+        });
+
+        const transaction = createImageInsertionTransaction(
+          state,
+          schema.nodes.image,
+          'images/pic.png',
+        );
+
+        expect(serializeToHostMarkdown(transaction.doc)).to.equal(expected);
+        expect(transaction.selection.$from.nodeBefore?.type.name).to.equal('image');
+      },
+    );
+  }
 
   it('uses selected text as alt text and serializes markdown image syntax', () => {
     const documentNode = parseHostMarkdown('A screenshot appears here.');
