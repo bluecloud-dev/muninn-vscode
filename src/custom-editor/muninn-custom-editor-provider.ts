@@ -940,9 +940,15 @@ export class MuninnCustomEditorProvider
       // Reassigning options reloads the webview and discards undo history, so roots only grow.
       const options = session.panel.webview.options;
       const roots = options.localResourceRoots ?? [];
-      const allowed = new Set(roots.map((root) => root.toString()));
       const missing = uniqueUris(getImageResourceRoots(session.document.uri, sources)).filter(
-        (root) => !allowed.has(root.toString()),
+        (candidate) =>
+          !roots.some(
+            (root) =>
+              root.scheme === candidate.scheme &&
+              root.authority === candidate.authority &&
+              (root.path === candidate.path ||
+                candidate.path.startsWith(`${root.path.replace(/\/$/, '')}/`)),
+          ),
       );
       if (missing.length > 0)
         session.panel.webview.options = { ...options, localResourceRoots: [...roots, ...missing] };

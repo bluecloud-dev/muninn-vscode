@@ -1566,7 +1566,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await save(editor, file, '* [ ] AlXpha\n');
   });
 
-  it('inserts an image through the toolbar and saves exact surrounding Markdown', async () => {
+  it('inserts an image through the native command after cancelling the toolbar dialog', async () => {
     const { editor, file } = await open('image.md', 'Alpha\n\n+ _untouched_\n');
     await editor.locator('.ProseMirror p').first().click();
     await page.keyboard.press(lineEnd);
@@ -1576,6 +1576,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     assert.equal(fs.readFileSync(file, 'utf8'), 'Alpha\n\n+ _untouched_\n');
     const selectedImage = path.join(root, 'assets', 'icon.png');
     await command('Muninn for VS Code: Insert Image');
+    await page.locator('.quick-input-title').getByText('Insert Image', { exact: true }).waitFor();
     await page.locator('.quick-input-widget input[type="text"]').fill(selectedImage);
     await page.keyboard.press('Enter');
 

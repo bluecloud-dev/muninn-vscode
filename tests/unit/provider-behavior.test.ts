@@ -399,7 +399,7 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.messages.at(-1)!.type, 'host.settingsChanged');
   });
 
-  it('grows image resource roots only when a new folder appears, keeping the webview loaded', async () => {
+  it('keeps imports under allowed roots loaded and only adds uncovered image folders', async () => {
     const f = await fixture('![Seed](figures/seed.png)\n\n![A](a.png)\n');
     const roots = () => f.panel.webview.options.localResourceRoots!.map(String);
     const workspaceRoot = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace');
@@ -422,8 +422,8 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.optionUpdates.length, 1);
 
     await apply('![C](assets/c.png)\n');
-    assert.equal(f.optionUpdates.length, 2);
-    assert.ok(roots().includes(folder('assets')));
+    assert.equal(f.optionUpdates.length, 1);
+    assert.ok(!roots().includes(folder('assets')));
     assert.ok(roots().includes(folder('figures')));
     assert.equal(roots().filter((root) => root === folder()).length, 1);
     const applied = f.messages.findLast((message) => message.type === 'host.applyResult');
@@ -436,6 +436,12 @@ describe('custom editor host lifecycle', () => {
 
     await apply('Plain again\n');
     f.external('![D](assets/d.png)\n');
+    assert.equal(f.optionUpdates.length, 1);
+
+    f.external('![E](../workspace-extra/e.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
+    assert.ok(roots().includes(folder('../workspace-extra')));
+    f.external('![F](../workspace-extra/nested/f.png)\n');
     assert.equal(f.optionUpdates.length, 2);
   });
 
