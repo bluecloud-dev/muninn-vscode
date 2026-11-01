@@ -36,7 +36,7 @@ Please describe the task you were doing and the result you expected. Include ste
 
 ## Start reading
 
-This source targets **1.4.1**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
+This source targets **1.4.2**, distributed on the stable release channel. See the [changelog](CHANGELOG.md) for versioned changes. Install [Muninn from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=bluecloud-dev.muninn-vscode) and open a `.md` or `.markdown` file. If another editor is already your default, use **Reopen Editor With… → Muninn Markdown Editor**. Muninn respects your editor preferences.
 
 - **Read and navigate:** comfortable line width, Unicode heading links, the native Headings picker, relative file links and VS Code Find.
 - **Edit:** a toolbar with local Paragraph/Heading choices and as many controls as fit; More contains only the remaining actions; standard GFM tasks and strikethrough; editable table cells with raw-source access.
@@ -61,7 +61,7 @@ Untouched files round-trip byte for byte in the regression corpus. Edits preserv
 
 The old `muninn.editorAssociations` setting is deprecated and has no effect. Configure defaults with VS Code's editor picker.
 
-Remote images do not load automatically. Imported images are limited to 10 MiB. Markdown HTML stays disabled. The extension makes no telemetry calls. Desktop VS Code 1.85.2+ is supported; browser/vscode.dev support is not advertised.
+Remote images do not load automatically. Imported images are limited to 10 MiB. Image imports keep their original selection and ask you to retry if the document changes before they finish. Markdown HTML stays disabled. The extension makes no telemetry calls. Desktop VS Code 1.85.2+ is supported; browser/vscode.dev support is not advertised.
 
 HTML exports embed local PNG, JPEG, GIF, WebP and SVG images up to 2 MiB each. Larger or unreadable images retain relative references when possible, with a warning; share those files alongside the HTML. Remote/data image sources and unavailable cross-provider assets become alt text. Mermaid is exported as readable source with a notice; code blocks and task markers remain plain text. No scripts or remote resources are included. Unapplied table-source drafts are not exported. Export does not save or rewrite the Markdown file. Direct PDF export is not provided; browser/OS print dialogs and PDF destinations vary. See the [export decision](docs/proposals/export.md), which implements the HTML workflow tracked in [#275](https://github.com/bluecloud-dev/muninn-vscode/issues/275).
 

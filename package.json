@@ -2,7 +2,7 @@
   "name": "muninn-vscode",
   "displayName": "%extension.displayName%",
   "publisher": "bluecloud-dev",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "preview": false,
   "description": "%extension.description%",
   "license": "AGPL-3.0-only",

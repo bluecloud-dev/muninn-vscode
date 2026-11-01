@@ -4,8 +4,13 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-11-02
+
 ### Fixed
 
+- Paste and drop supported images up to 10 MiB without overflowing base64 validation.
+- Keep each image import tied to its original selection, including native commands. Reject
+  stale or duplicate replies and remove rejected copies instead of changing unrelated text.
 - Patch the development-tool `minimatch` and `glob` dependencies to resolve the remaining
   moderate dependency advisories, without changing the extension's runtime dependencies.
 

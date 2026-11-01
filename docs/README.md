@@ -18,6 +18,6 @@ The [root README](../README.md) describes the extension for users. Report vulner
 
 The [round-trip report](ROUNDTRIP_REPORT.md) is generated from the regression corpus; regenerate it with `npm run test:roundtrip`. It does not replace tests of actual edits.
 
-The [2026-11-01 audit](AUDIT.md) records the dependency remediation and independently confirmed follow-up findings for the 1.4.1 source snapshot.
+The [2026-11-01 audit](AUDIT.md) records the dependency remediation and independently confirmed findings for the 1.4.1 source snapshot, resolved in 1.4.2.
 
 Source and tests establish implemented behavior. [GitHub issues](https://github.com/bluecloud-dev/muninn-vscode/issues) track current work, and [Actions](https://github.com/bluecloud-dev/muninn-vscode/actions) records verification for each commit. Superseded audits, AI plans, and strategy drafts remain in Git history. The [historical changelog](CHANGELOG-legacy.md) retains version history from before the 1.0.0 Preview reset.

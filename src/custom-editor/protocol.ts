@@ -22,6 +22,7 @@ export type ViewEditorCommand =
   | 'toggleBulletList'
   | 'toggleNumberedList'
   | 'insertLink'
+  | 'insertImage'
   | 'insertMermaidBlock'
   | 'insertTable'
   | 'insertCodeBlock'
@@ -85,6 +86,7 @@ export type HostToViewMessage =
   | {
       type: 'host.imageInserted';
       payload: {
+        token: string;
         requestId: number;
         path: string;
         webviewUri: string;
@@ -94,7 +96,8 @@ export type HostToViewMessage =
   | {
       type: 'host.imageRejected';
       payload: {
-        reason: string;
+        token: string;
+        reason?: string;
       };
     };
 
@@ -114,13 +117,7 @@ export type ViewToHostMessage =
   | {
       type: 'view.executeCommand';
       payload: {
-        command:
-          | 'openRawMarkdown'
-          | 'save'
-          | 'insertImage'
-          | 'insertFileLink'
-          | 'goToHeading'
-          | 'exportHtml';
+        command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'exportHtml';
       };
     }
   | {
@@ -131,12 +128,15 @@ export type ViewToHostMessage =
     }
   | {
       type: 'view.requestImageInsert';
-      payload: {
-        kind: ImageInsertKind;
-        name?: string;
-        mime?: string;
-        bytesBase64: string;
-      };
+      payload:
+        | { token: string; kind: 'command' }
+        | {
+            token: string;
+            kind: ImageInsertKind;
+            name?: string;
+            mime?: string;
+            bytesBase64: string;
+          };
     }
   | { type: 'view.imageInsertResult'; payload: { requestId: number; ok: boolean } }
   | { type: 'view.flushComplete'; payload: { requestId: number; ok: boolean } }
@@ -187,6 +187,7 @@ const isViewEditorCommand = (value: unknown): value is ViewEditorCommand =>
   value === 'toggleBulletList' ||
   value === 'toggleNumberedList' ||
   value === 'insertLink' ||
+  value === 'insertImage' ||
   value === 'insertMermaidBlock' ||
   value === 'insertTable' ||
   value === 'insertCodeBlock' ||
@@ -256,14 +257,9 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
   if (value.type === 'view.executeCommand') {
     return (
       isObject(value.payload) &&
-      [
-        'openRawMarkdown',
-        'save',
-        'insertImage',
-        'insertFileLink',
-        'goToHeading',
-        'exportHtml',
-      ].includes(value.payload.command as string)
+      ['openRawMarkdown', 'save', 'insertFileLink', 'goToHeading', 'exportHtml'].includes(
+        value.payload.command as string,
+      )
     );
   }
 
@@ -277,10 +273,12 @@ export const isViewToHostMessage = (value: unknown): value is ViewToHostMessage 
   if (value.type === 'view.requestImageInsert') {
     return (
       isObject(value.payload) &&
-      (value.payload.kind === 'paste' || value.payload.kind === 'drop') &&
-      (value.payload.name === undefined || isString(value.payload.name)) &&
-      (value.payload.mime === undefined || isString(value.payload.mime)) &&
-      isString(value.payload.bytesBase64)
+      isString(value.payload.token) &&
+      (value.payload.kind === 'command' ||
+        ((value.payload.kind === 'paste' || value.payload.kind === 'drop') &&
+          (value.payload.name === undefined || isString(value.payload.name)) &&
+          (value.payload.mime === undefined || isString(value.payload.mime)) &&
+          isString(value.payload.bytesBase64)))
     );
   }
 
@@ -369,6 +367,7 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   if (value.type === 'host.imageInserted') {
     return (
       isObject(value.payload) &&
+      isString(value.payload.token) &&
       isRevision(value.payload.requestId) &&
       isString(value.payload.path) &&
       isString(value.payload.webviewUri) &&
@@ -377,7 +376,11 @@ export const isHostToViewMessage = (value: unknown): value is HostToViewMessage 
   }
 
   if (value.type === 'host.imageRejected') {
-    return isObject(value.payload) && isString(value.payload.reason);
+    return (
+      isObject(value.payload) &&
+      isString(value.payload.token) &&
+      (value.payload.reason === undefined || isString(value.payload.reason))
+    );
   }
 
   return false;
