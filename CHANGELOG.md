@@ -4,6 +4,11 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+### Fixed
+
+- Patch the development-tool `minimatch` and `glob` dependencies to resolve the remaining
+  moderate dependency advisories, without changing the extension's runtime dependencies.
+
 ## [1.4.1] - 2026-11-01
 
 ### Changed
