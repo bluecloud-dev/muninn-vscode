@@ -84,9 +84,7 @@ describe('DocumentSync', () => {
   it('rejects a stale revision without writing', async () => {
     const f = fixture('Alpha');
     f.replaceExternally('Remote');
-    const result = await f.sync.applyDocument('Local', 0);
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.equal(result.code, 'revision_mismatch');
+    assert.deepEqual(await f.sync.applyDocument('Local', 0), { ok: false });
     assert.equal(f.edits.length, 0);
   });
 
@@ -125,13 +123,11 @@ describe('DocumentSync', () => {
   it('reports both a rejected workspace edit and an exception', async () => {
     const f = fixture('Alpha');
     workspace.applyEdit = async () => false;
-    const rejected = await f.sync.applyDocument('Beta', 0);
-    assert.equal(rejected.ok, false);
+    assert.deepEqual(await f.sync.applyDocument('Beta', 0), { ok: false });
     workspace.applyEdit = async () => {
       throw new Error('Disconnected');
     };
-    const failed = await f.sync.applyDocument('Beta', 0);
-    assert.equal(failed.ok, false);
+    assert.deepEqual(await f.sync.applyDocument('Beta', 0), { ok: false });
     assert.equal(f.sync.getSnapshot().markdown, 'Alpha');
   });
 });

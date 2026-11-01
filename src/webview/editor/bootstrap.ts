@@ -49,7 +49,7 @@ export const bootstrapEditorApp = (): EditorBootstrap => {
     </div>
     <div class="muninn-toolbar-group" data-group="view" role="group" aria-label="${getHtmlString('toolbarGroupViewLabel')}">
       <button type="button" data-command="zoomOut" data-icon="zoom-out" tabindex="-1" title="${getHtmlString('commandLabelZoomOut')}">${getHtmlString('commandLabelZoomOut')}</button>
-      <button type="button" data-command="resetZoom" tabindex="-1" title="${getHtmlString('commandLabelResetZoom')}">100%</button>
+      <button type="button" class="muninn-zoom-level" data-command="chooseZoom" tabindex="-1" aria-haspopup="menu" aria-expanded="false" aria-controls="muninn-toolbar-menu" title="${getHtmlString('commandLabelZoomLevel')}"><span class="muninn-zoom-level-label">100%</span><span class="codicon codicon-chevron-down" aria-hidden="true"></span></button>
       <button type="button" data-command="zoomIn" data-icon="zoom-in" tabindex="-1" title="${getHtmlString('commandLabelZoomIn')}">${getHtmlString('commandLabelZoomIn')}</button>
       <button type="button" data-command="fitToWidth" data-icon="screen-normal" aria-pressed="false" tabindex="-1" title="${getHtmlString('commandLabelFitToWidth')}">${getHtmlString('commandLabelFitToWidth')}</button>
     </div>

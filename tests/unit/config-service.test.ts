@@ -8,12 +8,13 @@ before(async () => {
   ({ expect } = await import('chai'));
 });
 
+// Settings files are user-edited JSON, so tests also pass values of the wrong type.
 type ConfigurationOverrides = {
-  mermaidEnabled?: boolean;
-  mermaidAllowInUntrustedWorkspaces?: boolean;
-  toolbarMode?: 'basic' | 'advanced';
-  imageDestination?: string;
-  contentWidth?: 'comfortable' | 'full' | number;
+  mermaidEnabled?: unknown;
+  mermaidAllowInUntrustedWorkspaces?: unknown;
+  toolbarMode?: unknown;
+  imageDestination?: unknown;
+  contentWidth?: unknown;
 };
 
 const createConfiguration = (overrides?: ConfigurationOverrides): vscode.WorkspaceConfiguration => {
@@ -59,6 +60,24 @@ describe('ConfigService', () => {
 
     expect(config.mermaidEnabled).to.equal(true);
     expect(config.mermaidAllowInUntrustedWorkspaces).to.equal(false);
+    expect(config.toolbarMode).to.equal('basic');
+    expect(config.imageDestination).to.equal('images/');
+    expect(config.contentWidth).to.equal('comfortable');
+  });
+
+  it('falls back to safe defaults for values of the wrong type', () => {
+    sinon.stub(vscode.workspace, 'getConfiguration').returns(
+      createConfiguration({
+        mermaidEnabled: 'false',
+        toolbarMode: 'compact',
+        imageDestination: 42,
+        contentWidth: '84',
+      }),
+    );
+
+    const config = new ConfigService().getConfig();
+
+    expect(config.mermaidEnabled).to.equal(false);
     expect(config.toolbarMode).to.equal('basic');
     expect(config.imageDestination).to.equal('images/');
     expect(config.contentWidth).to.equal('comfortable');

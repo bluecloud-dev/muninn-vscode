@@ -3,31 +3,60 @@
 
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 import { liftListItem, splitListItem } from 'prosemirror-schema-list';
-import { Plugin, TextSelection, type Command } from 'prosemirror-state';
+import { Plugin, TextSelection, type Command, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { getString } from './localization';
-import { headingSlug } from '../../shared/heading-slug';
+import { createHeadingSlugger } from '../../shared/heading-slug';
+
+const isTask = (node: ProseMirrorNode, parent: ProseMirrorNode | null, index: number): boolean =>
+  node.type.name === 'paragraph' &&
+  parent?.type.name === 'list_item' &&
+  index === 0 &&
+  /^\[[ xX]\] /.test(node.textContent);
+
+const isNavigationNode = (
+  node: ProseMirrorNode,
+  parent: ProseMirrorNode | null,
+  index: number,
+): boolean => node.type.name === 'heading' || isTask(node, parent, index);
+
+/** Whether a changed range holds a heading or task, or ends before one it may shift in its list. */
+const touchesNavigation = (document_: ProseMirrorNode, from: number, to: number): boolean => {
+  let touched = false;
+  document_.nodesBetween(from, to, (node, pos, parent, index) => {
+    touched ||= isNavigationNode(node, parent, index);
+    return !touched;
+  });
+  const $to = document_.resolve(to);
+  return touched || (!!$to.nodeAfter && isNavigationNode($to.nodeAfter, $to.parent, $to.index()));
+};
+
+/** Check every step before and after it, so removed as well as added nodes count. */
+const changesNavigation = (tr: Transaction): boolean =>
+  tr.mapping.maps.some((map, step) => {
+    let touched = false;
+    // ProseMirror StepMap.forEach is not Array.forEach; StepMap is not iterable.
+    // eslint-disable-next-line unicorn/no-for-each
+    map.forEach((oldStart, oldEnd, newStart, newEnd) => {
+      touched ||=
+        touchesNavigation(tr.docs[step], oldStart, oldEnd) ||
+        touchesNavigation(tr.docs[step + 1] ?? tr.doc, newStart, newEnd);
+    });
+    return touched;
+  });
 
 const decorations = (document_: ProseMirrorNode): DecorationSet => {
   const result: Decoration[] = [];
-  const used = new Set<string>();
+  const slug = createHeadingSlugger();
   document_.descendants((node, pos, parent, index) => {
     if (node.type.name === 'heading') {
-      const base = headingSlug(node.textContent);
-      let slug = base;
-      let suffix = 0;
-      while (used.has(slug)) slug = base + '-' + ++suffix;
-      used.add(slug);
-      result.push(Decoration.node(pos, pos + node.nodeSize, { id: slug, tabindex: '-1' }));
+      result.push(
+        Decoration.node(pos, pos + node.nodeSize, { id: slug(node.textContent), tabindex: '-1' }),
+      );
     }
-    if (
-      node.type.name !== 'paragraph' ||
-      parent?.type.name !== 'list_item' ||
-      index !== 0 ||
-      !/^\[[ xX]\] /.test(node.textContent)
-    )
-      return;
+    if (!isTask(node, parent, index)) return;
     const checked = node.textContent[1].toLowerCase() === 'x';
+    const label = getString('taskCheckboxLabel') + ': ' + node.textContent.slice(4);
     const marker = Decoration.inline(pos + 1, pos + 4, {
       class: 'muninn-task-marker',
       'aria-hidden': 'true',
@@ -41,10 +70,7 @@ const decorations = (document_: ProseMirrorNode): DecorationSet => {
           checkbox.type = 'checkbox';
           checkbox.checked = checked;
           checkbox.className = 'muninn-task-checkbox';
-          checkbox.setAttribute(
-            'aria-label',
-            getString('taskCheckboxLabel') + ': ' + node.textContent.slice(4),
-          );
+          checkbox.setAttribute('aria-label', label);
           checkbox.addEventListener('change', () => {
             const current = getPos();
             if (current === undefined) return;
@@ -54,7 +80,8 @@ const decorations = (document_: ProseMirrorNode): DecorationSet => {
           });
           return checkbox;
         },
-        { key: String(pos) + ':' + String(checked), side: -1, stopEvent: () => true },
+        // getPos follows the widget, so its DOM is reused until its state or label changes.
+        { key: 'task:' + String(checked) + ':' + label, side: -1, stopEvent: () => true },
       ),
     );
   });
@@ -66,7 +93,7 @@ export const createDocumentNavigation = (openLink: (href: string) => void): Plug
     state: {
       init: (_, state) => decorations(state.doc),
       apply: (tr, value) => {
-        if (tr.docChanged) return decorations(tr.doc);
+        if (tr.docChanged && changesNavigation(tr)) return decorations(tr.doc);
         // eslint-disable-next-line unicorn/no-array-callback-reference, unicorn/no-array-method-this-argument -- This is ProseMirror DecorationSet.map, not Array.map.
         return value.map(tr.mapping, tr.doc);
       },
