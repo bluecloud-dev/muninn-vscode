@@ -4,6 +4,23 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-01
+
+### Changed
+
+- Publish Marketplace releases through GitHub Actions OIDC and the trusted-publishing policy,
+  replacing the Microsoft Entra sign-in step. Rehearsals verify the policy without uploading.
+- Update Mermaid to 12.2.0, ProseMirror Markdown to 1.13.9 and ProseMirror View to 1.42.8,
+  and refresh bundled third-party license notices.
+- Update development and publishing tools while retaining TypeScript 7 for compilation and
+  TypeScript 6 for ESLint compatibility. Prevent incompatible Dependabot upgrades of the
+  ESLint compatibility dependency.
+
+### Fixed
+
+- Refresh publishing dependencies to address the high-severity follow-redirects advisory and
+  update qs to 6.17.1.
+
 ## [1.4.0] - 2026-10-28
 
 ### Release
