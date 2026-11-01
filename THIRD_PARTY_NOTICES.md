@@ -2830,7 +2830,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-markdown@1.13.8
+## prosemirror-markdown@1.13.9
 
 License: MIT
 
@@ -2960,7 +2960,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-view@1.42.6
+## prosemirror-view@1.42.8
 
 License: MIT
 
