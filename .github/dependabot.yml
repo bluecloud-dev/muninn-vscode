@@ -12,6 +12,9 @@ updates:
     ignore:
       # Keep the VS Code API typings aligned with package.json engines.vscode.
       - dependency-name: '@types/vscode'
+      # TypeScript 7 already compiles the project via @typescript/native; ESLint still needs 6.
+      - dependency-name: 'typescript'
+        versions: ['>=7']
     groups:
       npm-production-minor-patch:
         dependency-type: 'production'
