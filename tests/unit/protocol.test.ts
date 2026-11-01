@@ -164,7 +164,13 @@ describe('custom editor protocol guards', () => {
     expect(
       isViewToHostMessage({
         type: 'view.requestImageInsert',
-        payload: { kind: 'paste', name: 'clip.png', mime: 'image/png', bytesBase64: 'aGVsbG8=' },
+        payload: {
+          token: 'image-token',
+          kind: 'paste',
+          name: 'clip.png',
+          mime: 'image/png',
+          bytesBase64: 'aGVsbG8=',
+        },
       }),
     ).to.equal(true);
     expect(
@@ -193,7 +199,7 @@ describe('custom editor protocol guards', () => {
     expect(
       isViewToHostMessage({
         type: 'view.requestImageInsert',
-        payload: { kind: 'command', bytesBase64: 'aGVsbG8=' },
+        payload: { token: 'image-token', kind: 'unsupported', bytesBase64: 'aGVsbG8=' },
       }),
     ).to.equal(false);
     expect(
@@ -201,6 +207,57 @@ describe('custom editor protocol guards', () => {
         type: 'view.imageInsertResult',
         payload: { requestId: -1, ok: 'false' },
       }),
+    ).to.equal(false);
+  });
+
+  it('correlates image requests, replies and cancellations with a string token', () => {
+    expect(
+      isViewToHostMessage({
+        type: 'view.requestImageInsert',
+        payload: { token: 'picker', kind: 'command' },
+      }),
+    ).to.equal(true);
+    expect(
+      isHostToViewMessage({ type: 'host.executeCommand', payload: { command: 'insertImage' } }),
+    ).to.equal(true);
+    expect(
+      isHostToViewMessage({ type: 'host.imageRejected', payload: { token: 'picker' } }),
+    ).to.equal(true);
+    expect(
+      isViewToHostMessage({ type: 'view.executeCommand', payload: { command: 'insertImage' } }),
+    ).to.equal(false);
+    // eslint-disable-next-line unicorn/no-null -- Exercise malformed JSON received at the boundary.
+    for (const token of [undefined, null, 1, {}]) {
+      expect(
+        isViewToHostMessage({
+          type: 'view.requestImageInsert',
+          payload: { token, kind: 'command' },
+        }),
+      ).to.equal(false);
+      expect(
+        isViewToHostMessage({
+          type: 'view.requestImageInsert',
+          payload: { token, kind: 'paste', bytesBase64: 'YQ==' },
+        }),
+      ).to.equal(false);
+      expect(
+        isHostToViewMessage({ type: 'host.imageRejected', payload: { token, reason: 'Rejected' } }),
+      ).to.equal(false);
+      expect(
+        isHostToViewMessage({
+          type: 'host.imageInserted',
+          payload: {
+            token,
+            requestId: 1,
+            path: 'images/a.png',
+            webviewUri: 'https://example.invalid/a.png',
+            filename: 'a.png',
+          },
+        }),
+      ).to.equal(false);
+    }
+    expect(
+      isHostToViewMessage({ type: 'host.imageRejected', payload: { token: 'picker', reason: 42 } }),
     ).to.equal(false);
   });
 
@@ -241,6 +298,7 @@ describe('custom editor protocol guards', () => {
       isHostToViewMessage({
         type: 'host.imageInserted',
         payload: {
+          token: 'image-token',
           requestId: 1,
           path: 'images/screenshot.png',
           webviewUri: 'vscode-webview://view/images/screenshot.png',
@@ -251,7 +309,7 @@ describe('custom editor protocol guards', () => {
     expect(
       isHostToViewMessage({
         type: 'host.imageRejected',
-        payload: { reason: 'Unsupported image type.' },
+        payload: { token: 'image-token', reason: 'Unsupported image type.' },
       }),
     ).to.equal(true);
   });

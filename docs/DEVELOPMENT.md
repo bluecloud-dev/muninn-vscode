@@ -2,6 +2,8 @@
 
 Use Node 24 and npm with the committed lockfile. The extension runtime targets VS Code 1.85.2+; the development Node requirement does not imply that the extension host needs Node 24.
 
+The version-scoped `minimatch` and `glob` overrides patch development-tool dependencies affected by [pattern amplification](https://github.com/advisories/GHSA-g3hv-75wg-m249) and [incomplete traversal cancellation](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4). They cross major versions; keep lint, coverage, integration and VSIX packaging checks when changing them. Remove the overrides when the parent tools resolve patched versions themselves.
+
 The `@azure/msal-node` override temporarily patches the Marketplace tooling's Azure Identity dependency; remove it when Azure Identity supports a fixed version. The override crosses a major-version boundary, so verify Marketplace authentication when changing it.
 
 Build and typecheck scripts invoke TypeScript 7 through the `@typescript/native` npm alias. The regular `typescript` dependency remains on 6 for typescript-eslint's JavaScript API and peer range. Dependabot ignores major upgrades of this compatibility dependency; remove it and the ignore rule when the linter supports TypeScript 7.

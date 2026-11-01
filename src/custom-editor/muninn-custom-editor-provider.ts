@@ -86,6 +86,7 @@ type HostMarkdownPayload = SerializedMarkdownPayload & {
 };
 
 type ImageSourceInput = {
+  token: string;
   kind: HostImageInsertKind;
   name?: string;
   mime?: string;
@@ -230,41 +231,40 @@ export class MuninnCustomEditorProvider
   }
 
   async insertImageInActiveEditor(): Promise<void> {
-    const session = this.getActiveSession();
-    if (!session || !session.ready) {
-      return;
-    }
+    await this.executeCommandInActiveEditor('insertImage');
+  }
 
-    const selection = await vscode.window.showOpenDialog({
-      title: t('Insert Image'),
-      canSelectFiles: true,
-      canSelectFolders: false,
-      canSelectMany: false,
-      filters: {
-        [t('Images')]: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
-      },
-    });
-
-    const sourceUri = selection?.[0];
-    if (!sourceUri) {
-      return;
-    }
-
+  private async pickImageForSession(session: EditorSession, token: string): Promise<void> {
     try {
+      const selection = await vscode.window.showOpenDialog({
+        title: t('Insert Image'),
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: {
+          [t('Images')]: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'],
+        },
+      });
+      const sourceUri = selection?.[0];
+      if (!sourceUri) {
+        await this.rejectImageForSession(session, token);
+        return;
+      }
       const sourceStat = await vscode.workspace.fs.stat(sourceUri);
       if (sourceStat.size > MAX_IMAGE_BYTES) {
-        await this.rejectImageForSession(session, this.formatImageRejection('tooLarge'));
+        await this.rejectImageForSession(session, token, this.formatImageRejection('tooLarge'));
         return;
       }
       const bytes = await vscode.workspace.fs.readFile(sourceUri);
       await this.insertImageForSession(session, {
+        token,
         kind: 'command',
         name: path.posix.basename(sourceUri.path),
         bytes,
       });
     } catch (error) {
       this.logger.error(t('Image insertion failed.'), error);
-      await this.rejectImageForSession(session, t('Could not add image. Please retry.'));
+      await this.rejectImageForSession(session, token, t('Could not add image. Please retry.'));
     }
   }
 
@@ -365,7 +365,6 @@ export class MuninnCustomEditorProvider
           await this.openRawMarkdown(session.document.uri);
         if (message.payload.command === 'save' && (await this.flushSession(session)))
           await session.document.save();
-        if (message.payload.command === 'insertImage') await this.insertImageInActiveEditor();
         if (message.payload.command === 'insertFileLink') await this.insertFileLinkInActiveEditor();
         if (message.payload.command === 'goToHeading') await this.goToHeadingInActiveEditor();
         return;
@@ -734,25 +733,35 @@ export class MuninnCustomEditorProvider
     session: EditorSession,
     payload: Extract<ViewToHostMessage, { type: 'view.requestImageInsert' }>['payload'],
   ): Promise<void> {
+    if (payload.kind === 'command') {
+      await this.pickImageForSession(session, payload.token);
+      return;
+    }
     let bytes: Uint8Array;
     if (payload.bytesBase64.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) {
-      await this.rejectImageForSession(session, this.formatImageRejection('tooLarge'));
+      await this.rejectImageForSession(
+        session,
+        payload.token,
+        this.formatImageRejection('tooLarge'),
+      );
       return;
     }
     if (
-      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload.bytesBase64)
+      payload.bytesBase64.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(payload.bytesBase64)
     ) {
-      await this.rejectImageForSession(session, t('Could not read image data.'));
+      await this.rejectImageForSession(session, payload.token, t('Could not read image data.'));
       return;
     }
     try {
       bytes = Buffer.from(payload.bytesBase64, 'base64');
     } catch {
-      await this.rejectImageForSession(session, t('Could not read image data.'));
+      await this.rejectImageForSession(session, payload.token, t('Could not read image data.'));
       return;
     }
 
     await this.insertImageForSession(session, {
+      token: payload.token,
       kind: payload.kind,
       name: payload.name,
       mime: payload.mime,
@@ -764,13 +773,18 @@ export class MuninnCustomEditorProvider
     session: EditorSession,
     input: ImageSourceInput,
   ): Promise<void> {
+    if (!session.ready) return;
     const validation = validateImageAsset({
       byteLength: input.bytes.byteLength,
       name: input.name,
       mime: input.mime,
     });
     if (!validation.ok) {
-      await this.rejectImageForSession(session, this.formatImageRejection(validation.reason));
+      await this.rejectImageForSession(
+        session,
+        input.token,
+        this.formatImageRejection(validation.reason),
+      );
       return;
     }
 
@@ -801,6 +815,7 @@ export class MuninnCustomEditorProvider
       const sent = await this.postMessage(session.panel.webview, {
         type: 'host.imageInserted',
         payload: {
+          token: input.token,
           requestId,
           path: markdownPath,
           webviewUri: session.panel.webview.asWebviewUri(imageUri).toString(),
@@ -824,7 +839,11 @@ export class MuninnCustomEditorProvider
         });
       }
       this.logger.error(t('Image insertion failed.'), error);
-      await this.rejectImageForSession(session, t('Could not add image. Please retry.'));
+      await this.rejectImageForSession(
+        session,
+        input.token,
+        t('Could not add image. Please retry.'),
+      );
     } finally {
       if (imageUri) this.reservedImageUris.delete(imageUri.toString());
     }
@@ -873,10 +892,14 @@ export class MuninnCustomEditorProvider
     }
   }
 
-  private async rejectImageForSession(session: EditorSession, reason: string): Promise<void> {
+  private async rejectImageForSession(
+    session: EditorSession,
+    token: string,
+    reason?: string,
+  ): Promise<void> {
     await this.postMessage(session.panel.webview, {
       type: 'host.imageRejected',
-      payload: { reason },
+      payload: { token, reason },
     });
   }
 
@@ -917,9 +940,15 @@ export class MuninnCustomEditorProvider
       // Reassigning options reloads the webview and discards undo history, so roots only grow.
       const options = session.panel.webview.options;
       const roots = options.localResourceRoots ?? [];
-      const allowed = new Set(roots.map((root) => root.toString()));
       const missing = uniqueUris(getImageResourceRoots(session.document.uri, sources)).filter(
-        (root) => !allowed.has(root.toString()),
+        (candidate) =>
+          !roots.some(
+            (root) =>
+              root.scheme === candidate.scheme &&
+              root.authority === candidate.authority &&
+              (root.path === candidate.path ||
+                candidate.path.startsWith(`${root.path.replace(/\/$/, '')}/`)),
+          ),
       );
       if (missing.length > 0)
         session.panel.webview.options = { ...options, localResourceRoots: [...roots, ...missing] };

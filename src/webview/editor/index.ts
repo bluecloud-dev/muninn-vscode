@@ -199,7 +199,7 @@ const parseMarkdown = (markdown: string): EditorState =>
               return false;
             }
             event.preventDefault();
-            void requestImageInsert('paste', file);
+            void requestImageInsert({ kind: 'paste', file });
             return true;
           },
           handleDOMEvents: {
@@ -229,7 +229,7 @@ const parseMarkdown = (markdown: string): EditorState =>
                 ),
               );
               editorView.focus();
-              void requestImageInsert('drop', file);
+              void requestImageInsert({ kind: 'drop', file });
               return true;
             },
           },
@@ -281,19 +281,33 @@ const readFileAsBase64 = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-const requestImageInsert = async (kind: 'paste' | 'drop', file: File): Promise<void> => {
+const pendingImageStates = new Map<string, EditorState>();
+
+const requestImageInsert = async (
+  input: { kind: 'command' } | { kind: 'paste' | 'drop'; file: File },
+): Promise<void> => {
+  if (!view || recovering) return;
+  // A token survives reordered replies without matching an import from a reloaded webview.
+  const token = crypto.randomUUID();
+  pendingImageStates.set(token, view.state);
   try {
-    const bytesBase64 = await readFileAsBase64(file);
+    if (input.kind === 'command') {
+      vscode.postMessage({ type: 'view.requestImageInsert', payload: { token, kind: 'command' } });
+      return;
+    }
+    const bytesBase64 = await readFileAsBase64(input.file);
     vscode.postMessage({
       type: 'view.requestImageInsert',
       payload: {
-        kind,
-        name: file.name,
-        mime: file.type,
+        token,
+        kind: input.kind,
+        name: input.file.name,
+        mime: input.file.type,
         bytesBase64,
       },
     });
   } catch {
+    pendingImageStates.delete(token);
     announce(getString('statusInsertImageFailed'), { kind: 'error' });
   }
 };
@@ -582,10 +596,21 @@ const insertLinkFromHost = (href: string, text?: string): boolean => {
   return true;
 };
 
-const insertImageFromHost = (source: string, webviewUri: string, filename: string): boolean => {
-  if (!view) {
+const insertImageFromHost = (
+  token: string,
+  source: string,
+  webviewUri: string,
+  filename: string,
+): boolean => {
+  const pending = pendingImageStates.get(token);
+  pendingImageStates.delete(token);
+  if (!pending || !view) return false;
+  if (recovering || view.state.doc !== pending.doc) {
+    announce(getString('pickerStaleMessage'), { kind: 'error' });
     return false;
   }
+  if (!view.state.selection.eq(pending.selection))
+    view.dispatch(view.state.tr.setSelection(pending.selection));
 
   imageSources.set(source, webviewUri);
   const state = view.state;
@@ -681,6 +706,10 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
   }
 
   switch (command) {
+    case 'insertImage': {
+      void requestImageInsert({ kind: 'command' });
+      return true;
+    }
     case 'undo': {
       return runViewCommand(undo);
     }
@@ -749,8 +778,7 @@ const executeEditorCommand = (command: ViewEditorCommand): boolean => {
 };
 
 const requestHostCommand = async (
-  command:
-    'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'insertImage' | 'exportHtml',
+  command: 'openRawMarkdown' | 'save' | 'insertFileLink' | 'goToHeading' | 'exportHtml',
 ): Promise<void> => {
   if (await syncController.flush(serializeMarkdownForHost)) {
     vscode.postMessage({ type: 'view.executeCommand', payload: { command } });
@@ -783,8 +811,7 @@ const executeToolbarCommand = (command: string, menu?: string): void => {
     case 'exportHtml':
     case 'goToHeading':
     case 'insertFileLink':
-    case 'openRawMarkdown':
-    case 'insertImage': {
+    case 'openRawMarkdown': {
       void requestHostCommand(command);
       return;
     }
@@ -1038,6 +1065,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       break;
     }
     case 'host.init': {
+      pendingImageStates.clear();
       const payload = message.payload;
       syncController.initialize(payload.markdown, payload.revision);
       setMermaidRenderingEnabled(payload.mermaidEnabled);
@@ -1144,7 +1172,12 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     }
     case 'host.imageInserted': {
       const payload = message.payload;
-      const inserted = insertImageFromHost(payload.path, payload.webviewUri, payload.filename);
+      const inserted = insertImageFromHost(
+        payload.token,
+        payload.path,
+        payload.webviewUri,
+        payload.filename,
+      );
       if (!inserted && !view) announce(getString('statusInsertImageFailed'), { kind: 'error' });
       vscode.postMessage({
         type: 'view.imageInsertResult',
@@ -1154,7 +1187,8 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
     }
     case 'host.imageRejected': {
       const payload = message.payload;
-      announce(payload.reason, { kind: 'error' });
+      if (!pendingImageStates.delete(payload.token)) return;
+      announce(payload.reason ?? '', { kind: payload.reason ? 'error' : 'status' });
       return;
     }
   }
@@ -1162,6 +1196,7 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
 window.addEventListener('message', onHostMessage);
 
 window.addEventListener('beforeunload', () => {
+  pendingImageStates.clear();
   syncController.queueApply(serializeMarkdownForHost);
   window.removeEventListener('message', onHostMessage);
   syncController.dispose();

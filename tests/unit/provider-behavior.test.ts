@@ -8,6 +8,7 @@ import { JSDOM } from 'jsdom';
 import * as vscode from 'vscode';
 import { MuninnCustomEditorProvider } from '../../src/custom-editor/muninn-custom-editor-provider';
 import { ConfigService } from '../../src/services/config-service';
+import { MAX_IMAGE_BYTES } from '../../src/custom-editor/image-assets';
 import { type HostToViewMessage, isHostToViewMessage } from '../../src/custom-editor/protocol';
 
 const noop = (): void => {};
@@ -398,7 +399,7 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.messages.at(-1)!.type, 'host.settingsChanged');
   });
 
-  it('grows image resource roots only when a new folder appears, keeping the webview loaded', async () => {
+  it('keeps imports under allowed roots loaded and only adds uncovered image folders', async () => {
     const f = await fixture('![Seed](figures/seed.png)\n\n![A](a.png)\n');
     const roots = () => f.panel.webview.options.localResourceRoots!.map(String);
     const workspaceRoot = vscode.Uri.parse('vscode-remote://ssh-remote+host/workspace');
@@ -421,8 +422,8 @@ describe('custom editor host lifecycle', () => {
     assert.equal(f.optionUpdates.length, 1);
 
     await apply('![C](assets/c.png)\n');
-    assert.equal(f.optionUpdates.length, 2);
-    assert.ok(roots().includes(folder('assets')));
+    assert.equal(f.optionUpdates.length, 1);
+    assert.ok(!roots().includes(folder('assets')));
     assert.ok(roots().includes(folder('figures')));
     assert.equal(roots().filter((root) => root === folder()).length, 1);
     const applied = f.messages.findLast((message) => message.type === 'host.applyResult');
@@ -435,6 +436,12 @@ describe('custom editor host lifecycle', () => {
 
     await apply('Plain again\n');
     f.external('![D](assets/d.png)\n');
+    assert.equal(f.optionUpdates.length, 1);
+
+    f.external('![E](../workspace-extra/e.png)\n');
+    assert.equal(f.optionUpdates.length, 2);
+    assert.ok(roots().includes(folder('../workspace-extra')));
+    f.external('![F](../workspace-extra/nested/f.png)\n');
     assert.equal(f.optionUpdates.length, 2);
   });
 
@@ -726,18 +733,111 @@ describe('custom editor host lifecycle', () => {
 
   it('rejects malformed and oversized image payloads before writing', async () => {
     const f = await fixture();
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
     for (const bytesBase64 of [
       'bad data!',
+      'AAA',
+      'A===',
+      '====',
+      'YQ==\n',
+      'YQ-_',
       'A'.repeat(14 * 1024 * 1024),
+      Buffer.alloc(MAX_IMAGE_BYTES + 1).toString('base64'),
       '',
-      Buffer.from('fake').toString('base64'),
     ]) {
       await f.send({
         type: 'view.requestImageInsert',
-        payload: { kind: 'paste', name: 'script.exe', bytesBase64 },
+        payload: { token: 'image-token', kind: 'paste', name: 'image.png', bytesBase64 },
       });
       assert.equal(f.messages.at(-1)!.type, 'host.imageRejected');
     }
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: { token: 'image-token', kind: 'paste', name: 'script.exe', bytesBase64: 'YQ==' },
+    });
+    assert.equal(f.messages.at(-1)!.type, 'host.imageRejected');
+    assert.equal(write.called, false);
+    assert.equal((f.logger.error as sinon.SinonStub).called, false);
+  });
+
+  it('accepts valid large SVG pastes through the full 10 MiB limit', async () => {
+    const f = await fixture();
+    sinon.stub(vscode.workspace.fs, 'stat').rejects({ code: 'FileNotFound' });
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const prefix = '<svg xmlns="http://www.w3.org/2000/svg"><desc>';
+    const suffix = '</desc><rect width="1" height="1"/></svg>';
+    for (const size of [5 * 1024 * 1024, MAX_IMAGE_BYTES]) {
+      const bytes = Buffer.from(prefix + 'x'.repeat(size - prefix.length - suffix.length) + suffix);
+      await f.send({
+        type: 'view.requestImageInsert',
+        payload: {
+          token: String(size),
+          kind: 'paste',
+          name: 'image.svg',
+          bytesBase64: bytes.toString('base64'),
+        },
+      });
+      assert.deepEqual(write.lastCall.args[1], bytes);
+      const reply = f.messages.at(-1)!;
+      assert.equal(reply.type, 'host.imageInserted');
+      if (reply.type === 'host.imageInserted') assert.equal(reply.payload.token, String(size));
+    }
+    assert.equal(write.callCount, 2);
+    assert.equal((f.logger.error as sinon.SinonStub).called, false);
+  });
+
+  it('captures the native image command in the view before opening its picker', async () => {
+    const f = await fixture();
+    const picker = sinon.stub(vscode.window, 'showOpenDialog').resolves(undefined);
+    await provider.insertImageInActiveEditor();
+    assert.deepEqual(f.messages.at(-1), {
+      type: 'host.executeCommand',
+      payload: { command: 'insertImage' },
+    });
+    assert.equal(picker.called, false);
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: { token: 'picker-token', kind: 'command' },
+    });
+    assert.equal(picker.calledOnce, true);
+    assert.deepEqual(f.messages.at(-1), {
+      type: 'host.imageRejected',
+      payload: { token: 'picker-token', reason: undefined },
+    });
+  });
+
+  it('keeps a native image request on its originating session and cleans up a stale reply', async () => {
+    const f = await fixture();
+    const sourceUri = vscode.Uri.file('/outside/image.svg');
+    const bytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    sinon.stub(vscode.window, 'showOpenDialog').callsFake(async () => {
+      Object.assign(vscode.window.tabGroups.activeTabGroup, { activeTab: undefined });
+      return [sourceUri];
+    });
+    sinon.stub(vscode.workspace.fs, 'stat').callsFake(async (uri) => {
+      if (uri.toString() === sourceUri.toString())
+        return { type: 1, size: bytes.length, ctime: 0, mtime: 0 };
+      throw Object.assign(new Error('Missing'), { code: 'FileNotFound' });
+    });
+    sinon.stub(vscode.workspace.fs, 'createDirectory').resolves();
+    sinon.stub(vscode.workspace.fs, 'readFile').resolves(bytes);
+    const write = sinon.stub(vscode.workspace.fs, 'writeFile').resolves();
+    const remove = sinon.stub(vscode.workspace.fs, 'delete').resolves();
+    await f.send({
+      type: 'view.requestImageInsert',
+      payload: { token: 'native-token', kind: 'command' },
+    });
+    assert.equal(write.firstCall.args[0].scheme, f.document.uri.scheme);
+    const reply = f.messages.at(-1)!;
+    assert.equal(reply.type, 'host.imageInserted');
+    if (reply.type !== 'host.imageInserted') return;
+    assert.equal(reply.payload.token, 'native-token');
+    await f.send({
+      type: 'view.imageInsertResult',
+      payload: { requestId: reply.payload.requestId, ok: false },
+    });
+    assert.equal(remove.calledOnceWithExactly(write.firstCall.args[0]), true);
   });
 
   it('recovers a conflicting draft into a separate unsaved Markdown document', async () => {
@@ -806,6 +906,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'paste',
         name: 'diagram.png',
         mime: 'image/png',
@@ -838,6 +939,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'drop',
         name: 'diagram.png',
         mime: 'image/png',
@@ -862,6 +964,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'drop',
         name: 'diagram.png',
         mime: 'image/png',
@@ -892,6 +995,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'drop',
         name: 'diagram.png',
         mime: 'image/png',
@@ -919,6 +1023,7 @@ describe('custom editor host lifecycle', () => {
       f.send({
         type: 'view.requestImageInsert',
         payload: {
+          token: 'image-token',
           kind: 'drop',
           name: 'diagram.png',
           mime: 'image/png',
@@ -956,6 +1061,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'drop',
         name: 'diagram.png',
         mime: 'image/png',
@@ -975,6 +1081,7 @@ describe('custom editor host lifecycle', () => {
     await f.send({
       type: 'view.requestImageInsert',
       payload: {
+        token: 'image-token',
         kind: 'paste',
         name: 'image.png',
         mime: 'image/png',

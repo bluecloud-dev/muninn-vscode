@@ -1781,36 +1781,204 @@ describe('bundled editor behavior with a delayed host', function () {
     );
   });
 
-  it('routes Image through the existing host command and leaves cancellation clean', async () => {
-    open('Alpha\n');
+  const imageRequests = () =>
+    messages.filter(
+      (message): message is Extract<ViewToHostMessage, { type: 'view.requestImageInsert' }> =>
+        message.type === 'view.requestImageInsert',
+    );
+  const selectText = async (editor: HTMLElement, from: number, to = from): Promise<void> => {
+    editor.focus();
+    const text = editor.querySelector('p')!.firstChild!;
+    const range = dom.window.document.createRange();
+    range.setStart(text, from);
+    range.setEnd(text, to);
+    dom.window.getSelection()!.removeAllRanges();
+    dom.window.getSelection()!.addRange(range);
+    dom.window.document.dispatchEvent(new dom.window.Event('selectionchange'));
+    await tick();
+  };
+  const requestPickedImage = (): string => {
     dom.window.document
       .querySelector<HTMLButtonElement>('.muninn-toolbar [data-command="insertImage"]')!
       .click();
-    await tick();
-    assert.deepEqual(
-      structuredClone(messages.find((message) => message.type === 'view.executeCommand')),
-      { type: 'view.executeCommand', payload: { command: 'insertImage' } },
-    );
-    assert.equal(applies().length, 0);
-  });
-
-  it('adds a host image after a focused table instead of replacing the table', async () => {
-    const source = 'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nOutro\n';
-    const editor = open(source);
-    editor.querySelector<HTMLInputElement>('tbody input')!.focus();
+    return imageRequests().at(-1)!.payload.token;
+  };
+  const imageReply = (token: string, requestId = 1): void => {
     send({
       type: 'host.imageInserted',
       payload: {
-        requestId: 1,
+        token,
+        requestId,
         path: 'images/pic.png',
         webviewUri: 'https://muninn-test.invalid/pic.png',
         filename: 'pic.png',
       },
     });
+  };
+
+  it('correlates toolbar cancellation and ignores unknown or duplicate image replies', async () => {
+    open('Alpha\n');
+    const token = requestPickedImage();
+    assert.deepEqual(structuredClone(imageRequests().at(-1)?.payload), { token, kind: 'command' });
+    const nextInput = dom.window.document.createElement('input');
+    dom.window.document.body.append(nextInput);
+    nextInput.focus();
+    send({ type: 'host.imageRejected', payload: { token } });
+    assert.ok(dom.window.document.activeElement === nextInput);
+    nextInput.remove();
+    imageReply(token);
+    imageReply('unknown');
+    assert.equal(applies().length, 0);
+    assert.equal(dom.window.document.querySelector('#status-alert')!.textContent, '');
+    const next = requestPickedImage();
+    assert.notEqual(next, token);
+    imageReply(next, 2);
+    const count = applies().length;
+    imageReply(next, 2);
+    assert.equal(applies().length, count);
+    assert.deepEqual(structuredClone(messages.at(-1)), {
+      type: 'view.imageInsertResult',
+      payload: { requestId: 2, ok: false },
+    });
+  });
+
+  it('adds a host image after its originally focused table instead of replacing the table', async () => {
+    const source = 'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nOutro\n';
+    const editor = open(source);
+    editor.querySelector<HTMLInputElement>('tbody input')!.focus();
+    const token = requestPickedImage();
+    await selectText(editor, 0, 5);
+    imageReply(token);
     await tick();
     assert.equal(
       applies().at(-1)?.payload.markdown,
       'Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n![](images/pic.png)\n\nOutro\n',
+    );
+  });
+
+  it('keeps the native image command target through selection changes, undo, redo and Save', async () => {
+    const source = 'Alpha Beta\n\n+ _untouched_\n';
+    const editor = open(source);
+    await selectText(editor, 0);
+    send({ type: 'host.executeCommand', payload: { command: 'insertImage' } });
+    const token = imageRequests().at(-1)!.payload.token;
+    await selectText(editor, 6, 10);
+    imageReply(token);
+    const inserted = '![](images/pic.png)Alpha Beta\n\n+ _untouched_\n';
+    assert.equal(applies().at(-1)?.payload.markdown, inserted);
+    ack(0, 1);
+    send({ type: 'host.executeCommand', payload: { command: 'undo' } });
+    assert.equal(applies().at(-1)?.payload.markdown, source);
+    ack(1, 2);
+    send({ type: 'host.executeCommand', payload: { command: 'redo' } });
+    assert.equal(applies().at(-1)?.payload.markdown, inserted);
+    ack(2, 3);
+    editor.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', {
+        key: 's',
+        code: 'KeyS',
+        keyCode: 83,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await tick();
+    assert.ok(
+      messages.some(
+        (message) => message.type === 'view.executeCommand' && message.payload.command === 'save',
+      ),
+    );
+  });
+
+  for (const changed of ['local', 'external'] as const) {
+    it(
+      'rejects an image after a ' + changed + ' document change and keeps Source usable',
+      async () => {
+        const editor = open('Alpha\n');
+        const token = requestPickedImage();
+        if (changed === 'local') {
+          await append(editor, '!');
+          ack(0, 1);
+        } else
+          send({
+            type: 'host.documentChanged',
+            payload: { markdown: 'Alpha!\n', revision: 1, imageSources: {} },
+          });
+        const count = applies().length;
+        imageReply(token);
+        assert.equal(applies().length, count);
+        assert.equal(editor.textContent, 'Alpha!');
+        assert.match(
+          dom.window.document.querySelector('#status-alert')!.textContent!,
+          /document changed/,
+        );
+        assert.deepEqual(structuredClone(messages.at(-1)), {
+          type: 'view.imageInsertResult',
+          payload: { requestId: 1, ok: false },
+        });
+        dom.window.document
+          .querySelector<HTMLButtonElement>('[data-command="openRawMarkdown"]')!
+          .click();
+        await tick();
+        assert.ok(
+          messages.some(
+            (message) =>
+              message.type === 'view.executeCommand' &&
+              message.payload.command === 'openRawMarkdown',
+          ),
+        );
+      },
+    );
+  }
+
+  it('captures paste selections before FileReader completes and correlates reversed replies', async () => {
+    const editor = open('Alpha Beta\n');
+    const reads: Array<() => void> = [];
+    class DelayedReader extends dom.window.EventTarget {
+      result = '';
+      readAsDataURL(): void {
+        reads.push(() => {
+          this.result =
+            'data:image/svg+xml;base64,' +
+            Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
+          this.dispatchEvent(new dom.window.Event('load'));
+        });
+      }
+    }
+    Object.defineProperty(dom.window, 'FileReader', { value: DelayedReader });
+    const paste = () => {
+      const event = new dom.window.Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', {
+        value: {
+          getData: () => '',
+          files: [new dom.window.File(['<svg/>'], 'clip.svg', { type: 'image/svg+xml' })],
+        },
+      });
+      editor.dispatchEvent(event);
+    };
+    await selectText(editor, 0);
+    paste();
+    await selectText(editor, 5);
+    paste();
+    await selectText(editor, 6, 10);
+    reads[1]();
+    await tick();
+    reads[0]();
+    await tick();
+    const [second, first] = imageRequests();
+    assert.notEqual(first.payload.token, second.payload.token);
+    imageReply(first.payload.token, 2);
+    assert.equal(applies().at(-1)?.payload.markdown, '![](images/pic.png)Alpha Beta\n');
+    imageReply(second.payload.token, 1);
+    assert.equal(applies().length, 1);
+    assert.deepEqual(structuredClone(messages.at(-1)), {
+      type: 'view.imageInsertResult',
+      payload: { requestId: 1, ok: false },
+    });
+    assert.match(
+      dom.window.document.querySelector('#status-alert')!.textContent!,
+      /document changed/,
     );
   });
 

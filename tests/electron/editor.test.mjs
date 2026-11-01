@@ -1566,7 +1566,7 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await save(editor, file, '* [ ] AlXpha\n');
   });
 
-  it('inserts an image through the toolbar and saves exact surrounding Markdown', async () => {
+  it('inserts an image through the native command after cancelling the toolbar dialog', async () => {
     const { editor, file } = await open('image.md', 'Alpha\n\n+ _untouched_\n');
     await editor.locator('.ProseMirror p').first().click();
     await page.keyboard.press(lineEnd);
@@ -1575,7 +1575,8 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.keyboard.press('Escape');
     assert.equal(fs.readFileSync(file, 'utf8'), 'Alpha\n\n+ _untouched_\n');
     const selectedImage = path.join(root, 'assets', 'icon.png');
-    await clickTool(editor, 'insertImage');
+    await command('Muninn for VS Code: Insert Image');
+    await page.locator('.quick-input-title').getByText('Insert Image', { exact: true }).waitFor();
     await page.locator('.quick-input-widget input[type="text"]').fill(selectedImage);
     await page.keyboard.press('Enter');
 
@@ -1602,6 +1603,63 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
       fs.readFileSync(path.join(workspace, 'images', 'icon.png')),
       fs.readFileSync(selectedImage),
     );
+  });
+
+  it('pastes a 5 MiB SVG at its original selection after a delayed file read', async () => {
+    const source = 'Alpha Beta\n\n+ _untouched_\n';
+    let { editor, file } = await open('delayed-image.md', source);
+    const imageDirectory = path.join(workspace, 'images');
+    const existing = new Set(fs.existsSync(imageDirectory) ? fs.readdirSync(imageDirectory) : []);
+    await editor.locator('.ProseMirror p').first().click();
+    await editor.locator('.ProseMirror').press(lineStart);
+    await settle(editor);
+    await editor.evaluate(() => {
+      const NativeReader = window.FileReader;
+      class HeldReader extends NativeReader {
+        readAsDataURL(blob) {
+          window.finishImageRead = () => super.readAsDataURL(blob);
+        }
+      }
+      window.FileReader = HeldReader;
+      try {
+        const prefix = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><desc>';
+        const suffix = '</desc><rect width="1" height="1"/></svg>';
+        const svg = prefix + 'x'.repeat(5 * 1024 * 1024 - prefix.length - suffix.length) + suffix;
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([svg], 'large.svg', { type: 'image/svg+xml' }));
+        document.querySelector('.ProseMirror').dispatchEvent(
+          new ClipboardEvent('paste', {
+            clipboardData: transfer,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      } finally {
+        window.FileReader = NativeReader;
+      }
+    });
+    for (let index = 0; index < 6; index++)
+      await editor.locator('.ProseMirror').press('ArrowRight');
+    await editor.locator('.ProseMirror').press(selectLineEnd);
+    await settle(editor);
+    assert.equal(await editor.evaluate(() => getSelection().toString()), 'Beta');
+    await editor.evaluate(() => {
+      window.finishImageRead();
+      delete window.finishImageRead;
+    });
+    await eventually(async () => {
+      editor = (await visibleEditorFrame('delayed-image.md')) ?? editor;
+      return (await editor.locator('.ProseMirror img:not(.ProseMirror-separator)').count()) === 1;
+    }, 'Large pasted SVG did not appear');
+    const added = fs.readdirSync(imageDirectory).filter((name) => !existing.has(name));
+    assert.equal(added.length, 1);
+    assert.equal(fs.statSync(path.join(imageDirectory, added[0])).size, 5 * 1024 * 1024);
+    const inserted = `![](images/${added[0]})${source}`;
+    editor = await save(editor, file, inserted);
+    await command('Muninn for VS Code: Undo');
+    editor = await save(editor, file, source);
+    await command('Muninn for VS Code: Redo');
+    await save(editor, file, inserted);
   });
 
   it('opens Source after saving edits and creates a native note', async () => {
