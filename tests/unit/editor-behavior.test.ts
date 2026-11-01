@@ -1820,7 +1820,12 @@ describe('bundled editor behavior with a delayed host', function () {
     open('Alpha\n');
     const token = requestPickedImage();
     assert.deepEqual(structuredClone(imageRequests().at(-1)?.payload), { token, kind: 'command' });
+    const nextInput = dom.window.document.createElement('input');
+    dom.window.document.body.append(nextInput);
+    nextInput.focus();
     send({ type: 'host.imageRejected', payload: { token } });
+    assert.ok(dom.window.document.activeElement === nextInput);
+    nextInput.remove();
     imageReply(token);
     imageReply('unknown');
     assert.equal(applies().length, 0);

@@ -1189,7 +1189,6 @@ const onHostMessage = (event: MessageEvent<unknown>): void => {
       const payload = message.payload;
       if (!pendingImageStates.delete(payload.token)) return;
       announce(payload.reason ?? '', { kind: payload.reason ? 'error' : 'status' });
-      if (!payload.reason) view?.focus();
       return;
     }
   }
