@@ -4,6 +4,11 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+### Changed
+
+- Use **Muninn Markdown Editor** as the Marketplace display name so its purpose is visible
+  in extension search. The extension ID remains `bluecloud-dev.muninn-vscode`.
+
 ## [1.4.2] - 2026-11-02
 
 ### Fixed

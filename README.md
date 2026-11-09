@@ -1,6 +1,6 @@
-# Muninn for VS Code
+# Muninn Markdown Editor
 
-<img src="assets/icon.png" alt="Muninn for VS Code" width="96" />
+<img src="assets/icon.png" alt="Muninn Markdown Editor" width="96" />
 
 A reading-first Markdown editor for specifications, documentation and notes. Read, follow links and make small changes in one pane while keeping ordinary Markdown files and useful Git diffs.
 
