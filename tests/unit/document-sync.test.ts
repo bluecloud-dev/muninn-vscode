@@ -5,10 +5,6 @@ import assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import { DocumentSync } from '../../src/custom-editor/document-sync';
 
-type RecordedEdit = vscode.WorkspaceEdit & {
-  replacements: Array<{ uri: vscode.Uri; range: vscode.Range; text: string }>;
-};
-
 describe('DocumentSync', () => {
   const workspace = vscode.workspace as unknown as {
     applyEdit: (edit: vscode.WorkspaceEdit) => Promise<boolean>;
@@ -19,6 +15,9 @@ describe('DocumentSync', () => {
   });
 
   const fixture = (initial: string) => {
+    type RecordedEdit = vscode.WorkspaceEdit & {
+      replacements: Array<{ uri: vscode.Uri; range: vscode.Range; text: string }>;
+    };
     let text = initial;
     const document = {
       uri: vscode.Uri.file('/workspace/doc.md'),
