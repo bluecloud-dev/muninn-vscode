@@ -8,7 +8,8 @@ Use [development](DEVELOPMENT.md), [source fidelity](ROUNDTRIP_CONTRACT.md), [te
 
 | Surface                              | Canonical value                          |
 | ------------------------------------ | ---------------------------------------- |
-| Display name and command category    | Muninn for VS Code                       |
+| Display name                         | Muninn Markdown Editor                   |
+| Command category                     | Muninn for VS Code                       |
 | Extension ID                         | `bluecloud-dev.muninn-vscode`            |
 | Package name                         | `muninn-vscode`                          |
 | Custom editor                        | `muninn.markdownEditor`                  |

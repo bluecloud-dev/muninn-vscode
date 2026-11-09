@@ -4,10 +4,17 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-09
+
 ### Changed
 
 - Use **Muninn Markdown Editor** as the Marketplace display name so its purpose is visible
   in extension search. The extension ID remains `bluecloud-dev.muninn-vscode`.
+- Update Mermaid to 12.3.0, ProseMirror Schema List to 1.6.0 and ProseMirror View to
+  1.42.9, and refresh bundled third-party license notices.
+- Update development tools, including ESLint 10.14.0, Unicorn 79.0.0, jsdom 31.0.0 and
+  Playwright 1.65.0. Align jsdom's parser dependencies and scope test fixture types for
+  the updated lint rules.
 
 ## [1.4.2] - 2026-11-02
 

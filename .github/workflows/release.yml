@@ -301,4 +301,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG_NAME" "$VSIX_PATH" --target "$GITHUB_SHA" --title "Muninn for VS Code $TAG_NAME" --notes-file release-notes.md --latest
+        run: gh release create "$TAG_NAME" "$VSIX_PATH" --target "$GITHUB_SHA" --title "Muninn Markdown Editor $TAG_NAME" --notes-file release-notes.md --latest
