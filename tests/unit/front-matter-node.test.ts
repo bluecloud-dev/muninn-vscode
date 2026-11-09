@@ -15,10 +15,6 @@ before(async () => {
   ({ expect } = await import('chai'));
 });
 
-type GlobalWithDocument = typeof globalThis & {
-  document?: Document;
-};
-
 class MinimalElement {
   readonly tagName: string;
   className = '';
@@ -50,7 +46,7 @@ class MinimalElement {
 }
 
 const installMinimalDocument = (): (() => void) => {
-  const globalContext = globalThis as GlobalWithDocument;
+  const globalContext = globalThis as typeof globalThis & { document?: Document };
   const previousDocument = globalContext.document;
   globalContext.document = {
     createElement: (tagName: string) => new MinimalElement(tagName),

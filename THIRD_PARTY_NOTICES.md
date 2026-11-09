@@ -3256,9 +3256,9 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ---
 
-## elkjs@0.9.3
+## elkjs@0.12.1
 
-License: EPL-2.0
+License: EPL-2.0 OR GPL-3.0-or-later
 
 # Eclipse Public License - v 2.0
 
@@ -3512,8 +3512,7 @@ No third-party beneficiary rights are created under this Agreement.
 
 “This Source Code may also be made available under the following
 Secondary Licenses when the conditions for such availability set forth
-in the Eclipse Public License, v. 2.0 are satisfied: {name license(s),
-version(s), and exceptions or additional permissions here}.”
+in the Eclipse Public License, v. 2.0 are satisfied: GNU General Public License v3.0 or later”
 
 > Simply including a copy of this Agreement, including this Exhibit A is
 > not sufficient to license the Source Code under Secondary Licenses.
@@ -4009,7 +4008,7 @@ IN THE SOFTWARE.
 
 ---
 
-## mermaid@12.2.0
+## mermaid@12.3.0
 
 License: MIT
 
@@ -4193,7 +4192,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-schema-list@1.5.1
+## prosemirror-schema-list@1.6.0
 
 License: MIT
 
@@ -4271,7 +4270,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-view@1.42.8
+## prosemirror-view@1.42.9
 
 License: MIT
 
@@ -4489,22 +4488,6 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
----
-
-## uuid@14.0.0
-
-License: MIT
-
-The MIT License (MIT)
-
-Copyright (c) 2010-2020 Robert Kieffer and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ---
 
