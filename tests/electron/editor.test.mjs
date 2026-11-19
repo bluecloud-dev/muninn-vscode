@@ -1719,7 +1719,10 @@ describe('packaged Muninn in real VS Code', { concurrency: false, timeout: 24000
     await page.getByText('Export HTML', { exact: true }).waitFor();
     await page.locator('.quick-input-widget input[type="text"]').fill(exported);
     await page.getByRole('button', { name: 'OK', exact: true }).click();
-    await eventually(() => fs.existsSync(exported), 'Export did not write an HTML file');
+    await eventually(
+      () => fs.existsSync(exported) && fs.readFileSync(exported, 'utf8').endsWith('</html>\n'),
+      'Export did not finish writing the HTML file',
+    );
     const html = fs.readFileSync(exported, 'utf8');
     assert.match(html, /Final export paragraph\. Unsaved change\./);
     assert.doesNotMatch(html, /<script[\s>]/i);
