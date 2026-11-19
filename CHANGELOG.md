@@ -4,7 +4,7 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
-## [1.5.1] - 2026-11-19
+## [1.5.1] - 2026-11-20
 
 ### Changed
 
