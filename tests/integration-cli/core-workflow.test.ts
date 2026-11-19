@@ -148,14 +148,15 @@ describe('Integration CLI: core workflow', () => {
     const initialFenceCount = document.getText().match(/^```/gm)?.length ?? 0;
 
     await vscode.commands.executeCommand('muninn.insertLink');
-    await waitFor(() => {
-      const [inline] = markdown.parseInline(document.getText(), {});
-      return (
-        inline.children?.some(
-          (token) => token.type === 'link_open' && token.attrGet('href') === href,
-        ) ?? false
-      );
-    });
+    await waitFor(() =>
+      markdown
+        .parse(document.getText(), {})
+        .some((block) =>
+          block.children?.some(
+            (token) => token.type === 'link_open' && token.attrGet('href') === href,
+          ),
+        ),
+    );
 
     await vscode.commands.executeCommand('muninn.insertCodeBlock');
     await waitFor(() => (document.getText().match(/^```/gm)?.length ?? 0) > initialFenceCount);
