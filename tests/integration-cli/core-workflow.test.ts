@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import MarkdownIt from 'markdown-it';
 import sinon from 'sinon';
 import { DocumentSync } from '../../src/custom-editor/document-sync';
 let expect: Chai.ExpectStatic;
@@ -140,14 +141,21 @@ describe('Integration CLI: core workflow', () => {
     await vscode.commands.executeCommand('vscode.open', uri);
     await waitFor(() => getActiveCustomViewType() === 'muninn.markdownEditor');
 
-    const inputStub = sinon
-      .stub(vscode.window, 'showInputBox')
-      .resolves('https://example.com/docs');
+    const href = 'https://example.com/docs';
+    const markdown = MarkdownIt('commonmark');
+    const inputStub = sinon.stub(vscode.window, 'showInputBox').resolves(href);
     const quickPickStub = sinon.stub(vscode.window, 'showQuickPick').resolves();
     const initialFenceCount = document.getText().match(/^```/gm)?.length ?? 0;
 
     await vscode.commands.executeCommand('muninn.insertLink');
-    await waitFor(() => document.getText().includes('https://example.com/docs'));
+    await waitFor(() => {
+      const [inline] = markdown.parseInline(document.getText(), {});
+      return (
+        inline.children?.some(
+          (token) => token.type === 'link_open' && token.attrGet('href') === href,
+        ) ?? false
+      );
+    });
 
     await vscode.commands.executeCommand('muninn.insertCodeBlock');
     await waitFor(() => (document.getText().match(/^```/gm)?.length ?? 0) > initialFenceCount);
