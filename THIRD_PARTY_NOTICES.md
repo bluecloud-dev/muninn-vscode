@@ -4166,7 +4166,7 @@ THE SOFTWARE.
 
 ---
 
-## prosemirror-model@1.25.12
+## prosemirror-model@1.25.13
 
 License: MIT
 
