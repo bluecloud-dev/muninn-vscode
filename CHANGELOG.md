@@ -4,6 +4,22 @@ All notable changes to Muninn are documented here. The release sequence starts a
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-20
+
+### Changed
+
+- Update ProseMirror Model to 1.25.13 and refresh the bundled third-party license notices.
+- Update development and publishing tools, including VSCE 4.1.1 and Open VSX CLI 1.4.0.
+
+### Security
+
+- Pin GitHub Actions used by CI, security scanning, and release workflows to verified commits.
+
+### Testing
+
+- Check the exact Markdown link destination in integration tests and wait for the complete HTML
+  export before reading it in packaged UI tests.
+
 ## [1.5.0] - 2026-11-09
 
 ### Changed
